@@ -45,7 +45,7 @@ export function playEndless(seed, config, choose) {
 }
 
 /** @param {number[]} sorted @param {number} q @returns {number} */
-function quantile(sorted, q) {
+export function quantile(sorted, q) {
   if (sorted.length === 0) return NaN;
   const pos = q * (sorted.length - 1);
   const low = Math.floor(pos);

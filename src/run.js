@@ -4,7 +4,8 @@
  *
  * The loop: draw the transmitter at the front of the depot, see the next two,
  * place it. Clear the board before the depot runs out and whatever is left over
- * counts as score; run out with nodes still dark and the run is over.
+ * counts as score, weighted by the stage it was saved on; run out with nodes
+ * still dark and the run is over.
  *
  * A placement is final. Lifting a placed transmitter back off the board was
  * allowed once — it stayed spent either way, so what the lift bought was the
@@ -17,7 +18,9 @@
  * can play thousands of runs without the board depending on how it played.
  */
 
-import { bfsWithin, bfsWithinBlocked, blockedNodes } from './graph.js';
+import {
+  amplifierNodes, bfsWithin, bfsWithinAmplified, bfsWithinBlocked, blockedNodes,
+} from './graph.js';
 import { generateCandidate, mulberry32, shuffled } from './generator.js';
 
 /** @typedef {import('./graph.js').Graph} Graph */
@@ -286,7 +289,10 @@ export function stageSpec(config, index) {
  */
 function drawBoard(
   rng,
-  { nodeCount, lattice, blockedRatio = null, edgeDeleteRatio = EDGE_DELETE_RATIO },
+  {
+    nodeCount, lattice, blockedRatio = null, amplifierRatio = null,
+    edgeDeleteRatio = EDGE_DELETE_RATIO,
+  },
 ) {
   for (let attempt = 0; attempt < 400; attempt++) {
     const graph = generateCandidate({
@@ -305,23 +311,33 @@ function drawBoard(
       const chosen = new Set(order.slice(0, Math.round(nodeCount * blockedRatio)));
       for (const node of graph.nodes) if (chosen.has(node.id)) node.blocked = true;
     }
+    // Amplifiers are sprinkled the same way and drawn from their own order, so
+    // the two flags are independent and a node may carry both. Same rule as
+    // above: a mode that deals them draws even at density zero, a mode that has
+    // never heard of them leaves the random stream alone.
+    if (amplifierRatio !== null) {
+      const order = shuffled(rng, graph.nodes.map((node) => node.id));
+      const chosen = new Set(order.slice(0, Math.round(nodeCount * amplifierRatio)));
+      for (const node of graph.nodes) if (chosen.has(node.id)) node.amplifier = true;
+    }
     return graph;
   }
   throw new Error(`could not draw a ${lattice} board of ${nodeCount} nodes`);
 }
 
 /**
- * The density of impermeable nodes for one stage. A number applies to every
- * board; an array is drawn from uniformly, once per stage, which makes the
- * density itself part of what a board can surprise you with.
+ * The density of a sprinkled node flag — impermeable or amplifier — for one
+ * stage. A number applies to every board; an array is drawn from uniformly,
+ * once per stage, which makes the density itself part of what a board can
+ * surprise you with.
  *
  * The draw happens either way, so a fixed density and a drawn one walk through
  * the same random stream and therefore the same boards.
  * @param {() => number} rng
  * @param {number|number[]|undefined} configured
- * @returns {number|null} null when the mode has no impermeable nodes at all
+ * @returns {number|null} null when the mode does not know the flag at all
  */
-function blockedDensity(rng, configured) {
+function drawDensity(rng, configured) {
   if (configured === undefined) return null;
   const draw = rng();
   return Array.isArray(configured) ? configured[Math.floor(draw * configured.length)] : configured;
@@ -375,9 +391,10 @@ function buildStage(seed, index, config) {
   const rng = mulberry32(seed + index * 7919);
   const { nodeCount, ratio } = stageSpec(config, index);
   const lattice = config.lattices[Math.floor(rng() * config.lattices.length)];
-  const blockedRatio = blockedDensity(rng, config.blockedRatio);
+  const blockedRatio = drawDensity(rng, config.blockedRatio);
+  const amplifierRatio = drawDensity(rng, config.amplifierRatio);
   const graph = drawBoard(rng, {
-    nodeCount, lattice, blockedRatio, edgeDeleteRatio: config.edgeDeleteRatio,
+    nodeCount, lattice, blockedRatio, amplifierRatio, edgeDeleteRatio: config.edgeDeleteRatio,
   });
   if (!Number.isFinite(ratio)) throw new RangeError(`no depotRatio for stage ${index + 1}`);
   const depotSize = Math.max(1, Math.round(nodeCount * ratio));
@@ -392,9 +409,11 @@ function buildStage(seed, index, config) {
  * @returns {object} frozen state
  */
 function build(base, placed, depot) {
-  // On a board without impermeable nodes both walks agree node for node; the
-  // check only keeps the ordinary board off the slower path.
-  const ball = blockedNodes(base.graph).size > 0 ? bfsWithinBlocked : bfsWithin;
+  // The three walks agree node for node on a board that carries neither flag;
+  // the checks only keep the ordinary board off the slower paths.
+  let ball = bfsWithin;
+  if (amplifierNodes(base.graph).size > 0) ball = bfsWithinAmplified;
+  else if (blockedNodes(base.graph).size > 0) ball = bfsWithinBlocked;
   const covered = new Set();
   const radii = new Map();
   for (const { id, radius } of placed) {
@@ -409,8 +428,27 @@ function build(base, placed, depot) {
   const status = cleared
     ? (lastStage ? 'won' : 'stageCleared')
     : (depot.length === 0 ? 'lost' : 'playing');
-  // Leftovers only score once the board is actually clear.
-  const score = base.score + (cleared ? depot.length : 0);
+  // Leftovers only score once the board is actually clear, and they count for
+  // the stage they were saved on: a transmitter spared on stage 12 is worth
+  // twelve, one spared on stage 1 is worth one. The run's score is the sum over
+  // its cleared stages of leftovers times stage number.
+  //
+  // The obvious alternative — keep the plain sum and multiply by the stage
+  // reached at the very end — is wrong twice over. It counts endurance twice,
+  // because the points already grow with the stage: a run that lasts twice as
+  // long clears twice as many boards and banks the leftovers of all of them, so
+  // multiplying on top squares exactly what it means to reward. And it hangs
+  // the whole run on a single factor, which makes zero points annul everything:
+  // a player who reached stage 30 sparing nothing would score the same as one
+  // who never left stage 1. Weighting inside the run avoids both — every stage
+  // contributes what it was worth where it stood, and a stage that contributed
+  // nothing costs nothing.
+  //
+  // It does not change how the mode is best played. Inside stage s every
+  // leftover is worth s, the same positive constant for every decision on that
+  // board, and leftovers do not carry into the next stage, so no weighting can
+  // reorder a move. Measured rather than assumed; see `MESSUNGEN.md`.
+  const score = base.score + (cleared ? depot.length * base.stage : 0);
 
   const state = {
     ...base,

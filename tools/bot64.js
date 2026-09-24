@@ -13,11 +13,14 @@
  * `beam: Infinity` the search is the exact one, and `tools/verify-bot64.js`
  * checks that narrow and exact agree on the small boards where both fit.
  *
- * Both bots read the board through the impermeable-aware walk, which on a board
- * without blocked nodes is the ordinary one.
+ * Both bots read the board through the walk `run.js` would use for it — the
+ * amplifier-aware one, the impermeable-aware one, or the plain one — which on a
+ * board carrying neither flag are all the same walk.
  */
 
-import { bfsWithin, bfsWithinBlocked, blockedNodes } from '../src/graph.js';
+import {
+  amplifierNodes, bfsWithin, bfsWithinAmplified, bfsWithinBlocked, blockedNodes,
+} from '../src/graph.js';
 
 /**
  * Default beam width for plies two and three. Measured against the exact search
@@ -45,7 +48,12 @@ export function maskTable(graph) {
   const size = ids.length;
   if (size > 64) throw new RangeError(`the bitmask search handles at most 64 nodes, got ${size}`);
   const index = new Map(ids.map((id, i) => [id, i]));
-  const ball = blockedNodes(graph).size > 0 ? bfsWithinBlocked : bfsWithin;
+  // Same choice `run.js` makes, so the bots see exactly the board the rules
+  // see. An amplifier changes the ball of the node it sits on, not the radius
+  // of the card, so the table stays indexed by the card's radius 1..3.
+  let ball = bfsWithin;
+  if (amplifierNodes(graph).size > 0) ball = bfsWithinAmplified;
+  else if (blockedNodes(graph).size > 0) ball = bfsWithinBlocked;
 
   const lo = new Int32Array(size * 4);
   const hi = new Int32Array(size * 4);
@@ -125,11 +133,24 @@ export function greedyChoice(state) {
  * Planning: judges a placement by what the board looks like once the two
  * transmitters the player can also see have been placed as well. Ties on the
  * final count go to the opening that lights more right away.
+ *
+ * `frugal` swaps in the other objective a run can be played for. Coverage is
+ * what keeps a run alive; what it scores is the transmitters still in the depot
+ * when the board goes clear, so a player after points wants the board cleared in
+ * as few placements as possible. Both leaves are judged on coverage first — a
+ * board that is not clear scores nothing at all — and the frugal one then
+ * prefers the line that got there in fewer plies, where the plain one only asks
+ * which opening lit more right away.
+ *
+ * There is no third objective hiding behind the stage weighting. A stage's
+ * leftovers are multiplied by that stage's number, which is the same constant
+ * for every decision inside the stage, and leftovers do not carry into the next
+ * stage — so weighting cannot reorder any move. See `MESSUNGEN.md`.
  * @param {object} state
- * @param {{beam?: number}} [options]
+ * @param {{beam?: number, frugal?: boolean}} [options]
  * @returns {*} node id
  */
-export function lookaheadChoice(state, { beam = BEAM } = {}) {
+export function lookaheadChoice(state, { beam = BEAM, frugal = false } = {}) {
   const table = tableFor(state.graph);
   const { lo, hi, ids, fullLo, fullHi } = table;
   const size = ids.length;
@@ -138,6 +159,7 @@ export function lookaheadChoice(state, { beam = BEAM } = {}) {
   const horizon = [state.current, ...state.preview].filter((radius) => radius !== undefined);
   let bestScore = -1;
   let bestGain = -1;
+  let bestPlies = Infinity;
   let bestFirst = -1;
 
   /**
@@ -147,9 +169,16 @@ export function lookaheadChoice(state, { beam = BEAM } = {}) {
   const walk = (depth, maskLo, maskHi, takenLo, takenHi, first, firstGain) => {
     const score = popcount(maskLo) + popcount(maskHi);
     if (depth === horizon.length || (maskLo === fullLo && maskHi === fullHi)) {
-      if (score > bestScore || (score === bestScore && firstGain > bestGain)) {
+      // `depth` is how many transmitters this line spent. It only ever differs
+      // between lines that cleared the board, since every other leaf is reached
+      // at the end of the horizon.
+      const better = score !== bestScore
+        ? score > bestScore
+        : (frugal && depth !== bestPlies ? depth < bestPlies : firstGain > bestGain);
+      if (better) {
         bestScore = score;
         bestGain = firstGain;
+        bestPlies = depth;
         bestFirst = first;
       }
       return;

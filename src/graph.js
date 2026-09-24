@@ -307,3 +307,64 @@ export function coverageBlocked(graph, transmitterIds, k) {
   }
   return covered;
 }
+
+// ---------------------------------------------------------------------------
+// Amplifier nodes
+// ---------------------------------------------------------------------------
+
+/**
+ * `amplifier: true` marks a node that lends a transmitter standing on it one
+ * more step of reach. In every other respect it is an ordinary node: it has to
+ * be supplied like any other, and it passes signal on like any other.
+ *
+ * The bonus belongs to the *source*, not to the path: walking through an
+ * amplifier buys nothing. That keeps the rule readable on the board — a node is
+ * worth more to stand on, and nothing else changes — and it keeps the walk
+ * below a single BFS instead of a shortest-path search with per-node budgets.
+ *
+ * Independent of `blocked`: a node may be both, and then a transmitter on it
+ * reaches one step further while signal from elsewhere still stops there.
+ * @param {Graph} graph
+ * @returns {Set<*>}
+ */
+export function amplifierNodes(graph) {
+  return new Set((graph?.nodes ?? []).filter((node) => node.amplifier === true).map((node) => node.id));
+}
+
+/**
+ * {@link bfsWithinBlocked} with the amplifier bonus applied to the source: a
+ * transmitter on an amplifier walks `k + 1` steps, one on any other node walks
+ * `k`. Impermeable nodes are honoured either way.
+ *
+ * A third walk rather than a flag on the second, for the same reason the second
+ * is not a flag on the first: the solver, the generator, the reduction and the
+ * fixed-stage mode all rest on the plain walks, and none of them should have to
+ * grow an opinion about amplifiers.
+ *
+ * On a board without amplifiers this returns exactly what `bfsWithinBlocked`
+ * returns, and on a board without either flag exactly what `bfsWithin` returns.
+ * @param {Graph} graph
+ * @param {*} id
+ * @param {number} k
+ * @returns {Array<*>}
+ */
+export function bfsWithinAmplified(graph, id, k) {
+  if (!(k >= 0)) return [];
+  const boost = (graph?.nodes ?? []).some((node) => node.id === id && node.amplifier === true) ? 1 : 0;
+  return bfsWithinBlocked(graph, id, k + boost);
+}
+
+/**
+ * {@link coverage} over {@link bfsWithinAmplified}.
+ * @param {Graph} graph
+ * @param {Iterable<*>} transmitterIds
+ * @param {number} k
+ * @returns {Set<*>}
+ */
+export function coverageAmplified(graph, transmitterIds, k) {
+  const covered = new Set();
+  for (const id of transmitterIds ?? []) {
+    for (const reached of bfsWithinAmplified(graph, id, k)) covered.add(reached);
+  }
+  return covered;
+}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { bfsWithin, bfsWithinBlocked } from '../src/graph.js';
+import { bfsWithin, bfsWithinAmplified, bfsWithinBlocked } from '../src/graph.js';
 import * as run from '../src/run.js';
 import {
   advance, createRun, DEFAULT_RUN, ENDLESS_RUN, place, snapshot, stageSpec,
@@ -121,10 +121,31 @@ test('clearing stages', async (t) => {
     const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
     const states = playOut(3, generous);
     const cleared = states.find((run) => run.status === 'stageCleared');
-    assert.equal(cleared.score, cleared.depot.length);
+    assert.equal(cleared.score, cleared.depot.length, 'stage 1 weighs its leftovers once');
 
     const midway = states.find((run) => run.status === 'playing' && run.placed.length === 1);
     assert.equal(midway.score, 0, 'nothing scores until the board is clear');
+  });
+
+  await t.test('leftovers are weighted by the stage they were saved on', () => {
+    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
+    const states = playOut(3, generous);
+    const first = states.find((run) => run.status === 'stageCleared');
+    const second = states.filter((run) => run.status === 'stageCleared' || run.status === 'won').at(-1);
+    if (second === first) return; // the second board was not cleared on this seed
+
+    // What the second stage added is its own leftovers, counted twice.
+    assert.equal(second.stage, 2);
+    assert.equal(second.score - first.score, 2 * second.depot.length);
+  });
+
+  await t.test('the run score is the sum of leftovers times stage', () => {
+    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
+    for (const seed of [3, 4, 5, 6, 7]) {
+      const last = playOut(seed, generous).at(-1);
+      const expected = last.cleared.reduce((sum, { stage, left }) => sum + left * stage, 0);
+      assert.equal(last.score, expected, `seed ${seed}`);
+    }
   });
 
   await t.test('the last stage ends the run rather than advancing', () => {
@@ -234,6 +255,11 @@ test('endless runs', async (t) => {
     assert.equal(snapshot(state).streak, 7, 'the streak is the stage being played');
     assert.equal(snapshot(state).stages, null, 'there is no stage count to report');
     assert.ok(state.score > 0, 'leftovers from every cleared stage add up');
+    assert.equal(
+      state.score,
+      state.cleared.reduce((sum, { stage, left }) => sum + left * stage, 0),
+      'and they add up weighted by their stage',
+    );
   });
 
   await t.test('still end when a depot runs out', () => {
@@ -351,6 +377,59 @@ test('blocked density', async (t) => {
     const { blockedRatio, ...unaware } = ENDLESS_RUN;
     const run = createRun({ seed: 3, config: unaware });
     assert.ok(run.graph.nodes.every((node) => node.blocked === undefined));
+  });
+});
+
+test('amplifier nodes on a board', async (t) => {
+  const board = (amplifierRatio, seed) => createRun({
+    seed,
+    config: {
+      ...ENDLESS_RUN, stageNodes: { start: 40, growth: 0, max: 40 }, amplifierRatio,
+    },
+  });
+  const amplifiersOf = (run) => run.graph.nodes.filter((node) => node.amplifier === true).length;
+
+  await t.test('are dealt at the configured density', () => {
+    for (let seed = 1; seed <= 5; seed++) assert.equal(amplifiersOf(board(0.1, seed)), 4);
+    assert.equal(amplifiersOf(board(0, 1)), 0);
+  });
+
+  await t.test('two densities on one seed differ only in what amplifies', () => {
+    const bare = board(0, 7);
+    const rich = board(0.15, 7);
+    assert.deepEqual(bare.graph.edges, rich.graph.edges, 'same board');
+    assert.deepEqual(bare.depot, rich.depot, 'same depot');
+    assert.deepEqual(
+      bare.graph.nodes.map((node) => node.blocked === true),
+      rich.graph.nodes.map((node) => node.blocked === true),
+      'same impermeable nodes',
+    );
+    assert.equal(amplifiersOf(rich), 6);
+  });
+
+  await t.test('a transmitter on one reaches one step further', () => {
+    const run = board(0.15, 7);
+    const amplifier = run.graph.nodes.find((node) => node.amplifier === true);
+    const after = place(run, amplifier.id);
+    const [{ id, radius }] = after.placed;
+    assert.deepEqual(
+      [...after.covered].sort(),
+      [...bfsWithinAmplified(run.graph, id, radius)].sort(),
+    );
+    assert.ok(
+      after.covered.size > bfsWithinBlocked(run.graph, id, radius).length
+        || bfsWithinBlocked(run.graph, id, radius).length === run.graph.nodes.length,
+      'the bonus actually bought something',
+    );
+  });
+
+  await t.test('a mode without the field keeps its boards', () => {
+    const run = createRun({ seed: 3, config: ENDLESS_RUN });
+    assert.ok(run.graph.nodes.every((node) => node.amplifier === undefined));
+    // And the board is the one the mode has always dealt: adding the field is
+    // what moves the random stream, not leaving it off.
+    const aware = createRun({ seed: 3, config: { ...ENDLESS_RUN, amplifierRatio: 0 } });
+    assert.notDeepEqual(aware.depot, run.depot);
   });
 });
 

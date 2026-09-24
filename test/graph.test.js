@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 
 import {
   admissibleCandidates,
+  amplifierNodes,
   bfsWithin,
+  bfsWithinAmplified,
   bfsWithinBlocked,
   blockedNodes,
   coverage,
+  coverageAmplified,
   coverageBlocked,
   forbiddenNodes,
   neighbors,
@@ -321,5 +324,80 @@ test('bfsWithinBlocked', async (t) => {
   await t.test('blockedNodes reads the flag', () => {
     assert.deepEqual(sorted(blockedNodes(blockedPath)), ['c']);
     assert.equal(blockedNodes(path5).size, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Amplifier nodes
+// ---------------------------------------------------------------------------
+
+/** a - b - c - d - e, with a amplifying. */
+const amplifierPath = {
+  nodes: path5.nodes.map((node) => (node.id === 'a' ? { ...node, amplifier: true } : { ...node })),
+  edges: path5.edges,
+};
+
+test('bfsWithinAmplified', async (t) => {
+  await t.test('is bfsWithinBlocked on a board without amplifiers', () => {
+    for (const graph of [path5, disconnected, solo, blockedPath]) {
+      for (const node of graph.nodes) {
+        for (let k = -1; k <= 4; k++) {
+          assert.deepEqual(
+            bfsWithinAmplified(graph, node.id, k),
+            bfsWithinBlocked(graph, node.id, k),
+            `${node.id} within ${k}`,
+          );
+        }
+      }
+    }
+  });
+
+  await t.test('a transmitter on an amplifier reaches one step further', () => {
+    assert.deepEqual(sorted(bfsWithinAmplified(amplifierPath, 'a', 1)), ['a', 'b', 'c']);
+    assert.deepEqual(sorted(bfsWithinAmplified(amplifierPath, 'a', 3)), ['a', 'b', 'c', 'd', 'e']);
+    // Radius 0 is still a step: the amplifier lends one to whatever it is given.
+    assert.deepEqual(sorted(bfsWithinAmplified(amplifierPath, 'a', 0)), ['a', 'b']);
+  });
+
+  await t.test('lends nothing to a signal merely passing through', () => {
+    // b is not an amplifier, and walking over a buys nothing.
+    assert.deepEqual(sorted(bfsWithinAmplified(amplifierPath, 'b', 1)), ['a', 'b', 'c']);
+    assert.deepEqual(sorted(bfsWithinAmplified(amplifierPath, 'c', 2)), ['a', 'b', 'c', 'd', 'e']);
+  });
+
+  await t.test('the bonus and the blocking are independent', () => {
+    // c blocks, a amplifies: radius 2 from a becomes 3 and still stops at c.
+    const both = {
+      nodes: path5.nodes.map((node) => {
+        if (node.id === 'a') return { ...node, amplifier: true };
+        if (node.id === 'c') return { ...node, blocked: true };
+        return { ...node };
+      }),
+      edges: path5.edges,
+    };
+    assert.deepEqual(sorted(bfsWithinAmplified(both, 'a', 2)), ['a', 'b', 'c']);
+    // One node carrying both flags radiates unhindered, one step further.
+    const same = {
+      nodes: path5.nodes.map((node) =>
+        (node.id === 'c' ? { ...node, amplifier: true, blocked: true } : { ...node })),
+      edges: path5.edges,
+    };
+    assert.deepEqual(sorted(bfsWithinAmplified(same, 'c', 1)), ['a', 'b', 'c', 'd', 'e']);
+  });
+
+  await t.test('a negative radius reaches nothing, bonus or not', () => {
+    assert.deepEqual(bfsWithinAmplified(amplifierPath, 'a', -1), []);
+    assert.deepEqual(bfsWithinAmplified(amplifierPath, 'ghost', 2), []);
+  });
+
+  await t.test('coverageAmplified unions the walks', () => {
+    assert.deepEqual(sorted(coverageAmplified(amplifierPath, ['a'], 1)), ['a', 'b', 'c']);
+    assert.deepEqual(sorted(coverageAmplified(amplifierPath, ['a', 'e'], 1)), ['a', 'b', 'c', 'd', 'e']);
+    assert.equal(coverageAmplified(amplifierPath, ['ghost'], 2).size, 0);
+  });
+
+  await t.test('amplifierNodes reads the flag', () => {
+    assert.deepEqual(sorted(amplifierNodes(amplifierPath)), ['a']);
+    assert.equal(amplifierNodes(path5).size, 0);
   });
 });
