@@ -316,7 +316,7 @@
       #status.is-won { color: var(--signal); }
       #status.is-over { color: var(--over); }
 
-      .bag { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .depot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
       .chip {
         display: grid;
         place-items: center;
@@ -331,7 +331,7 @@
       .chip.now { width: 52px; height: 52px; font-size: 22px; border-color: var(--sender); color: var(--sender); }
       .chip.next { opacity: 0.6; font-size: 16px; }
       .chip.empty { opacity: 0.25; }
-      .bag-label { color: var(--muted); font-size: 14px; }
+      .depot-label { color: var(--muted); font-size: 14px; }
 
       .sets { display: flex; gap: 8px; }
       .sets button {
@@ -412,14 +412,14 @@
         </svg>
         <span>Etappe <b id="hud-stage">–</b> <i class="best" id="hud-stage-best"></i></span>
         <span><b id="hud-open">–</b> <span id="hud-open-label">Funklöcher</span></span>
-        <span>Beutel <b id="hud-left">–</b></span>
+        <span>Depot <b id="hud-left">–</b></span>
         <span>Punkte <b id="hud-score">0</b> <i class="best" id="hud-score-best"></i></span>
       </div>
 
-      <div class="bag">
-        <span class="bag-label">in der Hand</span>
+      <div class="depot">
+        <span class="depot-label">in der Hand</span>
         <span class="chip now" id="chip-now">–</span>
-        <span class="bag-label">danach</span>
+        <span class="depot-label">danach</span>
         <span class="chip next" id="chip-1">–</span>
         <span class="chip next" id="chip-2">–</span>
       </div>
@@ -432,7 +432,7 @@
             <circle class="mark-hole" cx="114" cy="27" r="14" />
             <text x="134" y="40">ch</text>
           </svg>
-          <h2>Beutel leer.</h2>
+          <h2>Depot leer.</h2>
           <dl>
             <dt>Etappe</dt><dd id="over-stage">–</dd>
             <dt>Punkte</dt><dd id="over-score">–</dd>
@@ -586,7 +586,7 @@
         hud.stageBest.textContent = best.stage > 0 ? `Best ${best.stage}` : '';
         hud.open.textContent = String(state.uncovered.length);
         hud.openLabel.textContent = state.uncovered.length === 1 ? 'Funkloch' : 'Funklöcher';
-        hud.left.textContent = String(state.bag.length);
+        hud.left.textContent = String(state.depot.length);
         hud.score.textContent = String(state.score);
         hud.scoreBest.textContent = best.score > 0 ? `Best ${best.score}` : '';
 
@@ -607,7 +607,7 @@
         // the board would only repeat it louder.
         statusLine.textContent =
           state.status === 'stageCleared'
-            ? `Etappe ${state.stage} geschafft. ${state.bag.length} Sender übrig.`
+            ? `Etappe ${state.stage} geschafft. ${state.depot.length} Sender übrig.`
             : '';
 
         over.card.hidden = state.status !== 'lost';

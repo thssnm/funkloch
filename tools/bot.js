@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Greedy bot for the bag mode, and the sweep that says where greedy breaks.
+ * Greedy bot for the depot mode, and the sweep that says where greedy breaks.
  *
  *   node tools/bot.js [--runs=1000] [--seed=1]
  *
  * The bot places every transmitter wherever it lights the most nodes that are
  * still dark, breaking ties by node order. That is the obvious strategy, and
- * the point of measuring it is to find the bag size where it stops being
+ * the point of measuring it is to find the depot size where it stops being
  * enough: below that the mode plays itself, above it there is nothing to think
  * about. A human who plans ahead has to beat greedy, or the choice is not a
  * choice.
@@ -351,14 +351,14 @@ function compareMain(runs, firstSeed) {
   ];
   const rows = [];
   const spread = [];
-  for (const [label, bagRatio] of configs) {
-    const config = { ...DEFAULT_RUN, bagRatio };
-    const bags = DEFAULT_RUN.stages.map((n, i) =>
-      Math.max(1, Math.round(n * (Array.isArray(bagRatio) ? bagRatio[i] : bagRatio))));
+  for (const [label, depotRatio] of configs) {
+    const config = { ...DEFAULT_RUN, depotRatio };
+    const depots = DEFAULT_RUN.stages.map((n, i) =>
+      Math.max(1, Math.round(n * (Array.isArray(depotRatio) ? depotRatio[i] : depotRatio))));
     const r = compare(config, runs, firstSeed);
     const pct = (x) => `${((100 * x) / runs).toFixed(1)}%`;
     rows.push([
-      label, bags.join('/'), pct(r.greedyWins), pct(r.planWins), pct(r.repairWins),
+      label, depots.join('/'), pct(r.greedyWins), pct(r.planWins), pct(r.repairWins),
       `+${(((r.planWins - r.greedyWins) * 100) / runs).toFixed(1)}`,
       `${(((r.repairWins - r.planWins) * 100) / runs).toFixed(1)}`,
       pct(r.runsWithRemoval),
@@ -369,13 +369,13 @@ function compareMain(runs, firstSeed) {
   }
 
   printTable(
-    ['Beutel', 'Groessen', 'gierig', 'voraus', 'voraus+rep', 'Abstand g->v', 'Gewinn durch rep',
+    ['Depot', 'Groessen', 'gierig', 'voraus', 'voraus+rep', 'Abstand g->v', 'Gewinn durch rep',
      'Partien mit Entfernen', 'Entfernen je Partie', 'Zug 1 abweichend'],
     rows,
   );
   console.log();
   printTable(
-    ['Beutel', 'gierig verliert in 1/2/3', 'voraus verliert in 1/2/3', 'voraus+rep verliert in 1/2/3'],
+    ['Depot', 'gierig verliert in 1/2/3', 'voraus verliert in 1/2/3', 'voraus+rep verliert in 1/2/3'],
     spread,
   );
   console.log(`\n${runs} Partien je Konfiguration, beide Bots auf denselben Seeds`);
@@ -393,9 +393,9 @@ function main() {
     .split(',').map(Number);
 
   const rows = [];
-  for (const bagRatio of ratios) {
-    const config = { ...DEFAULT_RUN, bagRatio };
-    const bags = DEFAULT_RUN.stages.map((n) => Math.max(1, Math.round(n * bagRatio)));
+  for (const depotRatio of ratios) {
+    const config = { ...DEFAULT_RUN, depotRatio };
+    const depots = DEFAULT_RUN.stages.map((n) => Math.max(1, Math.round(n * depotRatio)));
     const started = Date.now();
     let won = 0;
     let scoreSum = 0;
@@ -410,8 +410,8 @@ function main() {
       }
     }
     rows.push([
-      bagRatio.toFixed(2),
-      bags.join('/'),
+      depotRatio.toFixed(2),
+      depots.join('/'),
       `${((100 * won) / runs).toFixed(1)}%`,
       won ? (scoreSum / won).toFixed(2) : '-',
       stageFails.join('/'),
@@ -419,7 +419,7 @@ function main() {
     ]);
   }
 
-  const headers = ['bagRatio', 'bags 18/24/30', 'greedy wins', 'score when won', 'lost at stage 1/2/3', 'time'];
+  const headers = ['depotRatio', 'depots 18/24/30', 'greedy wins', 'score when won', 'lost at stage 1/2/3', 'time'];
   const cells = [headers, ...rows];
   const widths = headers.map((_, column) => Math.max(...cells.map((row) => row[column].length)));
   const line = (row) => row.map((cell, i) => (i === 0 ? cell.padEnd(widths[i]) : cell.padStart(widths[i]))).join('  ');

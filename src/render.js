@@ -147,7 +147,7 @@ export function createScene(level, { document: doc = globalThis.document } = {})
     dot.setAttribute('class', 'dot');
     dot.setAttribute('r', DOT_RADIUS);
 
-    // The transmitter's own radius, written on it. With a bag of mixed radii
+    // The transmitter's own radius, written on it. With a depot of mixed radii
     // the number is the only thing that tells two transmitters apart.
     const label = doc.createElementNS(SVG_NS, 'text');
     label.setAttribute('class', 'radius');
@@ -245,7 +245,7 @@ export function createScene(level, { document: doc = globalThis.document } = {})
 export function render(scene, state) {
   const { graph } = scene.level;
   const k = scene.level.k;
-  // In the bag mode every transmitter carries its own radius; elsewhere they
+  // In the depot mode every transmitter carries its own radius; elsewhere they
   // all share the level's k.
   const transmitters = state.transmitters ?? new Set(state.radii?.keys() ?? []);
   const radiusOf = (id) => state.radii?.get(id) ?? k;
@@ -309,7 +309,7 @@ export function render(scene, state) {
  * expansion rather than as a finished shape.
  * @param {object} scene
  * @param {*} id
- * @param {number} [radius] defaults to the level's k; the bag mode passes the
+ * @param {number} [radius] defaults to the level's k; the depot mode passes the
  *   radius of the transmitter currently in hand
  */
 export function showRange(scene, id, radius = scene.level.k) {

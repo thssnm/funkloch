@@ -8,20 +8,20 @@ import {
 import { greedyChoice, playGreedy, repairChoice } from '../tools/bot.js';
 
 /** A small, quick run for the tests. */
-const tiny = { ...DEFAULT_RUN, stages: [12, 14], bagRatio: 0.5 };
+const tiny = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.5 };
 
 test('createRun', async (t) => {
-  await t.test('deals a board and a bag', () => {
+  await t.test('deals a board and a depot', () => {
     const run = createRun({ seed: 3, config: tiny });
     assert.equal(run.stage, 1);
     assert.equal(run.graph.nodes.length, 12);
     assert.equal(run.status, 'playing');
     assert.equal(run.score, 0);
     assert.equal(run.uncovered.length, 12);
-    assert.equal(run.bag.length, 6);
-    assert.equal(run.current, run.bag[0]);
-    assert.deepEqual(run.preview, run.bag.slice(1, 3), 'the player sees exactly the next two');
-    for (const radius of run.bag) assert.ok([1, 2, 3].includes(radius), `odd radius ${radius}`);
+    assert.equal(run.depot.length, 6);
+    assert.equal(run.current, run.depot[0]);
+    assert.deepEqual(run.preview, run.depot.slice(1, 3), 'the player sees exactly the next two');
+    for (const radius of run.depot) assert.ok([1, 2, 3].includes(radius), `odd radius ${radius}`);
   });
 
   await t.test('is reproducible from the seed alone', () => {
@@ -47,7 +47,7 @@ test('place', async (t) => {
 
     assert.deepEqual(after.placed, [{ id: target, radius }]);
     assert.equal(after.radii.get(target), radius);
-    assert.equal(after.bag.length, run.bag.length - 1);
+    assert.equal(after.depot.length, run.depot.length - 1);
     for (const reached of bfsWithin(run.graph, target, radius)) {
       assert.ok(after.covered.has(reached), `${reached} should be lit`);
     }
@@ -68,14 +68,14 @@ test('place', async (t) => {
     assert.equal(place(once, run.graph.nodes[0].id), once, 'a node holds at most one transmitter');
   });
 
-  await t.test('ends the run when the bag runs out on an unfinished board', () => {
-    // Spend the whole bag on one corner of the board.
-    let run = createRun({ seed: 5, config: { ...tiny, bagRatio: 0.25, composition: [[1, 1]] } });
+  await t.test('ends the run when the depot runs out on an unfinished board', () => {
+    // Spend the whole depot on one corner of the board.
+    let run = createRun({ seed: 5, config: { ...tiny, depotRatio: 0.25, composition: [[1, 1]] } });
     const order = run.graph.nodes.map((node) => node.id);
     let i = 0;
     while (run.status === 'playing') run = place(run, order[i++]);
     assert.equal(run.status, 'lost');
-    assert.equal(run.bag.length, 0);
+    assert.equal(run.depot.length, 0);
     assert.ok(run.uncovered.length > 0);
     assert.equal(place(run, order[i]), run, 'a finished run accepts nothing more');
   });
@@ -90,8 +90,8 @@ test('remove', async (t) => {
 
     assert.equal(lifted.placed.length, 0);
     assert.equal(lifted.covered.size, 0);
-    assert.equal(lifted.bag.length, placed.bag.length,
-      'the transmitter must not go back into the bag');
+    assert.equal(lifted.depot.length, placed.depot.length,
+      'the transmitter must not go back into the depot');
     assert.equal(lifted.current, placed.current, 'and the hand is unchanged');
   });
 
@@ -101,7 +101,7 @@ test('remove', async (t) => {
     const again = place(remove(place(run, target), target), target);
     assert.deepEqual(again.placed.map((entry) => entry.id), [target]);
     // Two transmitters spent, one on the board.
-    assert.equal(again.bag.length, run.bag.length - 2);
+    assert.equal(again.depot.length, run.depot.length - 2);
   });
 
   await t.test('leaves everything else alone', () => {
@@ -121,12 +121,12 @@ test('remove', async (t) => {
   });
 
   await t.test('cannot rescue a finished run', () => {
-    let run = createRun({ seed: 5, config: { ...tiny, bagRatio: 0.25, composition: [[1, 1]] } });
+    let run = createRun({ seed: 5, config: { ...tiny, depotRatio: 0.25, composition: [[1, 1]] } });
     const order = run.graph.nodes.map((node) => node.id);
     let i = 0;
     while (run.status === 'playing') run = place(run, order[i++]);
     assert.equal(run.status, 'lost');
-    assert.equal(remove(run, order[0]), run, 'the bag is empty; nothing can be undone');
+    assert.equal(remove(run, order[0]), run, 'the depot is empty; nothing can be undone');
   });
 
   await t.test('does not mutate the state it was given', () => {
@@ -150,7 +150,7 @@ test('clearing stages', async (t) => {
   };
 
   await t.test('a cleared board pauses before the next one', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], bagRatio: 0.6 };
+    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
     const states = playOut(3, generous);
     const cleared = states.find((run) => run.status === 'stageCleared');
     assert.ok(cleared, 'expected a stage to be cleared');
@@ -166,17 +166,17 @@ test('clearing stages', async (t) => {
   });
 
   await t.test('leftovers are the score, and only on a cleared board', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], bagRatio: 0.6 };
+    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
     const states = playOut(3, generous);
     const cleared = states.find((run) => run.status === 'stageCleared');
-    assert.equal(cleared.score, cleared.bag.length);
+    assert.equal(cleared.score, cleared.depot.length);
 
     const midway = states.find((run) => run.status === 'playing' && run.placed.length === 1);
     assert.equal(midway.score, 0, 'nothing scores until the board is clear');
   });
 
   await t.test('the last stage ends the run rather than advancing', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], bagRatio: 0.7 };
+    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.7 };
     const states = playOut(3, generous);
     const last = states.at(-1);
     if (last.status !== 'won') return; // an unlucky board; the other tests cover losing
@@ -214,7 +214,7 @@ test('the greedy bot', async (t) => {
 
   await t.test('plays a whole run and reports the outcome', () => {
     // A seed greedy actually wins, so the won-run branch is exercised.
-    const result = playGreedy(2, { ...DEFAULT_RUN, bagRatio: 0.45 });
+    const result = playGreedy(2, { ...DEFAULT_RUN, depotRatio: 0.45 });
     assert.equal(result.won, true);
     assert.equal(typeof result.won, 'boolean');
     assert.ok(result.placements > 0);
@@ -248,12 +248,12 @@ test('the greedy bot', async (t) => {
     assert.ok(removals < 8, `expected repairs to stay rare, saw ${removals} in 40 runs`);
   });
 
-  await t.test('beats a bag that is plainly big enough', () => {
+  await t.test('beats a depot that is plainly big enough', () => {
     let wins = 0;
     for (let seed = 1; seed <= 20; seed++) {
-      if (playGreedy(seed, { ...DEFAULT_RUN, bagRatio: 0.45 }).won) wins++;
+      if (playGreedy(seed, { ...DEFAULT_RUN, depotRatio: 0.45 }).won) wins++;
     }
-    assert.equal(wins, 20, 'greedy should never lose with a generous bag');
+    assert.equal(wins, 20, 'greedy should never lose with a generous depot');
   });
 });
 
@@ -261,25 +261,25 @@ test('the greedy bot', async (t) => {
 // The endless shape
 // ---------------------------------------------------------------------------
 
-/** A quick endless run: small boards, generous bags, the configured blocking. */
+/** A quick endless run: small boards, generous depots, the configured blocking. */
 const endless = {
   ...ENDLESS_RUN,
   stageNodes: { start: 10, growth: 2, max: 14 },
-  bagCurve: { start: 0.9, floor: 0.8, tau: 4 },
+  depotCurve: { start: 0.9, floor: 0.8, tau: 4 },
 };
 
 test('endless runs', async (t) => {
-  await t.test('grow the board and shrink the bag along the curves', () => {
+  await t.test('grow the board and shrink the depot along the curves', () => {
     const first = stageSpec(ENDLESS_RUN, 0);
     assert.equal(first.nodeCount, ENDLESS_RUN.stageNodes.start);
-    assert.equal(first.ratio.toFixed(3), ENDLESS_RUN.bagCurve.start.toFixed(3));
+    assert.equal(first.ratio.toFixed(3), ENDLESS_RUN.depotCurve.start.toFixed(3));
 
     let previous = first;
     for (let index = 1; index < 40; index++) {
       const spec = stageSpec(ENDLESS_RUN, index);
       assert.ok(spec.nodeCount >= previous.nodeCount, 'boards never shrink');
-      assert.ok(spec.ratio < previous.ratio, 'the bag ratio falls strictly');
-      assert.ok(spec.ratio > ENDLESS_RUN.bagCurve.floor, 'and stays above the floor');
+      assert.ok(spec.ratio < previous.ratio, 'the depot ratio falls strictly');
+      assert.ok(spec.ratio > ENDLESS_RUN.depotCurve.floor, 'and stays above the floor');
       previous = spec;
     }
     assert.equal(stageSpec(ENDLESS_RUN, 39).nodeCount, ENDLESS_RUN.stageNodes.max, 'board size caps');
@@ -294,7 +294,7 @@ test('endless runs', async (t) => {
         stages++;
         continue;
       }
-      assert.equal(state.status, 'playing', 'the bags are large enough to clear these boards');
+      assert.equal(state.status, 'playing', 'the depots are large enough to clear these boards');
       state = place(state, greedyChoice(state));
     }
     assert.equal(state.stage, 7);
@@ -304,8 +304,8 @@ test('endless runs', async (t) => {
     assert.ok(state.score > 0, 'leftovers from every cleared stage add up');
   });
 
-  await t.test('still end when a bag runs out', () => {
-    const tight = { ...endless, bagCurve: { start: 0.12, floor: 0.1, tau: 4 } };
+  await t.test('still end when a depot runs out', () => {
+    const tight = { ...endless, depotCurve: { start: 0.12, floor: 0.1, tau: 4 } };
     let state = createRun({ seed: 4, config: tight });
     while (state.status === 'playing') state = place(state, greedyChoice(state));
     assert.equal(state.status, 'lost');
@@ -339,39 +339,39 @@ test('impermeable nodes on a board', async (t) => {
   });
 });
 
-test('fillBag hits the composition proportionally', async (t) => {
-  /** Reads the bag of a stage-1 run with the given bag size. */
-  const bagOf = (size) => createRun({
+test('fillDepot hits the composition proportionally', async (t) => {
+  /** Reads the depot of a stage-1 run with the given depot size. */
+  const depotOf = (size) => createRun({
     seed: 11,
     config: {
-      ...DEFAULT_RUN, stages: [40], bagRatio: size / 40, blockedRatio: 0,
+      ...DEFAULT_RUN, stages: [40], depotRatio: size / 40, blockedRatio: 0,
     },
-  }).bag;
+  }).depot;
 
   await t.test('keeps every radius within one of its exact share', () => {
     const total = DEFAULT_RUN.composition.reduce((sum, [, weight]) => sum + weight, 0);
     for (let size = 1; size <= 16; size++) {
-      const bag = bagOf(size);
-      assert.equal(bag.length, size, `bag of ${size}`);
+      const depot = depotOf(size);
+      assert.equal(depot.length, size, `depot of ${size}`);
       for (const [radius, weight] of DEFAULT_RUN.composition) {
         const exact = (size * weight) / total;
-        const count = bag.filter((r) => r === radius).length;
+        const count = depot.filter((r) => r === radius).length;
         assert.ok(
           Math.abs(count - exact) < 1,
-          `bag of ${size}: ${count}x radius ${radius}, exact share ${exact.toFixed(2)}`,
+          `depot of ${size}: ${count}x radius ${radius}, exact share ${exact.toFixed(2)}`,
         );
       }
     }
   });
 
-  await t.test('never lets a bigger bag carry less reach', () => {
+  await t.test('never lets a bigger depot carry less reach', () => {
     // Nominal ball sizes on these boards; the point is the ordering, not the
     // exact figure. The old truncating fill broke this between 8 and 9.
     const ball = { 1: 4, 2: 9, 3: 14 };
     let previous = 0;
     for (let size = 1; size <= 16; size++) {
-      const reach = bagOf(size).reduce((sum, radius) => sum + ball[radius], 0);
-      assert.ok(reach > previous, `bag of ${size} carries ${reach}, bag of ${size - 1} carried ${previous}`);
+      const reach = depotOf(size).reduce((sum, radius) => sum + ball[radius], 0);
+      assert.ok(reach > previous, `depot of ${size} carries ${reach}, depot of ${size - 1} carried ${previous}`);
       previous = reach;
     }
   });
@@ -398,7 +398,7 @@ test('blocked density', async (t) => {
       dense.graph.edges,
       'same board',
     );
-    assert.deepEqual(bare.bag, dense.bag, 'same bag');
+    assert.deepEqual(bare.depot, dense.depot, 'same depot');
     assert.equal(opaqueOf(bare), 0);
     assert.equal(opaqueOf(dense), 6);
   });

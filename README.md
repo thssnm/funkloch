@@ -22,15 +22,15 @@ eine Partition — ein Knoten mit zwei Signalen ist ein Konflikt, kein Bonus.
 Levels sind nach der höchsten Schlussregel sortiert, die sie erzwingen
 (`src/tiers.js`), nicht nach Brettgröße.
 
-**Beutel-Lauf** (`DEFAULT_RUN` in `src/run.js`) — drei wachsende Etappen (18,
-24, 30 Knoten) und ein Beutel Sender mit Radius 1, 2 oder 3. Man zieht den
-vordersten, sieht die nächsten zwei, setzt ihn. Wer ein Brett räumt, bevor der
-Beutel leer ist, behält den Rest als Punkte. Ein gesetzter Sender lässt sich
-wieder abnehmen, wandert aber nicht zurück in den Beutel — die Karte ist so
+**Depot-Lauf** (`DEFAULT_RUN` in `src/run.js`) — drei wachsende Etappen (18,
+24, 30 Knoten) und ein Depot voller Sender mit Radius 1, 2 oder 3. Man zieht den
+vordersten, sieht die nächsten zwei, setzt ihn. Wer ein Brett räumt, bevor das
+Depot leer ist, behält den Rest als Punkte. Ein gesetzter Sender lässt sich
+wieder abnehmen, wandert aber nicht zurück ins Depot — die Karte ist so
 oder so verbraucht. Was das Abnehmen kauft, ist der *Knoten*.
 
 **Endlos** (`ENDLESS_RUN` in `src/run.js`) — dasselbe ohne letzte Etappe. Das
-Brett wächst (18 → 60 Knoten), der Beutel schrumpft relativ dazu (0,24 → 0,15
+Brett wächst (18 → 60 Knoten), das Depot schrumpft relativ dazu (0,24 → 0,15
 des Knotenzählers entlang einer Exponentialkurve). Bestwert für Etappe und
 Punkte liegt in `localStorage`. Das ist der Modus, den `index.html` spielt.
 
@@ -49,7 +49,7 @@ Seite ohne sichtbaren Fehler.
 ES-Module brauchen `http://`.
 
 Mit `?seed=7` wird ein bestimmter Lauf gespielt; derselbe Seed gibt immer
-dieselben Bretter und denselben Beutel.
+dieselben Bretter und dasselbe Depot.
 
 ## Tests
 

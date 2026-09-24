@@ -84,6 +84,14 @@ try {
   console.log(`Brett 1: ${nodes} Knoten, ${opaque} davon undurchlässig`);
   check(nodes === 18, 'erste Etappe hat 18 Knoten');
   check(await page.textContent('#hud-open-label') === 'Funklöcher', 'die Statuszeile zählt Funklöcher');
+  // The word the player reads for the stock of transmitters. It lives in three
+  // places — the HUD, the row of chips, the end card — and a rename that misses
+  // one of them leaves the page speaking two languages about the same thing.
+  check((await page.evaluate(() =>
+    document.getElementById('hud-left').closest('span').textContent.trim())).startsWith('Depot'),
+    'die Statuszeile nennt das Depot');
+  check(await page.locator('.depot .chip').count() === 3,
+    'die Depot-Zeile trägt die Hand und die zwei Vorschauen');
 
   // The mark in front of the stage count is only allowed to sit *in* the row,
   // never to set its height. Measured against the same row with the mark taken
@@ -122,6 +130,7 @@ try {
     stageBest: document.getElementById('hud-stage-best').textContent,
     score: document.getElementById('hud-score').textContent,
     scoreBest: document.getElementById('hud-score-best').textContent,
+    overTitle: document.querySelector('#over h2').textContent,
     overStage: document.getElementById('over-stage').textContent,
     overScore: document.getElementById('over-score').textContent,
     overBest: document.getElementById('over-best').textContent,
@@ -153,6 +162,7 @@ try {
   check(wordmark?.label === 'funkloch', 'vorgelesen heißt er trotzdem funkloch');
   check(wordmark?.aboveList === true, 'er steht über Etappe, Punkten und Bestwert');
 
+  check(seen.overTitle === 'Depot leer.', `Karte betitelt sich „${seen.overTitle}"`);
   check(seen.overStage === String(expected.stage), `Karte zeigt Etappe ${seen.overStage}`);
   check(seen.overScore === String(expected.score), `Karte zeigt ${seen.overScore} Punkte`);
   check(seen.stage === String(expected.stage), `HUD-Etappe ${seen.stage}`);

@@ -68,7 +68,7 @@ die er existiert.
 
 ## Kalibrierungskonstanten tragen ihre Messung im Kommentar
 
-Jede Zahl, die aus einer Messung stammt — `bagRatio`, `bagCurve`,
+Jede Zahl, die aus einer Messung stammt — `depotRatio`, `depotCurve`,
 `blockedRatio`, `composition`, die Parameterfenster in `tools/build-levels.js` —
 steht mit den Alternativen im Kommentar, gegen die sie gewonnen hat, samt
 Stichprobengröße. Siehe `ENDLESS_RUN.blockedRatio` in `src/run.js` als Vorbild:
@@ -80,13 +80,13 @@ mit dem Hinweis stehen, unter welchen Bedingungen sie galt.
 
 ## Messen vor Implementieren
 
-Design-Parameter werden nicht geschätzt. Beutelgröße, Sendermischung,
+Design-Parameter werden nicht geschätzt. Depotgröße, Sendermischung,
 Blockadedichte, Etappenwachstum, Schwierigkeitsfenster — dafür gibt es die
 Werkzeuge in `tools/`, und sie laufen *vor* der Entscheidung:
 
 ```sh
 node tools/endless.js --runs=1000        # Streak-Verteilung, beide Bots
-node tools/endless.js --curves           # Sweep über Beutelkurven
+node tools/endless.js --curves           # Sweep über Depotkurven
 node tools/blocked.js --bots --runs=400  # Blockadedichte gegen beide Bots
 ```
 

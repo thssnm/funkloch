@@ -2,11 +2,11 @@
  * How far the bots get in the endless mode.
  *
  *   node tools/endless.js [--runs=1000] [--seed=1] [--blocked=0]
- *   node tools/endless.js --curves          sweep over bag curves
+ *   node tools/endless.js --curves          sweep over depot curves
  *
- * A run ends when a bag runs out on an unfinished board; the streak is the
+ * A run ends when a depot runs out on an unfinished board; the streak is the
  * number of stages survived before that, the score the sum of the transmitters
- * left over in the stages that were cleared. The question is whether the bag
+ * left over in the stages that were cleared. The question is whether the depot
  * curve produces a *distribution* — if every run dies at the same stage the
  * mode has a wall, not a difficulty — and whether planning ahead still pays off
  * when the board grows.
@@ -135,7 +135,7 @@ function main() {
     shape.push([stage, nodeCount, ratio.toFixed(3), Math.max(1, Math.round(nodeCount * ratio))]);
   }
   console.log('Kurve der Etappen');
-  printTable(['Etappe', 'Knoten', 'Beutelanteil', 'Beutel'], shape);
+  printTable(['Etappe', 'Knoten', 'Depotanteil', 'Depot'], shape);
   console.log();
 
   const bots = [['gierig', greedyChoice], ['vorausschauend', lookaheadChoice]];
@@ -165,7 +165,7 @@ function main() {
   for (let stage = 1; stage <= Math.min(maxStage, 16); stage++) {
     const { nodeCount, ratio } = stageSpec(config, stage - 1);
     stages.push([
-      `${stage} (${nodeCount} Knoten, Beutel ${Math.max(1, Math.round(nodeCount * ratio))})`,
+      `${stage} (${nodeCount} Knoten, Depot ${Math.max(1, Math.round(nodeCount * ratio))})`,
       ...results.map(([, r]) => `${((100 * (r.reached.get(stage) ?? 0)) / runs).toFixed(1)}%`),
       ...results.map(([, r]) => `${((100 * (r.histogram.get(stage) ?? 0)) / runs).toFixed(1)}%`),
     ]);

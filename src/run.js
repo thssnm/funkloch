@@ -1,13 +1,13 @@
 /**
- * One run of the bag mode: three stages, a procedurally drawn board each time,
- * and a bag of transmitters of radius 1, 2 or 3 to clear it with.
+ * One run of the depot mode: three stages, a procedurally drawn board each
+ * time, and a depot of transmitters of radius 1, 2 or 3 to clear it with.
  *
- * The loop: draw the transmitter at the front of the bag, see the next two,
- * place it. Clear the board before the bag runs out and whatever is left over
+ * The loop: draw the transmitter at the front of the depot, see the next two,
+ * place it. Clear the board before the depot runs out and whatever is left over
  * counts as score; run out with nodes still dark and the run is over.
  *
  * A placed transmitter can be taken off the board again, but it does not go
- * back into the bag — the card is spent either way. So a misplacement can be
+ * back into the depot — the card is spent either way. So a misplacement can be
  * repaired, at the cost of the transmitter, and placing still carries a real
  * price. What removal actually buys is the *node*: a radius-1 sitting on the
  * spot a radius-3 wants can be cleared out of the way.
@@ -29,15 +29,15 @@ export const DEFAULT_RUN = {
    *  degree makes every placement worth about the same, which is dull. */
   lattices: ['delaunay', 'hex'],
   /**
-   * Bag size as a share of the node count — the setting everything hinges on.
+   * Depot size as a share of the node count — the setting everything hinges on.
    * A single number applies to every stage; an array gives each stage its own.
    *
    * Calibrated against the *planning* bot, not the greedy one: a person can see
    * the next two transmitters and will use them, so tuning against a bot that
    * ignores the preview sets the difficulty for a player who does not exist.
    * Measured over 1000 runs per setting, greedy vs. planning, re-run after the
-   * `fillBag` repair below (which made the bag of four carry a radius 3, so all
-   * three settings came out easier than they first measured):
+   * `fillDepot` repair below (which made the depot of four carry a radius 3,
+   * so all three settings came out easier than they first measured):
    *
    *   4/5/7 (flat 0.22)    86% / 99%   the planner is never troubled
    *   5/6/6 (0.28/../0.20) 90% / 100%  likewise, and stage 1 becomes a formality
@@ -46,7 +46,7 @@ export const DEFAULT_RUN = {
    * The descending shape also moves failure late: only 18 of the 546 greedy
    * losses happened in stage 1, against 418 in stage 3.
    */
-  bagRatio: [0.22, 0.19, 0.17],
+  depotRatio: [0.22, 0.19, 0.17],
   /** Transmitter mix as [radius, weight] pairs. */
   composition: [[1, 4], [2, 4], [3, 2]],
 };
@@ -54,7 +54,7 @@ export const DEFAULT_RUN = {
 /**
  * The endless shape: no last stage, only the one you did not survive.
  *
- * Two dials move together as the stages go by. The board grows, and the bag
+ * Two dials move together as the stages go by. The board grows, and the depot
  * shrinks relative to it — from 0.24 of the node count down towards 0.15 along
  * an exponential, never quite arriving. 0.15 is chosen to sit just under what a
  * board of this family actually costs to clear (a ball averages about six new
@@ -64,14 +64,14 @@ export const DEFAULT_RUN = {
  *
  * `max` caps the board at 60 nodes: the bots' bitmask search holds a board in
  * two 32-bit words, so 64 is the hard ceiling and 60 keeps a margin. Past the
- * cap the difficulty rides on the bag ratio alone.
+ * cap the difficulty rides on the depot ratio alone.
  */
 export const ENDLESS_RUN = {
   endless: true,
   /** nodeCount(stage) = min(max, start + growth * (stage - 1)) */
   stageNodes: { start: 18, growth: 4, max: 60 },
   /** ratio(stage) = floor + (start - floor) * exp(-(stage - 1) / tau) */
-  bagCurve: { start: 0.24, floor: 0.15, tau: 4 },
+  depotCurve: { start: 0.24, floor: 0.15, tau: 4 },
   lattices: ['delaunay', 'hex'],
   composition: [[1, 4], [2, 4], [3, 2]],
   /**
@@ -96,11 +96,11 @@ export const ENDLESS_RUN = {
    *   0.20   4.4 /  7.9   1.80x   SD 2.91
    *   0.40   3.2 /  5.7   1.77x   SD 1.57
    *
-   * (Measured against the older, truncating fillBag the relative distance
-   * looked constant at 2.5x across every density; it was the broken bag holding
-   * it there, not the blocking. Re-measured over 1000 runs per density on
-   * identical boards, the three that matter come out at 2.54x / 2.27x / 1.93x
-   * for 0 / 0.05 / 0.15 — the same picture, a little sharper.)
+   * (Measured against the older, truncating fillDepot the relative distance
+   * looked constant at 2.5x across every density; it was the broken depot
+   * holding it there, not the blocking. Re-measured over 1000 runs per density
+   * on identical boards, the three that matter come out at 2.54x / 2.27x /
+   * 1.93x for 0 / 0.05 / 0.15 — the same picture, a little sharper.)
    *
    * An array instead of a number is drawn from uniformly, once per stage, so
    * the density can vary from board to board rather than being a constant of
@@ -114,7 +114,7 @@ export const ENDLESS_RUN = {
 };
 
 /**
- * Node count and bag ratio for stage `index` (0-based), for either shape of
+ * Node count and depot ratio for stage `index` (0-based), for either shape of
  * run. The fixed shape reads them off its arrays; the endless one computes them
  * from its two curves.
  * @param {object} config
@@ -124,13 +124,13 @@ export const ENDLESS_RUN = {
 export function stageSpec(config, index) {
   if (config.endless) {
     const { start, growth, max } = config.stageNodes;
-    const curve = config.bagCurve;
+    const curve = config.depotCurve;
     return {
       nodeCount: Math.min(max, start + growth * index),
       ratio: curve.floor + (curve.start - curve.floor) * Math.exp(-index / curve.tau),
     };
   }
-  const ratio = Array.isArray(config.bagRatio) ? config.bagRatio[index] : config.bagRatio;
+  const ratio = Array.isArray(config.depotRatio) ? config.depotRatio[index] : config.depotRatio;
   return { nodeCount: config.stages[index], ratio };
 }
 
@@ -151,7 +151,7 @@ function drawBoard(rng, { nodeCount, lattice, blockedRatio = null }) {
     //
     // A mode that deals them at all draws the order even at density zero, so
     // that two densities played on the same seed differ in what is blocked and
-    // in nothing else — same board, same bag. A mode that has never heard of
+    // in nothing else — same board, same depot. A mode that has never heard of
     // them (`blockedRatio` absent) keeps its random stream untouched.
     if (blockedRatio !== null) {
       const order = shuffled(rng, graph.nodes.map((node) => node.id));
@@ -181,25 +181,25 @@ function blockedDensity(rng, configured) {
 }
 
 /**
- * Fills a bag of the given size, holding the composition as closely as the
+ * Fills a depot of the given size, holding the composition as closely as the
  * rounding allows, then shuffles it.
  *
  * Largest remainder, not rounding-and-truncating. Rounding each share on its
  * own overshoots or undershoots the size, and cutting the overshoot off the end
  * of the list always took from the *last* entry of the composition — the rarest
- * and longest-reaching radius. A bag of nine came out as 4x r1, 4x r2, 1x r3
- * and carried less total reach than a bag of eight at 3/3/2, so a stage that
+ * and longest-reaching radius. A depot of nine came out as 4x r1, 4x r2, 1x r3
+ * and carried less total reach than a depot of eight at 3/3/2, so a stage that
  * dealt one more transmitter could be harder than the one before it.
  *
  * Every share is therefore floored first, and the slots left over go to the
  * largest fractions, ties to the longer radius. That keeps each radius within
- * one of its exact share and keeps a bigger bag from ever carrying less.
+ * one of its exact share and keeps a bigger depot from ever carrying less.
  * @param {() => number} rng
  * @param {number} size
  * @param {Array<[number, number]>} composition
  * @returns {number[]} radii, in draw order
  */
-function fillBag(rng, size, composition) {
+function fillDepot(rng, size, composition) {
   const total = composition.reduce((sum, [, weight]) => sum + weight, 0);
   const shares = composition.map(([radius, weight]) => {
     const exact = (size * weight) / total;
@@ -212,9 +212,9 @@ function fillBag(rng, size, composition) {
     left--;
   }
 
-  const bag = [];
-  for (const { radius, count } of shares) for (let i = 0; i < count; i++) bag.push(radius);
-  return shuffled(rng, bag);
+  const depot = [];
+  for (const { radius, count } of shares) for (let i = 0; i < count; i++) depot.push(radius);
+  return shuffled(rng, depot);
 }
 
 /**
@@ -222,7 +222,7 @@ function fillBag(rng, size, composition) {
  * @param {number} seed
  * @param {number} index
  * @param {object} config
- * @returns {{graph: Graph, lattice: string, bag: number[]}}
+ * @returns {{graph: Graph, lattice: string, depot: number[]}}
  */
 function buildStage(seed, index, config) {
   const rng = mulberry32(seed + index * 7919);
@@ -230,19 +230,19 @@ function buildStage(seed, index, config) {
   const lattice = config.lattices[Math.floor(rng() * config.lattices.length)];
   const blockedRatio = blockedDensity(rng, config.blockedRatio);
   const graph = drawBoard(rng, { nodeCount, lattice, blockedRatio });
-  if (!Number.isFinite(ratio)) throw new RangeError(`no bagRatio for stage ${index + 1}`);
-  const bagSize = Math.max(1, Math.round(nodeCount * ratio));
-  return { graph, lattice, bag: fillBag(rng, bagSize, config.composition) };
+  if (!Number.isFinite(ratio)) throw new RangeError(`no depotRatio for stage ${index + 1}`);
+  const depotSize = Math.max(1, Math.round(nodeCount * ratio));
+  return { graph, lattice, depot: fillDepot(rng, depotSize, config.composition) };
 }
 
 /**
  * Recomputes everything derived from the placements.
  * @param {object} base fields that survive a placement unchanged
  * @param {Array<{id: *, radius: number}>} placed
- * @param {number[]} bag
+ * @param {number[]} depot
  * @returns {object} frozen state
  */
-function build(base, placed, bag) {
+function build(base, placed, depot) {
   // On a board without impermeable nodes both walks agree node for node; the
   // check only keeps the ordinary board off the slower path.
   const ball = blockedNodes(base.graph).size > 0 ? bfsWithinBlocked : bfsWithin;
@@ -259,22 +259,22 @@ function build(base, placed, bag) {
   const lastStage = !base.config.endless && base.stage === base.config.stages.length;
   const status = cleared
     ? (lastStage ? 'won' : 'stageCleared')
-    : (bag.length === 0 ? 'lost' : 'playing');
+    : (depot.length === 0 ? 'lost' : 'playing');
   // Leftovers only score once the board is actually clear.
-  const score = base.score + (cleared ? bag.length : 0);
+  const score = base.score + (cleared ? depot.length : 0);
 
   const state = {
     ...base,
     placed,
-    bag,
+    depot,
     covered,
     uncovered,
     radii,
     score,
     status,
     /** The transmitter in hand, and the two the player is allowed to see. */
-    current: status === 'playing' ? bag[0] : null,
-    preview: status === 'playing' ? bag.slice(1, 3) : [],
+    current: status === 'playing' ? depot[0] : null,
+    preview: status === 'playing' ? depot.slice(1, 3) : [],
   };
   Object.defineProperty(state, 'toJSON', { value: () => snapshot(state) });
   return Object.freeze(state);
@@ -290,14 +290,14 @@ export function createRun({ seed = 1, config = DEFAULT_RUN } = {}) {
   if (!config.endless && (!Array.isArray(config.stages) || config.stages.length === 0)) {
     throw new RangeError('config.stages must be a non-empty array of node counts');
   }
-  if (config.endless && !(config.stageNodes?.start >= 2 && config.bagCurve?.start > 0)) {
-    throw new RangeError('an endless config needs stageNodes and bagCurve');
+  if (config.endless && !(config.stageNodes?.start >= 2 && config.depotCurve?.start > 0)) {
+    throw new RangeError('an endless config needs stageNodes and depotCurve');
   }
-  const { graph, lattice, bag } = buildStage(seed, 0, config);
+  const { graph, lattice, depot } = buildStage(seed, 0, config);
   return build(
     { seed, config, stage: 1, graph, lattice, score: 0, cleared: [] },
     [],
-    bag,
+    depot,
   );
 }
 
@@ -314,7 +314,7 @@ export function place(state, id) {
   if (!state.graph.nodes.some((node) => node.id === id)) return state;
   if (state.radii.has(id)) return state;
 
-  const [radius, ...rest] = state.bag;
+  const [radius, ...rest] = state.depot;
   const placed = [...state.placed, { id, radius }];
   const next = build(state, placed, rest);
   return next.status === 'playing' || next.status === 'lost'
@@ -324,7 +324,7 @@ export function place(state, id) {
 
 /**
  * Takes a placed transmitter back off the board. The transmitter is spent: it
- * does not return to the bag, so this never makes a placement risk-free — it
+ * does not return to the depot, so this never makes a placement risk-free — it
  * only frees the node it was standing on.
  *
  * A no-op on an empty node or once the run is over.
@@ -335,7 +335,7 @@ export function place(state, id) {
 export function remove(state, id) {
   if (state.status !== 'playing') return state;
   if (!state.radii.has(id)) return state;
-  return build(state, state.placed.filter((entry) => entry.id !== id), state.bag);
+  return build(state, state.placed.filter((entry) => entry.id !== id), state.depot);
 }
 
 /**
@@ -346,11 +346,11 @@ export function remove(state, id) {
 export function advance(state) {
   if (state.status !== 'stageCleared') return state;
   const index = state.stage;
-  const { graph, lattice, bag } = buildStage(state.seed, index, state.config);
+  const { graph, lattice, depot } = buildStage(state.seed, index, state.config);
   return build(
     { ...state, stage: state.stage + 1, graph, lattice },
     [],
-    bag,
+    depot,
   );
 }
 
@@ -372,7 +372,7 @@ export function snapshot(state) {
     score: state.score,
     current: state.current,
     preview: [...state.preview],
-    bagLeft: state.bag.length,
+    depotLeft: state.depot.length,
     placed: state.placed.map(({ id, radius }) => ({ id: String(id), radius })),
     uncovered: state.uncovered.length,
     cleared: state.cleared.map((entry) => ({ ...entry })),
