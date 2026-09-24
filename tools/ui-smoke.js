@@ -11,6 +11,12 @@
  * state counts, that the record survives a reload, and that the end card shows
  * up at all.
  *
+ * The daily board gets its own pass at the end, on a stopped clock: that the
+ * same UTC day gives the same board in two separate browsers, that a second
+ * attempt at it is refused however the page is reloaded or clicked, and that
+ * the line the share button copies carries the date, the stage and the points
+ * and nothing that would spoil the board for whoever reads it.
+ *
  * The moves are not improvised — the same run is played here first with the
  * planning bot, and the browser is then asked to reproduce it click for click,
  * so the expected numbers are known before the page is opened.
@@ -24,7 +30,7 @@
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 
-import { advance, createRun, ENDLESS_RUN, place } from '../src/run.js';
+import { advance, createRun, dailySeed, ENDLESS_RUN, place, utcDay } from '../src/run.js';
 import { lookaheadChoice } from './bot64.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
@@ -34,27 +40,57 @@ const port = Number.parseInt(args.port ?? '8731', 10);
 
 /** Collected failures, so one bad assertion does not hide the rest. */
 const failures = [];
+
+/**
+ * Waits for a predicate to hold in the page, polled from here.
+ *
+ * Node's clock and not the page's: the daily pass runs against a faked browser
+ * clock, and anything that waited on a page-side timer would be waiting on the
+ * very thing the test is controlling.
+ * @param {import('playwright').Page} target
+ * @param {() => boolean} predicate evaluated in the page
+ * @param {number} [ms] how long to keep trying
+ * @returns {Promise<boolean>}
+ */
+async function until(target, predicate, ms = 5000) {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    if (await target.evaluate(predicate)) return true;
+    if (Date.now() > deadline) return false;
+    await new Promise((resume) => setTimeout(resume, 50));
+  }
+}
 const check = (ok, what) => {
   console.log(`${ok ? '  ok  ' : '  FEHL'} ${what}`);
   if (!ok) failures.push(what);
 };
 
-// What the run should do, computed before the browser ever opens.
-const script = [];
-let state = createRun({ seed, config: ENDLESS_RUN });
-/** The hand the first board is dealt with, to check the cards against. */
-const opening = [state.current, ...state.preview];
-while (state.status === 'playing' || state.status === 'stageCleared') {
-  if (state.status === 'stageCleared') {
-    script.push({ go: true });
-    state = advance(state);
-    continue;
+/**
+ * Plays a whole run with the planning bot and writes down what it did, so the
+ * browser can be asked to reproduce it click for click and the expected numbers
+ * are known before the page is ever opened.
+ * @param {number} from the seed the run starts from
+ * @returns {{script: Array<object>, stage: number, score: number, opening: number[]}}
+ */
+function planRun(from) {
+  const moves = [];
+  let run = createRun({ seed: from, config: ENDLESS_RUN });
+  const dealt = [run.current, ...run.preview];
+  while (run.status === 'playing' || run.status === 'stageCleared') {
+    if (run.status === 'stageCleared') {
+      moves.push({ go: true });
+      run = advance(run);
+      continue;
+    }
+    const id = lookaheadChoice(run);
+    moves.push({ id: String(id) });
+    run = place(run, id);
   }
-  const id = lookaheadChoice(state);
-  script.push({ id: String(id) });
-  state = place(state, id);
+  return { script: moves, stage: run.stage, score: run.score, opening: dealt };
 }
-const expected = { stage: state.stage, score: state.score };
+
+// What the run should do, computed before the browser ever opens.
+const { script, opening, ...expected } = planRun(seed);
 console.log(`Seed ${seed}: erwartet Etappe ${expected.stage}, ${expected.score} Punkte,`
   + ` ${script.length} Eingaben`);
 
@@ -70,6 +106,8 @@ try {
   await page.waitForSelector('.board .node');
   await page.evaluate(() => {
     localStorage.removeItem('funkloch.endlos.best');
+    localStorage.removeItem('funkloch.taeglich');
+    localStorage.removeItem('funkloch.modus');
     // A record left behind by the old name, to see it swept away on load.
     localStorage.setItem('sendernetz.endlos.best', JSON.stringify({ stage: 99, score: 99 }));
   });
@@ -77,9 +115,20 @@ try {
   await page.waitForSelector('.board .node');
   check(await page.evaluate(() => localStorage.getItem('sendernetz.endlos.best')) === null,
     'der alte Sendernetz-Rekord wird beim Laden entfernt');
-  // Not merely gone from storage: the HUD counts from this run's own stage 1,
-  // so the old 99 was never read either.
-  check(await page.textContent('#hud-stage-best') === 'best 1', 'und nicht übernommen');
+  // Not merely gone from storage: a run that has scored nothing yet shows no
+  // record at all, so the old 99 was never read either.
+  check(await page.textContent('#hud-score-best') === '', 'und nicht übernommen');
+
+  // --- one record, not two -------------------------------------------------
+  // The stage is a standing, not a best: it has no record of its own any more,
+  // and the element that used to carry one is gone rather than merely emptied.
+  check(await page.locator('#hud-stage-best').count() === 0,
+    'die Etappe hat keinen eigenen Bestwert mehr');
+  check((await page.evaluate(() => document.getElementById('hud-stage')
+    .closest('span').textContent.replace(/\s+/g, ' ').trim())) === 'Etappe 1',
+    'die Kopfzeile sagt nur „Etappe 1"');
+  check(await page.locator('#hud-score-best').count() === 1,
+    'der Bestwert hängt an den Punkten');
 
   const opaque = await page.locator('.node.is-blocked').count();
   const nodes = await page.locator('.node').count();
@@ -170,8 +219,48 @@ try {
     `die HUD-Zeile bleibt ${row.withMark}px hoch, mit Zeichen wie ohne`);
   check(row.mark > 0 && row.mark < row.withMark,
     `das Zeichen misst ${row.mark}px und bleibt damit unter der Zeile`);
+
+  // The mode switch has to obey the same rule. It sits in the bookkeeping row,
+  // and the whole point of putting it there was that the header does not grow
+  // a fourth row or a taller first one to carry it.
+  const modes = await page.evaluate(() => {
+    const hud = document.querySelector('.ledger');
+    const box = document.getElementById('modes');
+    const withSwitch = hud.getBoundingClientRect().height;
+    box.style.display = 'none';
+    const without = hud.getBoundingClientRect().height;
+    box.style.display = '';
+    return {
+      withSwitch,
+      without,
+      height: box.getBoundingClientRect().height,
+      rows: [...document.querySelectorAll('.head > *')].map((el) => el.className),
+      labels: [...box.querySelectorAll('button')].map((b) => b.textContent),
+      pressed: [...box.querySelectorAll('button')].map((b) => b.getAttribute('aria-pressed')),
+    };
+  });
+  check(modes.withSwitch === modes.without,
+    `der Umschalter lässt die Zeile bei ${modes.withSwitch}px`);
+  check(modes.height > 0 && modes.height <= modes.withSwitch,
+    `er misst ${modes.height}px und bleibt in der Zeile`);
+  check(modes.rows.join(' ') === 'ledger race hand', 'der Kopf hat weiterhin drei Zeilen');
+  check(modes.labels.join(',') === 'Frei,Täglich', `der Umschalter nennt ${modes.labels.join(', ')}`);
+  check(modes.pressed.join(',') === 'true,false', 'und steht auf Frei');
   check(opaque === Math.round(18 * ENDLESS_RUN.blockedRatio), 'Blockaden nach Dichte gesetzt');
-  check(await page.locator('.node.is-blocked .shell').count() === opaque, 'jede Blockade trägt ihr Achteck');
+  // An impermeable node is a different body, not an ordinary one with a frame
+  // around it: the octagon carries hatching and the circle is gone from under
+  // it. Both halves checked, because either one alone would still pass if the
+  // node had quietly gone back to being a dot with decoration on top.
+  check(await page.locator('.node.is-blocked .shell-plate').count() === opaque,
+    'jede Blockade ist ein Achteck');
+  check(await page.locator('.node.is-blocked .shell-hatch line').count() >= opaque * 5,
+    'und schraffiert');
+  check(await page.locator('.node:not(.is-blocked) .shell-plate').count() === 0,
+    'gewöhnliche Knoten tragen keins');
+  check(await page.evaluate(() => {
+    const node = document.querySelector('.node.is-blocked');
+    return getComputedStyle(node.querySelector('.dot')).display;
+  }) === 'none', 'der runde Punkt tritt dafür zurück');
   check((await page.locator('#over').isVisible()) === false, 'die Endkarte liegt nicht über dem Start');
   await page.screenshot({ path: `${shots}/ui-board.png` });
 
@@ -250,7 +339,6 @@ try {
 
   const seen = await page.evaluate(() => ({
     stage: document.getElementById('hud-stage').textContent,
-    stageBest: document.getElementById('hud-stage-best').textContent,
     score: document.getElementById('hud-score').textContent,
     scoreBest: document.getElementById('hud-score-best').textContent,
     overTitle: document.querySelector('#over h2').textContent,
@@ -290,13 +378,12 @@ try {
   check(seen.overScore === String(expected.score), `Karte zeigt ${seen.overScore} Punkte`);
   check(seen.stage === String(expected.stage), `HUD-Etappe ${seen.stage}`);
   check(seen.score === String(expected.score), `HUD-Punkte ${seen.score}`);
-  check(seen.stageBest === `best ${expected.stage}`, `HUD-Rekord ${seen.stageBest}`);
-  check(seen.overBest === `Etappe ${expected.stage}, ${expected.score} Punkte`,
-    `Karte zeigt Bestwert ${seen.overBest}`);
+  check(seen.scoreBest === `best ${expected.score}`, `HUD-Rekord ${seen.scoreBest}`);
+  check(seen.overBest === `${expected.score} Punkte`, `Karte zeigt Bestwert ${seen.overBest}`);
   check(seen.record === true, 'der erste Lauf ist ein Bestwert');
   check(seen.status === '', 'die Statuszeile schweigt beim Verlieren');
-  check(seen.stored === JSON.stringify({ stage: expected.stage, score: expected.score }),
-    `gespeichert: ${seen.stored}`);
+  // Only the score is kept; the stage record is not written back in any shape.
+  check(seen.stored === JSON.stringify({ score: expected.score }), `gespeichert: ${seen.stored}`);
 
   // The one door into a new game, and the board has to survive being swapped
   // out from under the card that opened it.
@@ -312,22 +399,191 @@ try {
   await page.waitForSelector('.board .node');
   const after = await page.evaluate(() => ({
     stage: document.getElementById('hud-stage').textContent,
-    stageBest: document.getElementById('hud-stage-best').textContent,
     scoreBest: document.getElementById('hud-score-best').textContent,
     over: document.getElementById('over').hidden,
   }));
-  check(after.stageBest === `best ${expected.stage}`, `Rekord überlebt den Neustart: ${after.stageBest}`);
   check(after.scoreBest === `best ${expected.score}`, `Punkterekord überlebt: ${after.scoreBest}`);
   check(after.stage === '1', 'die neue Partie steht auf Etappe 1');
   check(after.over === true, 'die Karte ist wieder weg');
 
   check(noise.length === 0, `keine Konsolenfehler${noise.length ? `: ${noise.join(' | ')}` : ''}`);
+
+  // --- das Tagesbrett ------------------------------------------------------
+  // A fixed clock, so "today" is a day we know, and its board and its whole
+  // planned run are known before the page opens. Noon UTC: far enough from
+  // both midnights that nothing here depends on how long the run takes.
+  const day = Date.UTC(2026, 8, 24, 12, 0, 0);
+  const plan = planRun(dailySeed(day));
+  console.log(`Tagesbrett ${utcDay(day)}: erwartet Etappe ${plan.stage},`
+    + ` ${plan.score} Punkte, ${plan.script.length} Eingaben`);
+
+  const context = await browser.newContext({ viewport: { width: 560, height: 960 } });
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'],
+    { origin: `http://127.0.0.1:${port}` });
+  const daily = await context.newPage();
+  const dailyNoise = [];
+  daily.on('pageerror', (error) => dailyNoise.push(String(error)));
+  daily.on('console', (message) => message.type() === 'error' && dailyNoise.push(message.text()));
+  // Installed before the first navigation, or the page would read the real
+  // clock on the way up and derive a different board from it.
+  await daily.clock.install({ time: new Date(day) });
+  // No `?seed=`: that would pin a free run and is exactly what must *not* be
+  // needed to reach the same board twice.
+  await daily.goto(`http://127.0.0.1:${port}/index.html`);
+  await daily.waitForSelector('.board .node');
+
+  await daily.click('#mode-taeglich');
+  await daily.waitForSelector('.board .node');
+  check(await daily.getAttribute('#mode-taeglich', 'aria-pressed') === 'true',
+    'der Umschalter steht auf Täglich');
+  check(await daily.textContent('#hud-score-best') === '',
+    'auf dem Tagesbrett gibt es keinen Bestwert zu jagen');
+
+  /** The board as the page drew it, node for node. */
+  const boardShape = (target) => target.$$eval('.board .node',
+    (nodes) => nodes.map((n) => `${n.dataset.id}${n.classList.contains('is-blocked') ? '!' : ''}`).join(' '));
+
+  const first = await boardShape(daily);
+  check(await daily.evaluate(() => localStorage.getItem('funkloch.modus')) === 'taeglich',
+    'die Spielart überlebt einen Neuladen');
+  await daily.reload();
+  await daily.waitForSelector('.board .node');
+  check(await boardShape(daily) === first, 'dasselbe Datum gibt dasselbe Brett');
+
+  // A second browser, same day, nothing shared but the clock: the same board.
+  // This is the claim the whole mode rests on.
+  const other = await browser.newContext({ viewport: { width: 560, height: 960 } });
+  const stranger = await other.newPage();
+  await stranger.clock.install({ time: new Date(Date.UTC(2026, 8, 24, 21, 30)) });
+  await stranger.goto(`http://127.0.0.1:${port}/index.html`);
+  await stranger.waitForSelector('.board .node');
+  await stranger.click('#mode-taeglich');
+  await stranger.waitForSelector('.board .node');
+  check(await boardShape(stranger) === first,
+    'ein anderer Spieler bekommt am selben UTC-Tag dasselbe Brett');
+  // And the next day is a different one, or the mode would be one board.
+  await stranger.clock.setFixedTime(new Date(Date.UTC(2026, 8, 25, 12)));
+  await stranger.reload();
+  await stranger.waitForSelector('.board .node');
+  check(await boardShape(stranger) !== first, 'am nächsten Tag ist es ein anderes Brett');
+  await other.close();
+
+  // Play the day out.
+  for (const step of plan.script) {
+    if (step.go) await daily.click('#go');
+    else await daily.click(`.node[data-id="${step.id}"] .hit`);
+  }
+  await daily.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+
+  const ended = await daily.evaluate(() => ({
+    stage: document.getElementById('over-stage').textContent,
+    score: document.getElementById('over-score').textContent,
+    bestShown: !document.getElementById('over-best').hidden,
+    restartShown: !document.getElementById('restart').hidden,
+    dailyShown: !document.getElementById('over-daily').hidden,
+    countdown: document.getElementById('countdown').textContent,
+    stored: JSON.parse(localStorage.getItem('funkloch.taeglich')),
+  }));
+  check(ended.stage === String(plan.stage), `Tageskarte zeigt Etappe ${ended.stage}`);
+  check(ended.score === String(plan.score), `Tageskarte zeigt ${ended.score} Punkte`);
+  check(ended.restartShown === false, 'die Tageskarte bietet keine neue Partie an');
+  check(ended.dailyShown === true, 'sie zeigt stattdessen Ergebnis und Wartezeit');
+  check(ended.bestShown === false, 'und keinen Bestwert aus dem freien Spiel');
+  // Noon UTC, so about twelve hours are left of the day. Checked against the
+  // page's own clock rather than against a fixed string: the faked clock keeps
+  // ticking while the run is played, so the seconds have moved on by the time
+  // the card appears, and the property worth asserting is that the number
+  // really tracks the time to UTC midnight.
+  const counted = await daily.evaluate(() => {
+    const shown = document.getElementById('countdown').textContent;
+    const parts = shown.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+    if (parts === null) return { shown, ok: false };
+    const seconds = Number(parts[1]) * 3600 + Number(parts[2]) * 60 + Number(parts[3]);
+    const left = (86400000 - (Date.now() % 86400000)) / 1000;
+    return { shown, ok: Math.abs(seconds - left) < 90, left: Math.round(left) };
+  });
+  check(counted.ok, `Zeit bis zum nächsten Brett: ${counted.shown}`
+    + ` (bis Mitternacht UTC: ${counted.left}s)`);
+  check(ended.stored?.day === utcDay(day) && ended.stored?.done === true,
+    `gespeichert: ${utcDay(day)}, abgeschlossen`);
+  // Same reason as the card above: shooting through the fade photographs a
+  // half-transparent card and looks like a stacking bug.
+  await daily.locator('#over').evaluate((card) =>
+    Promise.all(card.getAnimations().map((animation) => animation.finished)));
+  await daily.screenshot({ path: `${shots}/ui-daily.png` });
+
+  // --- die Ergebniszeile ---------------------------------------------------
+  await daily.click('#share');
+  // The handler copies before it reports, and copying is asynchronous, so the
+  // button's own label is the signal that it has finished.
+  check(await until(daily, () => document.getElementById('share').textContent !== 'Ergebnis kopieren'),
+    'der Knopf meldet zurück');
+  const shared = await daily.evaluate(() => ({
+    line: document.getElementById('share-line').textContent,
+    label: document.getElementById('share').textContent,
+  }));
+  check(shared.line === `funkloch 24.09. — Etappe ${plan.stage}, ${plan.score} Punkte`,
+    `Ergebniszeile: ${shared.line}`);
+  check(shared.line.includes('24.09.'), 'sie nennt das Datum');
+  check(shared.line.includes(`Etappe ${plan.stage}`), 'sie nennt die Etappe');
+  check(shared.line.includes(`${plan.score} Punkte`), 'sie nennt die Punkte');
+  // Nothing that would hand the reader the board, let alone the moves.
+  check(!/r\d+c\d+/.test(shared.line), 'sie verrät keinen Knoten');
+  const clip = await daily.evaluate(() => navigator.clipboard.readText().catch(() => null));
+  check(clip === null || clip === shared.line,
+    clip === null ? 'die Zwischenablage war nicht lesbar' : 'sie liegt in der Zwischenablage');
+  check(shared.label === 'Kopiert.' || shared.label === 'Kopieren ging nicht',
+    `der Knopf meldet: ${shared.label}`);
+
+  // --- ein zweiter Versuch ------------------------------------------------
+  await daily.reload();
+  await daily.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  const again = await daily.evaluate(() => ({
+    stage: document.getElementById('over-stage').textContent,
+    score: document.getElementById('over-score').textContent,
+    moves: JSON.parse(localStorage.getItem('funkloch.taeglich')).moves.length,
+  }));
+  check(again.stage === String(plan.stage) && again.score === String(plan.score),
+    'ein Neuladen zeigt dasselbe Ergebnis wieder');
+
+  // Not merely hidden behind the card: the board itself refuses. Clicked with
+  // force, so the overlay is not what is being tested here.
+  const ids = await daily.$$eval('.board .node', (nodes) => nodes.map((n) => n.dataset.id));
+  for (const id of ids.slice(0, 3)) {
+    await daily.click(`.node[data-id="${id}"] .hit`, { force: true }).catch(() => {});
+  }
+  const denied = await daily.evaluate(() => ({
+    stage: document.getElementById('over-stage').textContent,
+    score: document.getElementById('over-score').textContent,
+    moves: JSON.parse(localStorage.getItem('funkloch.taeglich')).moves.length,
+    over: document.getElementById('over').hidden,
+  }));
+  check(denied.moves === again.moves, `kein Zug kommt hinzu (${denied.moves})`);
+  check(denied.stage === String(plan.stage) && denied.score === String(plan.score),
+    'und das Ergebnis bleibt stehen');
+  check(denied.over === false, 'die Karte bleibt liegen');
+
+  // --- zurück ins freie Spiel ----------------------------------------------
+  await daily.click('#mode-frei');
+  await daily.waitForSelector('.board .node');
+  const back = await daily.evaluate(() => ({
+    stage: document.getElementById('hud-stage').textContent,
+    over: document.getElementById('over').hidden,
+    pressed: document.getElementById('mode-frei').getAttribute('aria-pressed'),
+    mode: localStorage.getItem('funkloch.modus'),
+  }));
+  check(back.pressed === 'true' && back.mode === 'frei', 'der Umschalter geht zurück auf Frei');
+  check(back.stage === '1' && back.over === true, 'und das freie Spiel fängt wieder an');
+
+  check(dailyNoise.length === 0,
+    `keine Konsolenfehler im Tagesmodus${dailyNoise.length ? `: ${dailyNoise.join(' | ')}` : ''}`);
+  await context.close();
 } finally {
   await browser.close();
   server.kill();
 }
 
 console.log(failures.length === 0
-  ? `\nAlles gut. Bilder in ${shots}/ui-board.png und ${shots}/ui-over.png`
+  ? `\nAlles gut. Bilder in ${shots}/ui-board.png, ${shots}/ui-over.png und ${shots}/ui-daily.png`
   : `\n${failures.length} Prüfungen fehlgeschlagen.`);
 process.exit(failures.length === 0 ? 0 : 1);

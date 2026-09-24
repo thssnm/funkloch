@@ -60,13 +60,37 @@ const stateOn = (graph, id, radius, covered) => ({
 test('render marks impermeable nodes', async (t) => {
   const scene = () => createScene({ graph: withBlocker, k: 1 }, { document: fakeDocument() });
 
-  await t.test('gives them an octagon and a class', () => {
+  await t.test('gives them a hatched octagon for a body, and a class', () => {
     const built = scene();
     assert.ok(built.nodes.get('c').group.classList.contains('is-blocked'));
     assert.ok(!built.nodes.get('b').group.classList.contains('is-blocked'));
-    const shell = built.nodes.get('c').shell;
-    assert.equal(shell.name, 'polygon');
-    assert.equal(shell.getAttribute('points').split(' ').length, 8, 'eight corners');
+    const plate = built.nodes.get('c').shellPlate;
+    assert.equal(plate.name, 'polygon');
+    assert.equal(plate.getAttribute('points').split(' ').length, 8, 'eight corners');
+    // The hatching is what makes it a different *kind* of node rather than an
+    // ordinary one wearing a frame, so it has to actually be there.
+    const hatch = built.nodes.get('c').shell.children
+      .find((child) => child.getAttribute('class') === 'shell-hatch');
+    assert.ok(hatch, 'the octagon is hatched');
+    assert.ok(hatch.children.length >= 5, `${hatch.children.length} hatch lines`);
+    assert.match(hatch.getAttribute('clip-path'), /^url\(#funkloch-shell-\d+\)$/);
+  });
+
+  await t.test('builds no shell where there is nothing to block', () => {
+    // An empty group on every ordinary node, so a board without impermeable
+    // nodes carries none of this.
+    const built = scene();
+    assert.equal(built.nodes.get('b').shellPlate, null);
+    assert.equal(built.nodes.get('b').shell.children.length, 0);
+  });
+
+  await t.test('gives each scene its own clip, so one can be torn down', () => {
+    const first = scene();
+    const second = scene();
+    const clipOf = (built) => built.nodes.get('c').shell.children
+      .find((child) => child.getAttribute('class') === 'shell-hatch')
+      .getAttribute('clip-path');
+    assert.notEqual(clipOf(first), clipOf(second));
   });
 
   await t.test('leaves them playable, unlike a forbidden node', () => {

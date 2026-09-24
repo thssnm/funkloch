@@ -12,7 +12,7 @@ Reine ES-Module, kein Build-Schritt, keine Laufzeit-Abhängigkeiten. Die
 Spiellogik ist DOM-frei und deterministisch; der Browser bekommt sie über
 `<script type="module">` direkt aus `src/`.
 
-## Die drei Modi
+## Die Modi
 
 **Rätsel** (`src/game.js`, Level in `levels/`) — 30 handverlesene Bretter mit
 einem festen Senderbudget und *genau einer* Lösung. Kein Timer, keine Punkte,
@@ -33,8 +33,35 @@ damit, zu wenig für die klarste Regel des Spiels.
 
 **Endlos** (`ENDLESS_RUN` in `src/run.js`) — dasselbe ohne letzte Etappe. Das
 Brett wächst (18 → 60 Knoten), das Depot schrumpft relativ dazu (0,24 → 0,15
-des Knotenzählers entlang einer Exponentialkurve). Bestwert für Etappe und
-Punkte liegt in `localStorage`. Das ist der Modus, den `index.html` spielt.
+des Knotenzählers entlang einer Exponentialkurve). Das ist der Modus, den
+`index.html` spielt.
+
+Bestwert sind die **Punkte**, und nur sie. Die Etappe ist Standanzeige ohne
+eigenen Rekord: zwei Bestwerte ließen offen, welcher zählt, und von den beiden
+misst der Punktestand mehr. Er steigt mit der Etappe ohnehin, und zwischen zwei
+Läufen, die auf demselben Brett gestorben sind, unterscheidet er noch den, der
+seine Etappen mit Sendern übrig geräumt hat, von dem, der sich durchgequält hat.
+
+## Tagesbrett
+
+Derselbe Endlosmodus, nur steht der Startseed fest: er wird aus dem Datum
+abgeleitet, alle spielen am selben Tag dasselbe Brett, und es gibt einen Versuch
+pro Tag. Danach zeigt das Spiel das Ergebnis und die Zeit bis zum nächsten
+Brett, statt eine neue Partie anzubieten. Ein Knopf legt eine Ergebniszeile in
+die Zwischenablage — `funkloch 24.09. — Etappe 11, 7 Punkte` —, die das Brett
+nicht verrät. Umgeschaltet wird in der Kopfzeile.
+
+Der Tag wird **in UTC** gerechnet (`utcDay` in `src/run.js`), nicht in der
+lokalen Zone. Das ist der ganze Punkt: mit einer lokalen Datumsgrenze hätte
+Neuseeland das Brett von morgen, während Kalifornien noch auf dem von gestern
+sitzt, und zwei Ergebnisse wären nicht vergleichbar.
+
+Der Versuch liegt in `localStorage`, und zwar als vollständige Zugfolge, nicht
+nur als Endstand. Das erledigt beide Hälften von „ein Versuch pro Tag" auf
+einmal: ein Neuladen spielt den Versuch dorthin zurück, wo er war — ein
+Versehen kostet also nichts —, und es gibt keinen Moment, in dem die Seite ein
+ungespieltes Brett zurückgeben könnte, ein absichtliches Neuladen bringt also
+auch nichts.
 
 ## Lokal starten
 
@@ -96,6 +123,10 @@ LD_LIBRARY_PATH=~/.local/browser-libs/root/usr/lib64 npm run smoke
 | `node tools/make-icons.js` | rastert `favicon.svg` zu den App-Icons |
 | `node tools/endless.js --runs=1000` | wie weit die Bots im Endlosmodus kommen |
 | `node tools/blocked.js --bots` | was undurchlässige Knoten mit einem Brett machen |
+| `node tools/density.js` | was die Kantendichte mit Brettform und Bots macht |
+
+Was mit diesen Werkzeugen gemessen und daraufhin entschieden wurde — auch das,
+was gemessen und *nicht* geändert wurde — steht in [MESSUNGEN.md](MESSUNGEN.md).
 
 ## Deployment
 

@@ -74,6 +74,25 @@
       .ledger .best { font-style: normal; opacity: 0.75; }
       .ledger .best:not(:empty)::before { content: '·'; margin: 0 5px; opacity: 0.6; }
 
+      /* The switch between the two ways to play. It belongs in the bookkeeping
+         row because that is what it is — something you set between runs, never
+         something you play against — and it is deliberately sized under that
+         row's line box so the header keeps exactly the height it had. The
+         padding and line-height here are the whole reason: the page-wide
+         `button` rule below sets a 44px minimum, which would grow the row. */
+      .modes { display: flex; gap: 3px; align-self: center; }
+      .modes button {
+        flex: 0 0 auto;
+        min-height: 0;
+        padding: 1px 8px;
+        font: inherit;
+        line-height: 1.1;
+        border-radius: 999px;
+        background: none;
+        color: var(--muted);
+      }
+      .modes button[aria-pressed='true'] { color: var(--text); border-color: var(--muted); }
+
       /* Row 2: the race. Two numbers that pull against each other, so they sit
          at opposite ends with the rule measuring out the distance between. */
       .race { display: flex; align-items: center; gap: 12px; }
@@ -211,20 +230,38 @@
       .is-conflict .dot { fill: var(--over); stroke: var(--over); }
 
       /* ---- impermeable nodes ------------------------------------------------ */
-      /* An octagon around an otherwise ordinary node: it lights up, it can hold
-         a transmitter, but no signal passes through it. Shape, not colour. */
-      .shell {
-        fill: none;
-        stroke: var(--forbidden);
+      /* It lights up, it can hold a transmitter, but no signal passes through
+         it. Said with a different *body*, not with a frame: an octagon filled
+         with hatching where an ordinary node is a plain circle. A ring around
+         an otherwise normal node read as decoration, and decoration says
+         "singled out", not "wall". Shape and fill, so neither cue is colour. */
+      .shell { pointer-events: none; }
+      /* On these nodes the octagon is the node; the circle would only sit
+         inside it and blur what kind of thing this is. */
+      .is-blocked .dot { display: none; }
+      .shell-plate {
+        fill: var(--bg);
+        stroke: var(--muted);
         stroke-width: 2.5;
         stroke-linejoin: round;
-        opacity: 0;
+        transition: fill 140ms ease-out, stroke 140ms ease-out;
+        transition-delay: var(--delay, 0ms);
+      }
+      .shell-hatch line {
+        stroke: var(--muted);
+        stroke-width: 1.6;
         transition: stroke 140ms ease-out;
         transition-delay: var(--delay, 0ms);
       }
-      .is-blocked .shell { opacity: 1; }
-      .is-blocked.is-covered .shell { stroke: var(--signal-dim); }
-      .is-blocked.is-transmitter .shell { stroke: var(--sender); }
+      /* Supplied: the hatching lights up, the body stays hollow. Bright strokes
+         on a dark plate — plainly lit, and still plainly hatched. */
+      .is-blocked.is-covered .shell-plate { stroke: var(--signal); }
+      .is-blocked.is-covered .shell-hatch line { stroke: var(--signal); }
+      /* Carrying a transmitter: the body fills and the hatching inverts into
+         grooves cut out of it, which is the same flip from hollow to solid that
+         an ordinary node makes when a transmitter lands on it. */
+      .is-blocked.is-transmitter .shell-plate { fill: var(--sender); stroke: var(--sender); }
+      .is-blocked.is-transmitter .shell-hatch line { stroke: var(--bg); }
 
       /* ---- forbidden nodes -------------------------------------------------- */
       /* Square, not round, and barred: two non-colour cues at once. */
@@ -327,6 +364,32 @@
       /* The one place a new game can be started from. Sized here rather than
          stretched by the .controls flex row it no longer lives in. */
       .over .again { margin: 16px auto 0; flex: 0 0 auto; min-width: 160px; }
+
+      /* The daily card ends differently: there is no next game to offer, only
+         a result to take away and the wait for the next board. */
+      .over .daily { margin: 14px 0 0; }
+      .over .share { margin: 0 auto; flex: 0 0 auto; min-width: 180px; }
+      /* Only shown when the copy did not go through, so the line can still be
+         selected by hand. `user-select: all` makes that one gesture. */
+      /* Same trap as `.over[hidden]` above: an author `display` beats the UA
+         rule behind the hidden attribute, so this needs saying twice. */
+      .over .share-line[hidden] { display: none; }
+      .over .share-line {
+        display: block;
+        /* Hugs the line rather than spanning the card, so the pill reads as the
+           one thing to grab. */
+        width: fit-content;
+        max-width: 100%;
+        margin: 8px auto 0;
+        padding: 6px 10px;
+        border-radius: 6px;
+        background: var(--panel);
+        color: var(--text);
+        font-size: 13px;
+        user-select: all;
+      }
+      .over .countdown { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+      .over .countdown b { color: var(--text); font-variant-numeric: tabular-nums; }
 
       @media (prefers-reduced-motion: reduce) {
         .over { animation: none; }
@@ -465,7 +528,11 @@
               <circle cx="4.5" cy="19.5" r="2.6" /><circle cx="19.5" cy="19.5" r="2.6" />
             </g>
           </svg>
-          <span>Etappe <b id="hud-stage">–</b><i class="best" id="hud-stage-best"></i></span>
+          <span>Etappe <b id="hud-stage">–</b></span>
+          <div class="modes" id="modes" role="group" aria-label="Spielart">
+            <button type="button" id="mode-frei" aria-pressed="true">Frei</button>
+            <button type="button" id="mode-taeglich" aria-pressed="false">Täglich</button>
+          </div>
           <span class="ledger-score">Punkte <b id="hud-score">0</b><i class="best" id="hud-score-best"></i></span>
         </div>
 
@@ -498,9 +565,14 @@
           <dl>
             <dt>Etappe</dt><dd id="over-stage">–</dd>
             <dt>Punkte</dt><dd id="over-score">–</dd>
-            <dt>Bestwert</dt><dd id="over-best">–</dd>
+            <dt id="over-best-label">Bestwert</dt><dd id="over-best">–</dd>
           </dl>
           <p class="record" id="over-record" hidden>Neuer Bestwert.</p>
+          <div class="daily" id="over-daily" hidden>
+            <button class="share" id="share" type="button">Ergebnis kopieren</button>
+            <code class="share-line" id="share-line" hidden></code>
+            <p class="countdown">Nächstes Brett in <b id="countdown">–</b></p>
+          </div>
           <button class="again" id="restart" type="button">Neue Partie</button>
         </div>
       </div>
@@ -518,7 +590,9 @@
     </main>
 
     <script type="module">
-      import { advance, createRun, ENDLESS_RUN, place } from './src/run.js';
+      import {
+        advance, createRun, dailySeed, ENDLESS_RUN, msUntilNextDay, place, utcDay,
+      } from './src/run.js';
       import { createScene, fitHitAreas, render } from './src/render.js';
       import { attachInput } from './src/input.js';
 
@@ -530,7 +604,6 @@
       const controls = document.getElementById('controls');
       const hud = {
         stage: document.getElementById('hud-stage'),
-        stageBest: document.getElementById('hud-stage-best'),
         open: document.getElementById('hud-open'),
         openLabel: document.getElementById('hud-open-label'),
         left: document.getElementById('hud-left'),
@@ -543,8 +616,18 @@
         card: document.getElementById('over'),
         stage: document.getElementById('over-stage'),
         score: document.getElementById('over-score'),
+        bestLabel: document.getElementById('over-best-label'),
         best: document.getElementById('over-best'),
         record: document.getElementById('over-record'),
+        daily: document.getElementById('over-daily'),
+        share: document.getElementById('share'),
+        shareLine: document.getElementById('share-line'),
+        countdown: document.getElementById('countdown'),
+        restart: document.getElementById('restart'),
+      };
+      const modeButtons = {
+        frei: document.getElementById('mode-frei'),
+        taeglich: document.getElementById('mode-taeglich'),
       };
 
       /**
@@ -553,6 +636,10 @@
        * file system, must still play — it simply forgets.
        */
       const BEST_KEY = 'funkloch.endlos.best';
+      /** Today's daily attempt: which day it is for, and every move in it. */
+      const DAILY_KEY = 'funkloch.taeglich';
+      /** Which of the two modes the page was last left in. */
+      const MODE_KEY = 'funkloch.modus';
 
       /**
        * The game used to be called Sendernetz and kept its records under that
@@ -569,28 +656,94 @@
         /* storage denied: then there is nothing of the old name to clear either */
       }
 
+      /**
+       * Points are the only record kept. The stage a run reached is still shown
+       * while it runs, but it is no longer something to beat: two records left
+       * it unclear which one a run was *for*, and of the two, points are the
+       * better measure. They rise with the stage anyway, and between two runs
+       * that died on the same board they still tell apart the one that cleared
+       * its stages with transmitters to spare from the one that scraped
+       * through. Endurance is in there; efficiency is only in the points.
+       *
+       * Older builds stored `{stage, score}` here. The score carries over by
+       * itself; the stage record is dropped rather than migrated, because there
+       * is nothing left for it to be.
+       */
       const readBest = () => {
         try {
           const stored = JSON.parse(localStorage.getItem(BEST_KEY) ?? 'null');
-          return {
-            stage: Number.isFinite(stored?.stage) ? stored.stage : 0,
-            score: Number.isFinite(stored?.score) ? stored.score : 0,
-          };
+          return Number.isFinite(stored?.score) ? stored.score : 0;
         } catch {
-          return { stage: 0, score: 0 };
+          return 0;
         }
       };
-      const writeBest = (value) => {
+      const writeBest = (score) => {
         try {
-          localStorage.setItem(BEST_KEY, JSON.stringify(value));
+          localStorage.setItem(BEST_KEY, JSON.stringify({ score }));
         } catch {
           /* storage full or denied: the run still counts, it just is not kept */
         }
       };
 
+      /**
+       * Today's daily attempt as it stands: the day it belongs to and every
+       * move made in it, a node id for a placement and `null` for the step onto
+       * the next stage.
+       *
+       * The moves and not merely the result, because that settles both halves
+       * of "one attempt a day" at once. A reload replays the attempt to exactly
+       * where it was left, so an accidental refresh costs nothing — and there
+       * is no point at which the page could hand back an unplayed board, so a
+       * deliberate refresh buys nothing either. Storing only the final result
+       * would have had to choose between those two.
+       */
+      const readDaily = () => {
+        try {
+          const stored = JSON.parse(localStorage.getItem(DAILY_KEY) ?? 'null');
+          if (typeof stored?.day !== 'string' || !Array.isArray(stored?.moves)) return null;
+          return stored;
+        } catch {
+          return null;
+        }
+      };
+      const writeDaily = (value) => {
+        try {
+          localStorage.setItem(DAILY_KEY, JSON.stringify(value));
+        } catch {
+          /* storage denied: then the attempt simply is not held across a reload */
+        }
+      };
+
+      const readMode = () => {
+        try {
+          return localStorage.getItem(MODE_KEY) === 'taeglich' ? 'taeglich' : 'frei';
+        } catch {
+          return 'frei';
+        }
+      };
+      const writeMode = (value) => {
+        try {
+          localStorage.setItem(MODE_KEY, value);
+        } catch {
+          /* storage denied: then the page opens in the free mode every time */
+        }
+      };
+
       let best = readBest();
-      /** Whether *this* run has already pushed either record. */
-      let record = { stage: false, score: false };
+      /** Whether *this* run has already pushed the record. */
+      let record = false;
+
+      /** 'frei' or 'taeglich'. */
+      let mode = 'frei';
+      /** The UTC day the daily attempt on screen belongs to. */
+      let today = null;
+      /** That attempt's moves, in order. */
+      let moves = [];
+      /** The free run set aside while the daily board is up, so that flipping
+       *  the switch and flipping it back does not throw a run away. */
+      let parked = null;
+      /** Handle of the countdown on the daily end card. */
+      let ticker = null;
 
       let state = null;
       let scene = null;
@@ -668,7 +821,15 @@
         // board; it has to be put back, or the first new board takes it with it.
         stage.replaceChildren(scene.svg, over.card);
         detach = attachInput(scene, {
-          onToggle: (id) => apply(place(state, id)),
+          onToggle: (id) => {
+            // A tap that changes nothing — an occupied node, a finished run —
+            // is not a move and must not be written into the daily attempt,
+            // which is replayed move for move.
+            const next = place(state, id);
+            if (next === state) return;
+            logDaily(id);
+            apply(next);
+          },
           // No onToggleMark on purpose: a placement is final here, so the board
           // has exactly one action and input.js leaves the hold ladder off. A
           // tap places, however long the finger rests.
@@ -683,37 +844,37 @@
       }
 
       /**
-       * Records are kept as the run happens, not at its end: the moment the
+       * The record is kept as the run happens, not at its end: the moment the
        * player passes their old best the HUD says so, which is the only moment
        * it means anything.
+       *
+       * Free play only. A daily board is one attempt against one board, which
+       * is not the same contest and does not belong in the same number.
        */
-      function trackRecords() {
-        if (state.stage > best.stage) {
-          best = { ...best, stage: state.stage };
-          record.stage = true;
-          writeBest(best);
-        }
-        if (state.score > best.score) {
-          best = { ...best, score: state.score };
-          record.score = true;
-          writeBest(best);
-        }
+      function trackRecord() {
+        if (mode !== 'frei' || state.score <= best) return;
+        best = state.score;
+        record = true;
+        writeBest(best);
       }
 
       function draw() {
         mount();
         render(scene, state);
-        trackRecords();
+        trackRecord();
+        syncModes();
 
         hud.stage.textContent = String(state.stage);
-        // Lower case, and the separator comes from CSS: an empty record has to
-        // stay empty, or the dot in front of it shows up on its own.
-        hud.stageBest.textContent = best.stage > 0 ? `best ${best.stage}` : '';
         hud.open.textContent = String(state.uncovered.length);
         hud.openLabel.textContent = state.uncovered.length === 1 ? 'Funkloch' : 'Funklöcher';
         hud.left.textContent = String(state.depot.length);
         hud.score.textContent = String(state.score);
-        hud.scoreBest.textContent = best.score > 0 ? `best ${best.score}` : '';
+        // Lower case, and the separator comes from CSS: an empty record has to
+        // stay empty, or the dot in front of it shows up on its own. Silent on
+        // a daily board — there is no record there to aim at, and showing the
+        // free mode's next to a daily score would invite exactly the comparison
+        // that is not meant.
+        hud.scoreBest.textContent = mode === 'frei' && best > 0 ? `best ${best}` : '';
 
         drawChip(hud.now, state.current ?? null);
         hud.next.forEach((chip, index) => drawChip(chip, state.preview[index] ?? null));
@@ -731,34 +892,197 @@
 
         over.card.hidden = state.status !== 'lost';
         if (state.status === 'lost') {
+          const daily = mode === 'taeglich';
           over.stage.textContent = String(state.stage);
           over.score.textContent = String(state.score);
-          over.best.textContent = `Etappe ${best.stage}, ${best.score} Punkte`;
-          over.record.hidden = !(record.stage || record.score);
+          over.best.textContent = `${best} Punkte`;
+          // A daily board ends on a result and a wait, not on an offer of
+          // another game: there is no other game until midnight.
+          over.bestLabel.hidden = daily;
+          over.best.hidden = daily;
+          over.record.hidden = daily || !record;
+          over.daily.hidden = !daily;
+          over.restart.hidden = daily;
+          if (daily) openDailyEnd(); else stopTicker();
+        } else {
+          stopTicker();
         }
       }
 
       function apply(next) {
         state = next;
+        saveDaily();
+        draw();
+      }
+
+      // ---- the daily board ---------------------------------------------------
+
+      /** Notes a move of the daily attempt. Called before it is applied, so
+       *  what ends up stored always replays from the start. */
+      function logDaily(move) {
+        if (mode === 'taeglich') moves = [...moves, move];
+      }
+
+      function saveDaily() {
+        if (mode !== 'taeglich') return;
+        writeDaily({
+          day: today,
+          moves,
+          stage: state.stage,
+          score: state.score,
+          done: state.status === 'lost',
+        });
+      }
+
+      /**
+       * Opens the daily board: today's if there is no attempt on it yet, and
+       * otherwise the attempt already made, replayed to where it was left.
+       *
+       * The date is asked of `utcDay`, which reads the clock in UTC and not in
+       * the local zone. That is the difference between everyone playing the
+       * same board and New Zealand playing tomorrow's while California is still
+       * on yesterday's, which would make two results incomparable.
+       */
+      function startDaily() {
+        if (mode === 'frei' && state !== null) parked = state;
+        mode = 'taeglich';
+        writeMode(mode);
+        boardKey = null;
+        record = false;
+        today = utcDay(Date.now());
+        const stored = readDaily();
+        moves = stored?.day === today ? stored.moves : [];
+        let next = createRun({ seed: dailySeed(Date.now()), config: ENDLESS_RUN });
+        for (const move of moves) next = move === null ? advance(next) : place(next, move);
+        apply(next);
+      }
+
+      /** The line the share button hands over. The result and nothing else: no
+       *  board, no moves, nothing that would spoil the day for whoever reads
+       *  it, and no link to make it travel further than it was meant to. */
+      function shareLine() {
+        const [, month, day] = today.split('-');
+        return `funkloch ${day}.${month}. — Etappe ${state.stage}, ${state.score} Punkte`;
+      }
+
+      /**
+       * Copies text, by the modern route where there is one.
+       *
+       * `navigator.clipboard` is missing on an insecure origin and can be
+       * refused outright, so the old selection trick stays as a fallback, and a
+       * boolean comes back either way — the card shows the line for copying by
+       * hand when neither route worked.
+       * @param {string} text
+       * @returns {Promise<boolean>}
+       */
+      async function copyText(text) {
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+          }
+        } catch {
+          /* denied or unavailable: fall through to the old way */
+        }
+        try {
+          const area = document.createElement('textarea');
+          area.value = text;
+          area.setAttribute('readonly', '');
+          // Off-screen, but laid out: `display: none` or `visibility: hidden`
+          // would leave the selection empty and the copy a no-op.
+          area.style.position = 'fixed';
+          area.style.top = '-1000px';
+          document.body.append(area);
+          area.select();
+          const copied = document.execCommand('copy');
+          area.remove();
+          return copied;
+        } catch {
+          return false;
+        }
+      }
+
+      function stopTicker() {
+        if (ticker !== null) clearInterval(ticker);
+        ticker = null;
+      }
+
+      /** Time to the next board, counted down live. */
+      function tick() {
+        const now = Date.now();
+        // Midnight went by with the card still open: there is a board to play.
+        if (utcDay(now) !== today) {
+          startDaily();
+          return;
+        }
+        const left = msUntilNextDay(now);
+        const pad = (value) => String(value).padStart(2, '0');
+        over.countdown.textContent = `${Math.floor(left / 3600000)}:`
+          + `${pad(Math.floor(left / 60000) % 60)}:${pad(Math.floor(left / 1000) % 60)}`;
+      }
+
+      function openDailyEnd() {
+        over.share.textContent = 'Ergebnis kopieren';
+        over.shareLine.hidden = true;
+        tick();
+        if (ticker === null) ticker = setInterval(tick, 1000);
+      }
+
+      // ---- free play ---------------------------------------------------------
+
+      function showFree(next) {
+        mode = 'frei';
+        writeMode(mode);
+        stopTicker();
+        boardKey = null;
+        state = next;
         draw();
       }
 
       function newRun(seed = Math.floor(Math.random() * 1e9)) {
-        boardKey = null;
-        record = { stage: false, score: false };
-        apply(createRun({ seed, config: ENDLESS_RUN }));
+        record = false;
+        parked = null;
+        showFree(createRun({ seed, config: ENDLESS_RUN }));
       }
 
-      goButton.addEventListener('click', () => apply(advance(state)));
-      document.getElementById('restart').addEventListener('click', () => newRun());
+      /** Paints the switch to match the mode actually on screen. */
+      function syncModes() {
+        modeButtons.frei.setAttribute('aria-pressed', String(mode === 'frei'));
+        modeButtons.taeglich.setAttribute('aria-pressed', String(mode === 'taeglich'));
+      }
+
+      /** Flips between the two modes. The free run is set aside rather than
+       *  thrown away: a mistaken tap on the switch should cost nothing. */
+      function setMode(next) {
+        if (next === mode) return;
+        if (next === 'taeglich') startDaily();
+        else if (parked !== null) { const held = parked; parked = null; showFree(held); }
+        else newRun();
+      }
+
+      goButton.addEventListener('click', () => { logDaily(null); apply(advance(state)); });
+      over.restart.addEventListener('click', () => newRun());
+      modeButtons.frei.addEventListener('click', () => setMode('frei'));
+      modeButtons.taeglich.addEventListener('click', () => setMode('taeglich'));
+      over.share.addEventListener('click', async () => {
+        const line = shareLine();
+        const copied = await copyText(line);
+        over.share.textContent = copied ? 'Kopiert.' : 'Kopieren ging nicht';
+        over.shareLine.textContent = line;
+        over.shareLine.hidden = copied;
+      });
       window.addEventListener('resize', () => scene && fitHitAreas(scene));
 
-      // Every visit gets its own run. A fixed opening seed would mean the same
-      // first boards every time, and a record could be walked up by reloading
-      // until a kind draw turned up. `?seed=` still pins a run down for
-      // development and for comparing notes about one.
+      // Every visit gets its own free run. A fixed opening seed would mean the
+      // same first boards every time, and a record could be walked up by
+      // reloading until a kind draw turned up. `?seed=` still pins a run down
+      // for development and for comparing notes about one — and because that is
+      // an explicit request for one particular board, it wins over the mode the
+      // page was last left in.
       const asked = Number.parseInt(new URLSearchParams(location.search).get('seed') ?? '', 10);
-      newRun(Number.isInteger(asked) ? asked : undefined);
+      if (Number.isInteger(asked)) newRun(asked);
+      else if (readMode() === 'taeglich') startDaily();
+      else newRun();
     </script>
   </body>
 </html>

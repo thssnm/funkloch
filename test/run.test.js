@@ -353,3 +353,78 @@ test('blocked density', async (t) => {
     assert.ok(run.graph.nodes.every((node) => node.blocked === undefined));
   });
 });
+
+test('the daily board', async (t) => {
+  const noon = Date.UTC(2026, 8, 24, 12, 0, 0);
+
+  await t.test('names the day in UTC, not in the local zone', () => {
+    assert.equal(run.utcDay(noon), '2026-09-24');
+    // The two moments a local date would get wrong: late on the 24th in UTC is
+    // already the 25th east of the line, and just after midnight UTC is still
+    // the 24th west of it. Both have to answer with the UTC day, or two players
+    // comparing results would not have played the same board.
+    assert.equal(run.utcDay(Date.UTC(2026, 8, 24, 23, 59, 59)), '2026-09-24');
+    assert.equal(run.utcDay(Date.UTC(2026, 8, 25, 0, 0, 0)), '2026-09-25');
+  });
+
+  await t.test('takes a Date as readily as a timestamp', () => {
+    assert.equal(run.utcDay(new Date(noon)), run.utcDay(noon));
+    assert.equal(run.dailySeed(new Date(noon)), run.dailySeed(noon));
+  });
+
+  await t.test('refuses a moment that is not one', () => {
+    for (const bad of [undefined, null, 'heute', new Date('kein Datum'), NaN]) {
+      assert.throws(() => run.utcDay(bad), RangeError);
+      assert.throws(() => run.dailySeed(bad), RangeError);
+    }
+  });
+
+  await t.test('gives one seed per day, whatever the hour', () => {
+    const early = run.dailySeed(Date.UTC(2026, 8, 24, 0, 0, 1));
+    const late = run.dailySeed(Date.UTC(2026, 8, 24, 23, 59, 59));
+    assert.equal(early, run.dailySeed(noon));
+    assert.equal(late, run.dailySeed(noon));
+    assert.notEqual(run.dailySeed(Date.UTC(2026, 8, 25, 12)), early);
+  });
+
+  await t.test('is a seed createRun will take', () => {
+    const seed = run.dailySeed(noon);
+    assert.ok(Number.isInteger(seed) && seed >= 0 && seed < 2 ** 32);
+    assert.doesNotThrow(() => createRun({ seed, config: ENDLESS_RUN }));
+  });
+
+  await t.test('scatters neighbouring days', () => {
+    // The point of hashing the day number: stage seeds are `seed + stage *
+    // 7919`, so days one apart must not land one apart, or Tuesday's first
+    // board would be a near miss of Monday's second.
+    const seeds = [];
+    for (let day = 0; day < 40; day++) {
+      seeds.push(run.dailySeed(Date.UTC(2026, 8, 1 + day, 12)));
+    }
+    assert.equal(new Set(seeds).size, seeds.length, 'no two days share a seed');
+    for (let i = 1; i < seeds.length; i++) {
+      assert.ok(Math.abs(seeds[i] - seeds[i - 1]) > 7919 * 200,
+        `days ${i - 1} and ${i} land ${Math.abs(seeds[i] - seeds[i - 1])} apart`);
+    }
+  });
+
+  await t.test('deals the same board to everyone on the same day', () => {
+    // Two players, two clocks, two moments of the same UTC day: one board.
+    const berlin = createRun({ seed: run.dailySeed(Date.UTC(2026, 8, 24, 7)), config: ENDLESS_RUN });
+    const auckland = createRun({ seed: run.dailySeed(Date.UTC(2026, 8, 24, 21)), config: ENDLESS_RUN });
+    assert.deepEqual(snapshot(auckland), snapshot(berlin));
+  });
+
+  await t.test('counts down to the next UTC midnight', () => {
+    assert.equal(run.msUntilNextDay(noon), 12 * 3600000);
+    assert.equal(run.msUntilNextDay(Date.UTC(2026, 8, 24, 23, 59, 59)), 1000);
+    // At midnight exactly the day has already turned, so a whole one is ahead:
+    // never zero, or the card would offer a board that is not there yet.
+    assert.equal(run.msUntilNextDay(Date.UTC(2026, 8, 25, 0, 0, 0)), 86400000);
+  });
+
+  await t.test('works before 1970, where the day number goes negative', () => {
+    assert.equal(run.utcDay(Date.UTC(1969, 6, 20, 20, 17)), '1969-07-20');
+    assert.equal(run.msUntilNextDay(Date.UTC(1969, 6, 20, 20, 17)), 3600000 * 3 + 43 * 60000);
+  });
+});

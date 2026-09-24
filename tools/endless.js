@@ -15,8 +15,9 @@
 import { advance, createRun, ENDLESS_RUN, place, stageSpec } from '../src/run.js';
 import { greedyChoice, lookaheadChoice } from './bot64.js';
 
-/** Runs that survive this many stages are counted as capped, not as won. */
-const STAGE_CAP = 200;
+/** Runs that survive this many stages are counted as capped, not as won.
+ *  Exported so a sweep can say how much of its table is standing on the cap. */
+export const STAGE_CAP = 200;
 
 /**
  * Plays one endless run to its end.

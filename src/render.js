@@ -12,9 +12,11 @@
  * A forbidden node is not a circle at all: it is a filled square with a bar
  * across it, and a node caught by two signals at once wears a pair of
  * concentric rings — two rings for two signals. An impermeable node — one that
- * lights up but hands nothing on — is fenced in by an octagon, a stop sign
- * around a node that is otherwise perfectly ordinary. Each of those reads fine
- * in greyscale.
+ * lights up but hands nothing on — is not a node with something drawn around
+ * it: it *is* a different body, an octagon filled with hatching where an
+ * ordinary node is a plain circle. A frame would have read as decoration, and
+ * decoration on a node reads as “this one is special” rather than “this one is
+ * a wall”. Shape and fill both differ, so it survives greyscale twice over.
  *
  * The range preview lives on its own layer — its own class, its own delay
  * variable, its own colour — so it can be switched on and off without touching
@@ -53,9 +55,16 @@ const CROSS_ARM = DOT_RADIUS * 1.6;
 /** Half-width of the square that stands in for a forbidden node. */
 const BLOCK_HALF = DOT_RADIUS * 1.5;
 
-/** Radius of the octagon fencing in an impermeable node. Between the covered
- *  dot (1.75x) and the transmitter ring, so it crowds neither. */
-const SHELL_RADIUS = DOT_RADIUS * 2.4;
+/** Circumradius of the octagon that *is* an impermeable node. Close to the
+ *  covered dot (1.75x) so the two read as bodies of the same weight rather than
+ *  as a small thing inside a big one — an octagon of a given circumradius
+ *  covers about a tenth less area than the circle through the same points. */
+const SHELL_RADIUS = DOT_RADIUS * 1.75;
+
+/** Spacing of the hatch lines inside that octagon, in user units. Wide enough
+ *  that the gaps survive the smallest the board is ever drawn at, tight enough
+ *  that the node still reads as filled and not as two stray strokes. */
+const HATCH_STEP = 4.2;
 
 /** Radii of the two rings that mark a node lit by more than one transmitter. */
 const CLASH_RADII = [DOT_RADIUS * 2.2, DOT_RADIUS * 2.9];
@@ -66,6 +75,24 @@ const CLASH_RADII = [DOT_RADIUS * 2.2, DOT_RADIUS * 2.9];
 const RING_RADIUS = DOT_RADIUS * 3.1;
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** Counter behind the clip-path ids. The hatching of every impermeable node is
+ *  clipped to the same octagon, so one clipPath per scene is enough — but two
+ *  scenes in one document must not share an id, or tearing one down takes the
+ *  other's clip with it. */
+let sceneSerial = 0;
+
+/**
+ * Corner points of a regular octagon of circumradius `radius`, flat side up.
+ * @param {number} radius
+ * @returns {string} an SVG `points` list
+ */
+function octagon(radius) {
+  return Array.from({ length: 8 }, (unused, corner) => {
+    const angle = ((corner + 0.5) * Math.PI) / 4;
+    return `${(radius * Math.cos(angle)).toFixed(2)},${(radius * Math.sin(angle)).toFixed(2)}`;
+  }).join(' ');
+}
 
 /**
  * Distance from `id` to every node it reaches within `k` edges.
@@ -119,11 +146,23 @@ export function createScene(
   svg.setAttribute('class', 'board');
   svg.setAttribute('aria-label', 'Spielfeld');
 
+  // Every impermeable node hatches the same octagon, so the clip is cut once
+  // and referenced from all of them.
+  sceneSerial += 1;
+  const clipId = `funkloch-shell-${sceneSerial}`;
+  const defs = doc.createElementNS(SVG_NS, 'defs');
+  const clip = doc.createElementNS(SVG_NS, 'clipPath');
+  clip.setAttribute('id', clipId);
+  const clipShape = doc.createElementNS(SVG_NS, 'polygon');
+  clipShape.setAttribute('points', octagon(SHELL_RADIUS));
+  clip.append(clipShape);
+  defs.append(clip);
+
   const edgeLayer = doc.createElementNS(SVG_NS, 'g');
   edgeLayer.setAttribute('class', 'edges');
   const nodeLayer = doc.createElementNS(SVG_NS, 'g');
   nodeLayer.setAttribute('class', 'nodes');
-  svg.append(edgeLayer, nodeLayer);
+  svg.append(defs, edgeLayer, nodeLayer);
 
   const position = new Map(nodes.map((node) => [node.id, node]));
   const edgeElements = edges.map(([a, b]) => {
@@ -165,15 +204,40 @@ export function createScene(
     label.setAttribute('dominant-baseline', 'central');
     label.setAttribute('y', 0.5);
 
-    // An octagon around an impermeable node: signal gets in and stops. Drawn
-    // behind the dot so a transmitter standing on such a node still reads as a
-    // transmitter first.
-    const shell = doc.createElementNS(SVG_NS, 'polygon');
+    // The body of an impermeable node: signal gets in and stops. It replaces
+    // the dot rather than surrounding it — the stylesheet takes the circle away
+    // — so the node differs from an ordinary one in what it is made of and not
+    // merely in what has been drawn around it. Built only where it is needed:
+    // on a board without impermeable nodes this costs nothing at all.
+    const shell = doc.createElementNS(SVG_NS, 'g');
     shell.setAttribute('class', 'shell');
-    shell.setAttribute('points', Array.from({ length: 8 }, (unused, corner) => {
-      const angle = ((corner + 0.5) * Math.PI) / 4;
-      return `${(SHELL_RADIUS * Math.cos(angle)).toFixed(2)},${(SHELL_RADIUS * Math.sin(angle)).toFixed(2)}`;
-    }).join(' '));
+    let shellPlate = null;
+    if (node.blocked === true) {
+      shellPlate = doc.createElementNS(SVG_NS, 'polygon');
+      shellPlate.setAttribute('class', 'shell-plate');
+      shellPlate.setAttribute('points', octagon(SHELL_RADIUS));
+
+      // Hatching, clipped to the plate. Diagonal lines rather than a pattern
+      // fill: a <pattern> resolves `currentColor` against its own place in the
+      // defs, not against the node referencing it, so a pattern could not
+      // follow the node from unsupplied to supplied to transmitter.
+      const hatch = doc.createElementNS(SVG_NS, 'g');
+      hatch.setAttribute('class', 'shell-hatch');
+      hatch.setAttribute('clip-path', `url(#${clipId})`);
+      // Beyond this offset a 45-degree line misses the octagon entirely and
+      // would only be drawn to be clipped away.
+      const steps = Math.floor((SHELL_RADIUS * Math.SQRT2 * Math.cos(Math.PI / 8)) / HATCH_STEP);
+      for (let step = -steps; step <= steps; step++) {
+        const offset = step * HATCH_STEP;
+        const stroke = doc.createElementNS(SVG_NS, 'line');
+        stroke.setAttribute('x1', -SHELL_RADIUS);
+        stroke.setAttribute('y1', -SHELL_RADIUS + offset);
+        stroke.setAttribute('x2', SHELL_RADIUS);
+        stroke.setAttribute('y2', SHELL_RADIUS + offset);
+        hatch.append(stroke);
+      }
+      shell.append(shellPlate, hatch);
+    }
 
     // Two concentric rings: the shape itself says "more than one signal".
     const clash = doc.createElementNS(SVG_NS, 'g');
@@ -240,7 +304,8 @@ export function createScene(
     }
     nodeLayer.append(group);
     nodeElements.set(node.id, {
-      group, aura, shell, clash, ring, dot, block, label, cross, hit, index: index + 1,
+      group, aura, shell, shellPlate, clash, ring, dot, block, label, cross, hit,
+      index: index + 1,
     });
   });
 

@@ -22,6 +22,63 @@ import { generateCandidate, mulberry32, shuffled } from './generator.js';
 
 /** @typedef {import('./graph.js').Graph} Graph */
 
+/**
+ * Share of the triangulation's edges the generator tries to delete again.
+ * A config may override it with its own `edgeDeleteRatio`.
+ *
+ * Deleting less leaves a denser board: more edges, higher degree, and fewer of
+ * the chains of degree-2 nodes on which a radius 2 always lights the same five
+ * nodes, so only roughly where it goes matters and never exactly. That is a
+ * real defect of the shipped board — at 0.2 nearly every second node has
+ * degree 2 — and the obvious repair is to delete less. Measured with
+ * `tools/density.js`, it does not pay: the chains go away, the reward for
+ * planning does not grow.
+ *
+ * Board shape, 300 boards per row, node counts as the endless mode deals them:
+ *
+ *   0.00   degree 3.53   deg-2 23.0%   in chains  2.1%   ball 8.45
+ *   0.05   degree 3.37   deg-2 27.1%   in chains  2.9%   ball 8.14
+ *   0.10   degree 3.19   deg-2 32.5%   in chains  3.9%   ball 7.76
+ *   0.15   degree 3.02   deg-2 38.8%   in chains  5.3%   ball 7.38
+ *   0.20   degree 2.84   deg-2 46.3%   in chains  7.5%   ball 6.96   <- this one
+ *   0.30   degree 2.50   deg-2 63.9%   in chains 17.2%   ball 6.06
+ *
+ * Density does not only add branchings, it also grows the ball, and a board
+ * that is cheaper to clear is easier whatever its shape. Played with the
+ * shipped depot the gap between the greedy and the planning bot therefore
+ * explodes — 2.22x at 0.20 against 9.94x at 0.00 — but that is the planner
+ * no longer dying, not the board rewarding thought: at 0.00 a quarter of its
+ * runs stand on the 200-stage cap, which makes the row a floor and not a
+ * reading.
+ *
+ * With the depot scaled by the change in ball size, so that every density costs
+ * about the same transmitters per node, the gap is flat. Ratio of mean stage
+ * reached, planning over greedy, 300 runs per bot and row, three starting
+ * seeds (1, 1001, 2001):
+ *
+ *   0.00   2.09x / 1.93x / 1.97x
+ *   0.05   2.01x / 2.05x / 1.91x
+ *   0.10   1.96x / 1.91x / 1.95x
+ *   0.15   2.56x / 2.58x / 2.53x
+ *   0.20   2.22x / 2.24x / 2.20x   <- this one
+ *   0.30   1.83x / 1.80x / 1.88x
+ *
+ * The median gap is +4 stages in every row and every seed, and the denser
+ * boards (0.00 to 0.10) sit *below* today's 0.20. Less deleting buys
+ * branchings but not a reason to think ahead: what a chain costs is not the
+ * choice of where to put a transmitter, it is which transmitter to spend on it
+ * and which to keep for the branching, and that choice survives however few
+ * chains the board has.
+ *
+ * The bump at 0.15 reproduces across all three seeds, so it is not noise, but
+ * it is one step between two lower neighbours rather than a trend, and it
+ * carries the spread of a heavy tail (SD 8.5 to 8.9 against 3.2 to 6.6
+ * elsewhere). Suspected cause: the depot is `round(nodeCount * ratio)`, and the
+ * 0.944 adjustment moves it by a whole transmitter on individual stages. That
+ * deserves its own measurement; it is not an argument for moving the default.
+ */
+const EDGE_DELETE_RATIO = 0.2;
+
 /** Default shape of a run: three boards, growing. */
 export const DEFAULT_RUN = {
   stages: [18, 24, 30],
@@ -134,6 +191,73 @@ export const ENDLESS_RUN = {
 };
 
 /**
+ * Milliseconds in a day. The daily board turns over at UTC midnight, and UTC
+ * has no daylight saving, so a day is always exactly this long — which is what
+ * lets the day number be a plain division instead of a calendar walk.
+ */
+const DAY_MS = 86400000;
+
+/**
+ * Normalises a `Date` or an epoch millisecond count to a number.
+ * @param {Date|number} at
+ * @returns {number}
+ */
+function toTime(at) {
+  const time = at instanceof Date ? at.getTime() : at;
+  if (!Number.isFinite(time)) throw new RangeError(`not a moment in time: ${String(at)}`);
+  return time;
+}
+
+/**
+ * The day a moment falls in, as `YYYY-MM-DD`, **in UTC**.
+ *
+ * UTC and not the local zone, and this is the whole point of the function: the
+ * daily board is only worth playing if it is the same board for everyone, and a
+ * local date would hand New Zealand tomorrow's board while California still has
+ * yesterday's. Two players comparing results would then not have played the
+ * same thing. One clock for everyone, and it costs at most a few hours of
+ * "today" feeling off at the edges of the world.
+ *
+ * `at` is required rather than defaulting to the current time, so that this
+ * half of the code reads no clock and a test can ask about any day it likes.
+ * @param {Date|number} at
+ * @returns {string}
+ */
+export function utcDay(at) {
+  return new Date(toTime(at)).toISOString().slice(0, 10);
+}
+
+/**
+ * Seed of the daily board for the UTC day `at` falls in.
+ *
+ * Hashed rather than used directly, because the stage seeds are `seed + stage *
+ * 7919`: consecutive days would otherwise deal boards from neighbouring corners
+ * of the same PRNG stream, and the first board of Tuesday would be a near miss
+ * of the second board of Monday. The mix is the finaliser of murmur3, which
+ * scatters two inputs one apart across the whole range.
+ * @param {Date|number} at
+ * @returns {number} integer in [0, 2^32), suitable as a `createRun` seed
+ */
+export function dailySeed(at) {
+  const day = Math.floor(toTime(at) / DAY_MS);
+  let hash = Math.imul(day ^ (day >>> 16), 0x85ebca6b) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35) >>> 0;
+  return (hash ^ (hash >>> 16)) >>> 0;
+}
+
+/**
+ * Milliseconds from `at` until the next UTC midnight, i.e. until the next daily
+ * board. Never zero and never more than a day: at midnight exactly, the day has
+ * already turned and a whole new one is ahead.
+ * @param {Date|number} at
+ * @returns {number}
+ */
+export function msUntilNextDay(at) {
+  const time = toTime(at);
+  return DAY_MS - ((time % DAY_MS) + DAY_MS) % DAY_MS;
+}
+
+/**
  * Node count and depot ratio for stage `index` (0-based), for either shape of
  * run. The fixed shape reads them off its arrays; the endless one computes them
  * from its two curves.
@@ -160,10 +284,13 @@ export function stageSpec(config, index) {
  * @param {{nodeCount: number, lattice: string}} spec
  * @returns {Graph}
  */
-function drawBoard(rng, { nodeCount, lattice, blockedRatio = null }) {
+function drawBoard(
+  rng,
+  { nodeCount, lattice, blockedRatio = null, edgeDeleteRatio = EDGE_DELETE_RATIO },
+) {
   for (let attempt = 0; attempt < 400; attempt++) {
     const graph = generateCandidate({
-      nodeCount, lattice, minDegree: 2, edgeDeleteRatio: 0.2, k: 1, rng,
+      nodeCount, lattice, minDegree: 2, edgeDeleteRatio, k: 1, rng,
     });
     if (graph === null) continue;
     // Impermeable nodes are sprinkled on the finished board. They never make it
@@ -249,7 +376,9 @@ function buildStage(seed, index, config) {
   const { nodeCount, ratio } = stageSpec(config, index);
   const lattice = config.lattices[Math.floor(rng() * config.lattices.length)];
   const blockedRatio = blockedDensity(rng, config.blockedRatio);
-  const graph = drawBoard(rng, { nodeCount, lattice, blockedRatio });
+  const graph = drawBoard(rng, {
+    nodeCount, lattice, blockedRatio, edgeDeleteRatio: config.edgeDeleteRatio,
+  });
   if (!Number.isFinite(ratio)) throw new RangeError(`no depotRatio for stage ${index + 1}`);
   const depotSize = Math.max(1, Math.round(nodeCount * ratio));
   return { graph, lattice, depot: fillDepot(rng, depotSize, config.composition) };

@@ -100,6 +100,27 @@ Modus, in dem jeder Lauf an derselben Etappe stirbt, hat eine Wand, keine
 Schwierigkeit — und der **Abstand zwischen den Bots**, denn der ist es, was
 Vorausdenken belohnt.
 
+## Dateien schreiben: Edit und Write, keine Heredocs
+
+Dateien werden über die Werkzeuge `Edit` und `Write` geschrieben, nicht über
+`cat > datei <<'EOF'` oder `sed -i` im Shell-Aufruf.
+
+Der Grund ist nicht Geschmack. Ein Heredoc geht durch die Shell, und die Shell
+interpretiert: nicht quotiertes `EOF` ersetzt `$foo` und `` `cmd` `` im Text,
+ein Backslash verschwindet, ein `EOF` am Zeilenanfang im Inhalt beendet den
+Block zu früh. In diesem Projekt trifft das genau die falschen Stellen — SVG-
+und Template-Literale in `render.js`, reguläre Ausdrücke, die Kommentare mit
+Messtabellen. Ein `>` statt `>>` ist außerdem lautlos: die Datei ist weg, bevor
+irgendjemand den Fehler sieht.
+
+`Edit` verlangt, dass die alte Stelle exakt und eindeutig passt, und schlägt
+sonst fehl, statt danebenzuschreiben. `Write` überschreibt nur eine Datei, die
+vorher gelesen wurde. Beides ist ein Diff, den man vorher sieht — und das ist
+bei `levels/` bares Geld wert, wo Byte-Identität ein Test ist.
+
+Für die Shell bleibt, wofür sie da ist: lesen, suchen, Tests und Werkzeuge
+starten (`cat`, `sed -n`, `grep`, `node tools/…`, `npm test`).
+
 ## Kleinkram
 
 - Kommentare im Quelltext auf Englisch, Oberfläche und Werkzeug-Ausgabe auf

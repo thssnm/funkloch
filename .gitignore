@@ -19,4 +19,8 @@ browser-libs/
 # Vercel CLI scratch.
 .vercel/
 
+# Lokale Claude-Code-Einstellungen (settings.local.json) — Berechtigungen sind
+# pro Arbeitsplatz erteilt und gehen niemanden sonst etwas an.
+.claude/
+
 .DS_Store
