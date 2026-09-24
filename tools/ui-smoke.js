@@ -1,0 +1,157 @@
+#!/usr/bin/env node
+/**
+ * Plays one endless run in a real browser, from the first click to the card
+ * that ends it.
+ *
+ *   node tools/ui-smoke.js [--seed=7] [--shots=/tmp]
+ *
+ * The unit tests can say that `run.js` scores a run correctly and that the
+ * renderer draws what it is told. Only this says that the page wires the two
+ * together: that a click lands on the right node, that the HUD counts what the
+ * state counts, that the record survives a reload, and that the end card shows
+ * up at all.
+ *
+ * The moves are not improvised — the same run is played here first with the
+ * planning bot, and the browser is then asked to reproduce it click for click,
+ * so the expected numbers are known before the page is opened.
+ *
+ * Chromium needs a handful of system libraries. Where they are not installed
+ * system-wide, point the loader at a local copy:
+ *
+ *   LD_LIBRARY_PATH=~/.local/browser-libs/root/usr/lib64 node tools/ui-smoke.js
+ */
+
+import { spawn } from 'node:child_process';
+import { chromium } from 'playwright';
+
+import { advance, createRun, ENDLESS_RUN, place } from '../src/run.js';
+import { lookaheadChoice } from './bot64.js';
+
+const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
+const seed = Number.parseInt(args.seed ?? '7', 10);
+const shots = args.shots ?? '/tmp';
+const port = Number.parseInt(args.port ?? '8731', 10);
+
+/** Collected failures, so one bad assertion does not hide the rest. */
+const failures = [];
+const check = (ok, what) => {
+  console.log(`${ok ? '  ok  ' : '  FEHL'} ${what}`);
+  if (!ok) failures.push(what);
+};
+
+// What the run should do, computed before the browser ever opens.
+const script = [];
+let state = createRun({ seed, config: ENDLESS_RUN });
+while (state.status === 'playing' || state.status === 'stageCleared') {
+  if (state.status === 'stageCleared') {
+    script.push({ go: true });
+    state = advance(state);
+    continue;
+  }
+  const id = lookaheadChoice(state);
+  script.push({ id: String(id) });
+  state = place(state, id);
+}
+const expected = { stage: state.stage, score: state.score };
+console.log(`Seed ${seed}: erwartet Etappe ${expected.stage}, ${expected.score} Punkte,`
+  + ` ${script.length} Eingaben`);
+
+const server = spawn(process.execPath, ['tools/serve.js', `--port=${port}`], { stdio: 'ignore' });
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage({ viewport: { width: 560, height: 960 } });
+  const noise = [];
+  page.on('pageerror', (error) => noise.push(String(error)));
+  page.on('console', (message) => message.type() === 'error' && noise.push(message.text()));
+
+  await page.goto(`http://127.0.0.1:${port}/index.html?seed=${seed}`);
+  await page.waitForSelector('.board .node');
+  await page.evaluate(() => {
+    localStorage.removeItem('funkloch.endlos.best');
+    // A record left behind by the old name, to see it swept away on load.
+    localStorage.setItem('sendernetz.endlos.best', JSON.stringify({ stage: 99, score: 99 }));
+  });
+  await page.reload();
+  await page.waitForSelector('.board .node');
+  check(await page.evaluate(() => localStorage.getItem('sendernetz.endlos.best')) === null,
+    'der alte Sendernetz-Rekord wird beim Laden entfernt');
+  // Not merely gone from storage: the HUD counts from this run's own stage 1,
+  // so the old 99 was never read either.
+  check(await page.textContent('#hud-stage-best') === 'Best 1', 'und nicht übernommen');
+
+  const opaque = await page.locator('.node.is-blocked').count();
+  const nodes = await page.locator('.node').count();
+  console.log(`Brett 1: ${nodes} Knoten, ${opaque} davon undurchlässig`);
+  check(nodes === 18, 'erste Etappe hat 18 Knoten');
+  check(await page.textContent('#hud-open-label') === 'Funklöcher', 'die Statuszeile zählt Funklöcher');
+  check(opaque === Math.round(18 * ENDLESS_RUN.blockedRatio), 'Blockaden nach Dichte gesetzt');
+  check(await page.locator('.node.is-blocked .shell').count() === opaque, 'jede Blockade trägt ihr Achteck');
+  check((await page.locator('#over').isVisible()) === false, 'die Endkarte liegt nicht über dem Start');
+  await page.screenshot({ path: `${shots}/ui-board.png` });
+
+  for (const step of script) {
+    if (step.go) await page.click('#go');
+    else await page.click(`.node[data-id="${step.id}"] .hit`);
+  }
+  await page.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  // The card fades in. Shooting before that has finished says nothing about
+  // what it looks like, and the first version of this check photographed a
+  // half-transparent card and looked like a stacking bug.
+  await page.locator('#over').evaluate((card) =>
+    Promise.all(card.getAnimations().map((animation) => animation.finished)));
+
+  const seen = await page.evaluate(() => ({
+    stage: document.getElementById('hud-stage').textContent,
+    stageBest: document.getElementById('hud-stage-best').textContent,
+    score: document.getElementById('hud-score').textContent,
+    scoreBest: document.getElementById('hud-score-best').textContent,
+    overStage: document.getElementById('over-stage').textContent,
+    overScore: document.getElementById('over-score').textContent,
+    overBest: document.getElementById('over-best').textContent,
+    record: !document.getElementById('over-record').hidden,
+    status: document.getElementById('status').textContent,
+    stored: localStorage.getItem('funkloch.endlos.best'),
+  }));
+  await page.screenshot({ path: `${shots}/ui-over.png` });
+
+  check(seen.overStage === String(expected.stage), `Karte zeigt Etappe ${seen.overStage}`);
+  check(seen.overScore === String(expected.score), `Karte zeigt ${seen.overScore} Punkte`);
+  check(seen.stage === String(expected.stage), `HUD-Etappe ${seen.stage}`);
+  check(seen.score === String(expected.score), `HUD-Punkte ${seen.score}`);
+  check(seen.stageBest === `Best ${expected.stage}`, `HUD-Rekord ${seen.stageBest}`);
+  check(seen.overBest === `Etappe ${expected.stage}, ${expected.score} Punkte`,
+    `Karte zeigt Bestwert ${seen.overBest}`);
+  check(seen.record === true, 'der erste Lauf ist ein Bestwert');
+  check(seen.status === '', 'die Statuszeile schweigt beim Verlieren');
+  check(seen.stored === JSON.stringify({ stage: expected.stage, score: expected.score }),
+    `gespeichert: ${seen.stored}`);
+
+  // A fresh visit remembers the record and starts clean.
+  await page.reload();
+  await page.waitForSelector('.board .node');
+  const after = await page.evaluate(() => ({
+    stage: document.getElementById('hud-stage').textContent,
+    stageBest: document.getElementById('hud-stage-best').textContent,
+    scoreBest: document.getElementById('hud-score-best').textContent,
+    over: document.getElementById('over').hidden,
+  }));
+  check(after.stageBest === `Best ${expected.stage}`, `Rekord überlebt den Neustart: ${after.stageBest}`);
+  check(after.scoreBest === `Best ${expected.score}`, `Punkterekord überlebt: ${after.scoreBest}`);
+  check(after.stage === '1', 'die neue Partie steht auf Etappe 1');
+  check(after.over === true, 'die Karte ist wieder weg');
+
+  // And the board survives a new board being mounted under it.
+  await page.click('#restart');
+  await page.waitForSelector('.board .node');
+  check(await page.locator('#over').count() === 1, 'die Karte bleibt im DOM, wenn ein Brett wechselt');
+
+  check(noise.length === 0, `keine Konsolenfehler${noise.length ? `: ${noise.join(' | ')}` : ''}`);
+} finally {
+  await browser.close();
+  server.kill();
+}
+
+console.log(failures.length === 0
+  ? `\nAlles gut. Bilder in ${shots}/ui-board.png und ${shots}/ui-over.png`
+  : `\n${failures.length} Prüfungen fehlgeschlagen.`);
+process.exit(failures.length === 0 ? 0 : 1);

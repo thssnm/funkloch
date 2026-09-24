@@ -1,0 +1,274 @@
+{
+  "levels": [
+    {
+      "id": "01",
+      "file": "01.json",
+      "nodeCount": 12,
+      "count": 2,
+      "k": 2,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "02",
+      "file": "02.json",
+      "nodeCount": 10,
+      "count": 3,
+      "k": 1,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "03",
+      "file": "03.json",
+      "nodeCount": 12,
+      "count": 3,
+      "k": 1,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "04",
+      "file": "04.json",
+      "nodeCount": 12,
+      "count": 3,
+      "k": 1,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "05",
+      "file": "05.json",
+      "nodeCount": 16,
+      "count": 3,
+      "k": 2,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "06",
+      "file": "06.json",
+      "nodeCount": 18,
+      "count": 3,
+      "k": 2,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "07",
+      "file": "07.json",
+      "nodeCount": 14,
+      "count": 4,
+      "k": 1,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "08",
+      "file": "08.json",
+      "nodeCount": 14,
+      "count": 4,
+      "k": 1,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "09",
+      "file": "09.json",
+      "nodeCount": 16,
+      "count": 4,
+      "k": 1,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "10",
+      "file": "10.json",
+      "nodeCount": 24,
+      "count": 4,
+      "k": 2,
+      "maxTier": 1,
+      "tier2Steps": 0
+    },
+    {
+      "id": "11",
+      "file": "11.json",
+      "nodeCount": 14,
+      "count": 4,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "12",
+      "file": "12.json",
+      "nodeCount": 14,
+      "count": 4,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "13",
+      "file": "13.json",
+      "nodeCount": 16,
+      "count": 4,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "14",
+      "file": "14.json",
+      "nodeCount": 16,
+      "count": 4,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "15",
+      "file": "15.json",
+      "nodeCount": 24,
+      "count": 4,
+      "k": 2,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "16",
+      "file": "16.json",
+      "nodeCount": 24,
+      "count": 4,
+      "k": 2,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "17",
+      "file": "17.json",
+      "nodeCount": 24,
+      "count": 4,
+      "k": 2,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "18",
+      "file": "18.json",
+      "nodeCount": 18,
+      "count": 5,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 1
+    },
+    {
+      "id": "19",
+      "file": "19.json",
+      "nodeCount": 10,
+      "count": 3,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "20",
+      "file": "20.json",
+      "nodeCount": 10,
+      "count": 3,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "21",
+      "file": "21.json",
+      "nodeCount": 10,
+      "count": 3,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "22",
+      "file": "22.json",
+      "nodeCount": 10,
+      "count": 3,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "23",
+      "file": "23.json",
+      "nodeCount": 14,
+      "count": 4,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "24",
+      "file": "24.json",
+      "nodeCount": 14,
+      "count": 4,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "25",
+      "file": "25.json",
+      "nodeCount": 16,
+      "count": 4,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "26",
+      "file": "26.json",
+      "nodeCount": 18,
+      "count": 5,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "27",
+      "file": "27.json",
+      "nodeCount": 18,
+      "count": 5,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 2
+    },
+    {
+      "id": "28",
+      "file": "28.json",
+      "nodeCount": 24,
+      "count": 4,
+      "k": 2,
+      "maxTier": 2,
+      "tier2Steps": 3
+    },
+    {
+      "id": "29",
+      "file": "29.json",
+      "nodeCount": 18,
+      "count": 5,
+      "k": 1,
+      "maxTier": 2,
+      "tier2Steps": 3
+    },
+    {
+      "id": "30",
+      "file": "30.json",
+      "nodeCount": 18,
+      "count": 3,
+      "k": 2,
+      "maxTier": 2,
+      "tier2Steps": 5
+    }
+  ]
+}

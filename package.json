@@ -1,0 +1,17 @@
+{
+  "name": "funkloch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Funkloch — Graph-Abdeckungspuzzle: reine ES-Module, kein Build-Schritt.",
+  "scripts": {
+    "test": "node --test",
+    "preview": "node tools/preview.js",
+    "levels": "node tools/build-levels.js",
+    "serve": "node tools/serve.js",
+    "smoke": "node tools/ui-smoke.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Funkloch</title>
+    <style>
+      :root {
+        --bg: #10131a;
+        --panel: #171b25;
+        --line: #262d3b;
+        --text: #e7ebf3;
+        --muted: #8a94a8;
+        --signal: #5ad1c0;
+        --signal-dim: #2f6d66;
+        --sender: #f4c257;
+        --over: #f08a62;
+        --preview: #9b8cf0;
+        --marked: #6d7789;
+        --forbidden: #59617a;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+        -webkit-text-size-adjust: 100%;
+      }
+
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 100%;
+      }
+
+      .hud {
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .hud b { color: var(--text); font-weight: 600; }
+      .hud .over { color: var(--over); }
+      /* The record sits next to the live number, quieter than it: it is there
+         to be aimed at, not to compete with the board. */
+      .hud .best { font-size: 13px; font-style: normal; opacity: 0.75; }
+
+      /* Positioned, so the board can fill it outright: a percentage height on
+         a flex item does not resolve against a flex-derived height. */
+      #stage { flex: 1; min-height: 320px; position: relative; }
+
+      /* Fills the stage and scales the drawing to fit; preserveAspectRatio
+         keeps the geometry undistorted. */
+      .board { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
+      /* Chrome focuses the SVG root when the empty board is clicked and draws a
+         frame around the whole thing. The nodes carry their own focus ring, so
+         the root is not a meaningful focus target and needs none. */
+      .board:focus { outline: none; }
+
+      /* ---- edges ---------------------------------------------------------- */
+      .edge {
+        stroke: var(--line);
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        transition: stroke 140ms ease-out, stroke-width 140ms ease-out;
+        transition-delay: var(--delay, 0ms);
+      }
+      .edge.is-lit { stroke: var(--signal-dim); stroke-width: 3.5; }
+      /* Preview rides on top of whatever the edge already shows. */
+      .edge.in-range {
+        stroke: var(--preview);
+        stroke-width: 4;
+        transition-delay: var(--preview-delay, 0ms);
+      }
+
+      /* ---- nodes ---------------------------------------------------------- */
+      /* Three independent cues, so none of this depends on colour vision:
+         supplied nodes are bigger AND solid, transmitters wear a ring, and one
+         transmitter too many makes that ring dashed. */
+      .dot {
+        fill: var(--bg);
+        stroke: var(--muted);
+        stroke-width: 2.5;
+        transform-box: fill-box;
+        transform-origin: center;
+        transition: transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1), fill 140ms ease-out,
+          stroke 140ms ease-out;
+        transition-delay: var(--delay, 0ms);
+      }
+      .is-covered .dot { fill: var(--signal); stroke: var(--signal); transform: scale(1.75); }
+      .is-transmitter .dot { fill: var(--sender); stroke: var(--sender); transform: scale(2); }
+      .is-over-budget .dot { fill: var(--over); stroke: var(--over); }
+
+      .ring {
+        fill: none;
+        stroke: var(--sender);
+        stroke-width: 3;
+        opacity: 0;
+        transform-box: fill-box;
+        transform-origin: center;
+        transform: scale(0.55);
+        transition: opacity 140ms ease-out, transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1);
+      }
+      .is-transmitter .ring { opacity: 1; transform: scale(1); }
+      .is-over-budget .ring { stroke: var(--over); stroke-dasharray: 5 5; }
+
+      /* ---- range preview -------------------------------------------------- */
+      .aura {
+        fill: none;
+        stroke: var(--preview);
+        stroke-width: 2.5;
+        opacity: 0;
+        transform-box: fill-box;
+        transform-origin: center;
+        transform: scale(0.6);
+        transition: opacity 140ms ease-out, transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1);
+        transition-delay: var(--preview-delay, 0ms);
+      }
+      .in-range .aura { opacity: 1; transform: scale(1); }
+
+      /* ---- the player's own notes ------------------------------------------ */
+      /* Dimmed *and* struck through: neither cue needs colour to read. */
+      .cross line {
+        stroke: var(--marked);
+        stroke-width: 3;
+        stroke-linecap: round;
+        opacity: 0;
+        transform-box: fill-box;
+        transform-origin: center;
+        transform: scale(0.4);
+        transition: opacity 120ms ease-out, transform 120ms cubic-bezier(0.2, 0.8, 0.3, 1);
+      }
+      .is-marked .cross line { opacity: 1; transform: scale(1); }
+      .is-marked .dot { fill: var(--bg); stroke: var(--marked); opacity: 0.55; }
+      /* A note stays readable while the range is on show. */
+      .in-range.is-marked .cross line { stroke: var(--text); opacity: 1; }
+      /* Held long enough that letting go will note the node: say so first. */
+      .is-arming .cross line { opacity: 0.45; transform: scale(1); }
+
+      /* ---- conflict: two signals on one node --------------------------------- */
+      /* Two concentric rings, so the cue is a shape and a count, not a colour. */
+      .clash circle {
+        fill: none;
+        stroke: var(--over);
+        stroke-width: 2.5;
+        opacity: 0;
+        transform-box: fill-box;
+        transform-origin: center;
+        transform: scale(0.7);
+        transition: opacity 140ms ease-out, transform 140ms cubic-bezier(0.2, 0.8, 0.3, 1);
+      }
+      .is-conflict .clash circle { opacity: 1; transform: scale(1); }
+      .is-conflict .dot { fill: var(--over); stroke: var(--over); }
+
+      /* ---- impermeable nodes ------------------------------------------------ */
+      /* An octagon around an otherwise ordinary node: it lights up, it can hold
+         a transmitter, but no signal passes through it. Shape, not colour. */
+      .shell {
+        fill: none;
+        stroke: var(--forbidden);
+        stroke-width: 2.5;
+        stroke-linejoin: round;
+        opacity: 0;
+        transition: stroke 140ms ease-out;
+        transition-delay: var(--delay, 0ms);
+      }
+      .is-blocked .shell { opacity: 1; }
+      .is-blocked.is-covered .shell { stroke: var(--signal-dim); }
+      .is-blocked.is-transmitter .shell { stroke: var(--sender); }
+
+      /* ---- forbidden nodes -------------------------------------------------- */
+      /* Square, not round, and barred: two non-colour cues at once. */
+      .block { opacity: 0; pointer-events: none; }
+      .is-forbidden .block { opacity: 1; }
+      .is-forbidden .dot,
+      .is-forbidden .ring,
+      .is-forbidden .cross { display: none; }
+      .plate { fill: var(--forbidden); stroke: var(--text); stroke-width: 1.5; }
+      .bar { fill: var(--bg); }
+      /* A signal is reaching it: say so loudly, but block nothing. */
+      .is-violated .plate {
+        fill: var(--over);
+        stroke: var(--over);
+        stroke-width: 3;
+        stroke-dasharray: 4 3;
+      }
+      .is-forbidden.in-range .aura { stroke: var(--over); }
+
+      /* ---- the radius written on a transmitter ------------------------------ */
+      .radius {
+        fill: var(--bg);
+        font: 700 11px system-ui, sans-serif;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .hit { fill: transparent; cursor: pointer; outline: none; }
+      .hit:focus-visible { stroke: var(--text); stroke-width: 2; stroke-dasharray: 4 4; }
+      .node.is-pressed .dot { transform: scale(1.35); transition-duration: 80ms; }
+      .node.is-pressed.is-covered .dot { transform: scale(1.5); }
+      /* Held long enough to register. Without a range preview to light up, the
+         node itself has to say that the press was noticed. */
+      .node.is-inspecting .dot { stroke: var(--text); stroke-width: 3; }
+      /* Held long enough that letting go will take the transmitter off. */
+      .node.is-arming.is-transmitter .dot { fill: var(--over); stroke: var(--over); }
+      .node.is-arming.is-transmitter .ring { stroke: var(--over); stroke-dasharray: 5 5; }
+
+      /* ---- win: one calm breath, nothing more -----------------------------
+         Brightness, not opacity: fading the dots would let the edges show
+         through them and the board would look dirty for a second. */
+      @keyframes breathe {
+        50% { filter: brightness(1.2); }
+      }
+      .board.is-won .nodes,
+      .board.is-won .edges { animation: breathe 1.6s ease-in-out 1; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .dot, .edge, .ring { transition-duration: 1ms; transition-delay: 0ms; }
+        .board.is-won .nodes, .board.is-won .edges { animation: none; }
+      }
+
+      /* ---- the end of a run ------------------------------------------------
+         A card over the board rather than a dialog: nothing to dismiss, nothing
+         that steals focus, and the board it refers to stays visible behind it. */
+      .over {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        gap: 4px;
+        text-align: center;
+        /* Plain first, so a browser without color-mix still dims the board. */
+        background: rgba(16, 19, 26, 0.86);
+        background: color-mix(in srgb, var(--bg) 86%, transparent);
+        animation: settle 420ms ease-out 1;
+      }
+      /* An author `display` beats the UA rule behind the hidden attribute, so
+         the card would otherwise sit on the board from the first frame on. */
+      .over[hidden] { display: none; }
+      @keyframes settle { from { opacity: 0; } }
+      .over h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; color: var(--muted); }
+      .over dl {
+        margin: 0;
+        display: grid;
+        grid-template-columns: auto auto;
+        gap: 2px 14px;
+        font-variant-numeric: tabular-nums;
+      }
+      .over dt { color: var(--muted); text-align: right; }
+      .over dd { margin: 0; text-align: left; font-weight: 600; }
+      .over .record { margin: 10px 0 0; color: var(--signal); font-size: 14px; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .over { animation: none; }
+      }
+
+      /* ---- chrome --------------------------------------------------------- */
+      #status { margin: 0; min-height: 1.5em; color: var(--muted); }
+      #status.is-won { color: var(--signal); }
+      #status.is-over { color: var(--over); }
+
+      .bag { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .chip {
+        display: grid;
+        place-items: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        border: 2px solid var(--line);
+        background: var(--panel);
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .chip.now { width: 52px; height: 52px; font-size: 22px; border-color: var(--sender); color: var(--sender); }
+      .chip.next { opacity: 0.6; font-size: 16px; }
+      .chip.empty { opacity: 0.25; }
+      .bag-label { color: var(--muted); font-size: 14px; }
+
+      .sets { display: flex; gap: 8px; }
+      .sets button {
+        flex: 0 1 auto;
+        min-height: 36px;
+        padding: 0 14px;
+        border-radius: 999px;
+        font-size: 14px;
+        color: var(--muted);
+      }
+      .sets button[aria-pressed='true'] {
+        color: var(--text);
+        border-color: var(--signal-dim);
+        background: #1c2430;
+      }
+
+      .controls { display: flex; gap: 10px; }
+      button {
+        flex: 1;
+        min-height: 44px;
+        padding: 0 16px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--panel);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      button:disabled { opacity: 0.4; cursor: default; }
+      button:not(:disabled):hover { border-color: var(--muted); }
+
+      .hint { margin: 0; color: var(--muted); font-size: 14px; }
+      kbd {
+        padding: 1px 6px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: var(--panel);
+        font: inherit;
+        font-size: 13px;
+      }
+      .error { color: var(--over); }
+      .error code { background: var(--panel); padding: 2px 6px; border-radius: 5px; }
+    </style>
+  </head>
+  <body>
+    <!-- Classic script, deliberately before the module: a module that fails to
+         link never runs its own error handling, and the page would otherwise
+         sit there blank with the reason only in the developer console. -->
+    <script>
+      window.__fatal = function (detail) {
+        var stage = document.getElementById('stage');
+        if (!stage || stage.dataset.fatal) return;
+        stage.dataset.fatal = '1';
+        stage.innerHTML =
+          '<p class="error">Die Seite konnte nicht starten.<br /><code>' +
+          String(detail).replace(/[<&]/g, function (c) { return c === '<' ? '&lt;' : '&amp;'; }) +
+          '</code><br />Meist ein veraltetes Modul im Browser-Cache: einmal hart neu laden ' +
+          '(<kbd>Strg</kbd>/<kbd>Cmd</kbd> + <kbd>Shift</kbd> + <kbd>R</kbd>).</p>';
+      };
+      window.addEventListener('error', function (event) {
+        window.__fatal(event.message || event.error || 'Unbekannter Fehler');
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        window.__fatal(event.reason && event.reason.message ? event.reason.message : event.reason);
+      });
+    </script>
+
+    <main>
+      <div class="hud">
+        <span>Etappe <b id="hud-stage">–</b> <i class="best" id="hud-stage-best"></i></span>
+        <span><b id="hud-open">–</b> <span id="hud-open-label">Funklöcher</span></span>
+        <span>Beutel <b id="hud-left">–</b></span>
+        <span>Punkte <b id="hud-score">0</b> <i class="best" id="hud-score-best"></i></span>
+      </div>
+
+      <div class="bag">
+        <span class="bag-label">in der Hand</span>
+        <span class="chip now" id="chip-now">–</span>
+        <span class="bag-label">danach</span>
+        <span class="chip next" id="chip-1">–</span>
+        <span class="chip next" id="chip-2">–</span>
+      </div>
+
+      <div id="stage">
+        <div class="over" id="over" role="status" hidden>
+          <h2>Beutel leer.</h2>
+          <dl>
+            <dt>Etappe</dt><dd id="over-stage">–</dd>
+            <dt>Punkte</dt><dd id="over-score">–</dd>
+            <dt>Bestwert</dt><dd id="over-best">–</dd>
+          </dl>
+          <p class="record" id="over-record" hidden>Neuer Bestwert.</p>
+        </div>
+      </div>
+
+      <p id="status" role="status"></p>
+
+      <div class="controls">
+        <button id="go" type="button" hidden>Weiter</button>
+        <button id="restart" type="button">Neue Partie</button>
+      </div>
+
+      <p class="hint">
+        Tippen setzt den Sender aus der Hand. Langes Halten auf einem gesetzten
+        Sender nimmt ihn wieder weg — er ist trotzdem verbraucht. Mit Maus:
+        rechte Taste. Achteckige Knoten leuchten selbst, geben das Signal aber
+        nicht weiter.
+      </p>
+    </main>
+
+    <script type="module">
+      import { advance, createRun, ENDLESS_RUN, place, remove } from './src/run.js';
+      import { createScene, fitHitAreas, render } from './src/render.js';
+      import { attachInput } from './src/input.js';
+
+      const stage = document.getElementById('stage');
+      const statusLine = document.getElementById('status');
+      const goButton = document.getElementById('go');
+      const hud = {
+        stage: document.getElementById('hud-stage'),
+        stageBest: document.getElementById('hud-stage-best'),
+        open: document.getElementById('hud-open'),
+        openLabel: document.getElementById('hud-open-label'),
+        left: document.getElementById('hud-left'),
+        score: document.getElementById('hud-score'),
+        scoreBest: document.getElementById('hud-score-best'),
+        now: document.getElementById('chip-now'),
+        next: [document.getElementById('chip-1'), document.getElementById('chip-2')],
+      };
+      const over = {
+        card: document.getElementById('over'),
+        stage: document.getElementById('over-stage'),
+        score: document.getElementById('over-score'),
+        best: document.getElementById('over-best'),
+        record: document.getElementById('over-record'),
+      };
+
+      /**
+       * Records live in localStorage and nowhere else. Every access is guarded:
+       * a browser with storage switched off, or a page opened straight off the
+       * file system, must still play — it simply forgets.
+       */
+      const BEST_KEY = 'funkloch.endlos.best';
+
+      /**
+       * The game used to be called Sendernetz and kept its records under that
+       * prefix. They are not carried over — a record belongs to the mode it was
+       * set in, and the mode has moved on — so the old keys are simply dropped.
+       * No marker is needed to do this only once: after the first load there is
+       * nothing left to find.
+       */
+      try {
+        for (const key of Object.keys(localStorage)) {
+          if (key.startsWith('sendernetz.')) localStorage.removeItem(key);
+        }
+      } catch {
+        /* storage denied: then there is nothing of the old name to clear either */
+      }
+
+      const readBest = () => {
+        try {
+          const stored = JSON.parse(localStorage.getItem(BEST_KEY) ?? 'null');
+          return {
+            stage: Number.isFinite(stored?.stage) ? stored.stage : 0,
+            score: Number.isFinite(stored?.score) ? stored.score : 0,
+          };
+        } catch {
+          return { stage: 0, score: 0 };
+        }
+      };
+      const writeBest = (value) => {
+        try {
+          localStorage.setItem(BEST_KEY, JSON.stringify(value));
+        } catch {
+          /* storage full or denied: the run still counts, it just is not kept */
+        }
+      };
+
+      let best = readBest();
+      /** Whether *this* run has already pushed either record. */
+      let record = { stage: false, score: false };
+
+      let state = null;
+      let scene = null;
+      let detach = null;
+      let boardKey = null;
+
+      /** Rebuilds the SVG only when the board actually changed. */
+      function mount() {
+        const key = `${state.seed}:${state.stage}`;
+        if (key === boardKey) return;
+        boardKey = key;
+        detach?.();
+        scene = createScene({ graph: state.graph, k: 1 });
+        // The end-of-run card lives inside the stage so it can lie over the
+        // board; it has to be put back, or the first new board takes it with it.
+        stage.replaceChildren(scene.svg, over.card);
+        detach = attachInput(scene, {
+          onToggle: (id) => apply(place(state, id)),
+          // Long press, or right click on a desktop: take a placed transmitter
+          // back off. It is spent either way, so this repairs a misplacement
+          // without making placements free.
+          onToggleMark: (id) => apply(remove(state, id)),
+          // Deliberately empty. Estimating how far a transmitter reaches is the
+          // game; reading it off a highlight is not. showRange stays in
+          // render.js for the other modes.
+          onPreview: () => {},
+          onPreviewEnd: () => {},
+        });
+        fitHitAreas(scene);
+      }
+
+      /**
+       * Records are kept as the run happens, not at its end: the moment the
+       * player passes their old best the HUD says so, which is the only moment
+       * it means anything.
+       */
+      function trackRecords() {
+        if (state.stage > best.stage) {
+          best = { ...best, stage: state.stage };
+          record.stage = true;
+          writeBest(best);
+        }
+        if (state.score > best.score) {
+          best = { ...best, score: state.score };
+          record.score = true;
+          writeBest(best);
+        }
+      }
+
+      function draw() {
+        mount();
+        render(scene, state);
+        trackRecords();
+
+        hud.stage.textContent = String(state.stage);
+        hud.stageBest.textContent = best.stage > 0 ? `Best ${best.stage}` : '';
+        hud.open.textContent = String(state.uncovered.length);
+        hud.openLabel.textContent = state.uncovered.length === 1 ? 'Funkloch' : 'Funklöcher';
+        hud.left.textContent = String(state.bag.length);
+        hud.score.textContent = String(state.score);
+        hud.scoreBest.textContent = best.score > 0 ? `Best ${best.score}` : '';
+
+        hud.now.textContent = state.current ?? '–';
+        hud.now.classList.toggle('empty', state.current === null);
+        state.preview.forEach((radius, index) => {
+          hud.next[index].textContent = String(radius);
+          hud.next[index].classList.remove('empty');
+        });
+        for (let i = state.preview.length; i < hud.next.length; i++) {
+          hud.next[i].textContent = '–';
+          hud.next[i].classList.add('empty');
+        }
+
+        statusLine.classList.toggle('is-won', state.status === 'stageCleared');
+        goButton.hidden = state.status !== 'stageCleared';
+        // On a lost run the card below says everything; a second sentence under
+        // the board would only repeat it louder.
+        statusLine.textContent =
+          state.status === 'stageCleared'
+            ? `Etappe ${state.stage} geschafft. ${state.bag.length} Sender übrig.`
+            : '';
+
+        over.card.hidden = state.status !== 'lost';
+        if (state.status === 'lost') {
+          over.stage.textContent = String(state.stage);
+          over.score.textContent = String(state.score);
+          over.best.textContent = `Etappe ${best.stage}, ${best.score} Punkte`;
+          over.record.hidden = !(record.stage || record.score);
+        }
+      }
+
+      function apply(next) {
+        state = next;
+        draw();
+      }
+
+      function newRun(seed = Math.floor(Math.random() * 1e9)) {
+        boardKey = null;
+        record = { stage: false, score: false };
+        apply(createRun({ seed, config: ENDLESS_RUN }));
+      }
+
+      goButton.addEventListener('click', () => apply(advance(state)));
+      document.getElementById('restart').addEventListener('click', () => newRun());
+      window.addEventListener('resize', () => scene && fitHitAreas(scene));
+
+      // Every visit gets its own run. A fixed opening seed would mean the same
+      // first boards every time, and a record could be walked up by reloading
+      // until a kind draw turned up. `?seed=` still pins a run down for
+      // development and for comparing notes about one.
+      const asked = Number.parseInt(new URLSearchParams(location.search).get('seed') ?? '', 10);
+      newRun(Number.isInteger(asked) ? asked : undefined);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,101 @@
+{
+  "mode": "exact",
+  "levels": [
+    {
+      "id": "01",
+      "file": "01.json",
+      "nodeCount": 10,
+      "count": 2,
+      "k": 1,
+      "sumFeasible": 1
+    },
+    {
+      "id": "02",
+      "file": "02.json",
+      "nodeCount": 12,
+      "count": 2,
+      "k": 1,
+      "sumFeasible": 1
+    },
+    {
+      "id": "03",
+      "file": "03.json",
+      "nodeCount": 14,
+      "count": 3,
+      "k": 1,
+      "sumFeasible": 1
+    },
+    {
+      "id": "04",
+      "file": "04.json",
+      "nodeCount": 25,
+      "count": 4,
+      "k": 1,
+      "sumFeasible": 8
+    },
+    {
+      "id": "05",
+      "file": "05.json",
+      "nodeCount": 24,
+      "count": 4,
+      "k": 1,
+      "sumFeasible": 12
+    },
+    {
+      "id": "06",
+      "file": "06.json",
+      "nodeCount": 30,
+      "count": 5,
+      "k": 1,
+      "sumFeasible": 15
+    },
+    {
+      "id": "07",
+      "file": "07.json",
+      "nodeCount": 25,
+      "count": 4,
+      "k": 1,
+      "sumFeasible": 16
+    },
+    {
+      "id": "08",
+      "file": "08.json",
+      "nodeCount": 26,
+      "count": 5,
+      "k": 1,
+      "sumFeasible": 21
+    },
+    {
+      "id": "09",
+      "file": "09.json",
+      "nodeCount": 23,
+      "count": 4,
+      "k": 1,
+      "sumFeasible": 27
+    },
+    {
+      "id": "10",
+      "file": "10.json",
+      "nodeCount": 27,
+      "count": 5,
+      "k": 1,
+      "sumFeasible": 43
+    },
+    {
+      "id": "11",
+      "file": "11.json",
+      "nodeCount": 30,
+      "count": 5,
+      "k": 1,
+      "sumFeasible": 45
+    },
+    {
+      "id": "12",
+      "file": "12.json",
+      "nodeCount": 21,
+      "count": 4,
+      "k": 1,
+      "sumFeasible": 48
+    }
+  ]
+}

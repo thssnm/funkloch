@@ -1,0 +1,17 @@
+# Dependencies. The game itself has none; playwright is a dev tool.
+node_modules/
+
+# Screenshots written by the browser tools (preview.js writes here by default,
+# ui-smoke.js with --shots=.).
+screenshots/
+*.png
+
+# A local copy of the system libraries Chromium needs, unpacked next to the
+# project where they are not installed system-wide.
+browser-libs/
+.cache/
+
+# Vercel CLI scratch.
+.vercel/
+
+.DS_Store
