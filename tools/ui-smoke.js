@@ -89,23 +89,10 @@ function planRun(from) {
   return { script: moves, stage: run.stage, score: run.score, opening: dealt };
 }
 
-/**
- * The score as the page is supposed to show it: halved and rounded.
- *
- * Spelled out here a second time on purpose. `run.js` counts undivided and the
- * page divides only on its way into text, so this is the one number the browser
- * could get wrong without any unit test noticing — and a test that imported the
- * page's own constant would agree with it however wrong it was. Changing the
- * divisor has to be done twice, deliberately.
- * @param {number} score the undivided score
- * @returns {string}
- */
-const shown = (score) => String(Math.round(score / 2));
-
 // What the run should do, computed before the browser ever opens.
 const { script, opening, ...expected } = planRun(seed);
-console.log(`Seed ${seed}: erwartet Etappe ${expected.stage}, ${shown(expected.score)} Punkte`
-  + ` (${expected.score} ungeteilt), ${script.length} Eingaben`);
+console.log(`Seed ${seed}: erwartet Etappe ${expected.stage}, ${expected.score} Punkte,`
+  + ` ${script.length} Eingaben`);
 
 const server = spawn(process.execPath, ['tools/serve.js', `--port=${port}`], { stdio: 'ignore' });
 const browser = await chromium.launch();
@@ -388,17 +375,17 @@ try {
 
   check(seen.overTitle === 'Depot leer.', `Karte betitelt sich „${seen.overTitle}"`);
   check(seen.overStage === String(expected.stage), `Karte zeigt Etappe ${seen.overStage}`);
-  check(seen.overScore === shown(expected.score), `Karte zeigt ${seen.overScore} Punkte`);
+  check(seen.overScore === String(expected.score), `Karte zeigt ${seen.overScore} Punkte`);
   check(seen.stage === String(expected.stage), `HUD-Etappe ${seen.stage}`);
-  check(seen.score === shown(expected.score), `HUD-Punkte ${seen.score}`);
-  check(seen.scoreBest === `best ${shown(expected.score)}`, `HUD-Rekord ${seen.scoreBest}`);
-  check(seen.overBest === `${shown(expected.score)} Punkte`, `Karte zeigt Bestwert ${seen.overBest}`);
+  check(seen.score === String(expected.score), `HUD-Punkte ${seen.score}`);
+  check(seen.scoreBest === `best ${expected.score}`, `HUD-Rekord ${seen.scoreBest}`);
+  check(seen.overBest === `${expected.score} Punkte`, `Karte zeigt Bestwert ${seen.overBest}`);
   check(seen.record === true, 'der erste Lauf ist ein Bestwert');
   check(seen.status === '', 'die Statuszeile schweigt beim Verlieren');
   // Only the score is kept; the stage record is not written back in any shape.
   // The scale travels with it, so a later change to the scoring can tell what
   // it is looking at instead of guessing.
-  check(seen.stored === JSON.stringify({ score: expected.score, scale: 2 }),
+  check(seen.stored === JSON.stringify({ score: expected.score, scale: 1 }),
     `gespeichert: ${seen.stored}`);
 
   // The one door into a new game, and the board has to survive being swapped
@@ -418,18 +405,19 @@ try {
     scoreBest: document.getElementById('hud-score-best').textContent,
     over: document.getElementById('over').hidden,
   }));
-  check(after.scoreBest === `best ${shown(expected.score)}`, `Punkterekord überlebt: ${after.scoreBest}`);
+  check(after.scoreBest === `best ${expected.score}`, `Punkterekord überlebt: ${after.scoreBest}`);
   check(after.stage === '1', 'die neue Partie steht auf Etappe 1');
   check(after.over === true, 'die Karte ist wieder weg');
 
   // --- ein Bestwert von einer anderen Skala ---------------------------------
-  // A record without the scale marker is from before the leftovers were
-  // weighted by stage. It is not comparable and must not be shown, however
-  // large it is; the same goes for a marker from some other build.
+  // Unmarked is from before the leftovers were weighted by stage; `scale: 2` is
+  // from the build that showed them halved. Neither is the number this page
+  // draws, so neither may be shown, however large it is — and the same goes for
+  // a marker from any other build.
   for (const [stored, what] of [
     [{ score: 9999 }, 'ohne Skalenkennzeichen'],
-    [{ score: 9999, scale: 1 }, 'von einer älteren Skala'],
-    [{ score: 9999, scale: 3 }, 'von einer fremderen Skala'],
+    [{ score: 9999, scale: 2 }, 'von der halbiert angezeigten Skala'],
+    [{ score: 9999, scale: 3 }, 'von einer fremden Skala'],
   ]) {
     await page.evaluate(
       (value) => localStorage.setItem('funkloch.endlos.best', JSON.stringify(value)),
@@ -450,7 +438,7 @@ try {
   const day = Date.UTC(2026, 8, 24, 12, 0, 0);
   const plan = planRun(dailySeed(day));
   console.log(`Tagesbrett ${utcDay(day)}: erwartet Etappe ${plan.stage},`
-    + ` ${shown(plan.score)} Punkte, ${plan.script.length} Eingaben`);
+    + ` ${plan.score} Punkte, ${plan.script.length} Eingaben`);
 
   const context = await browser.newContext({ viewport: { width: 560, height: 960 } });
   await context.grantPermissions(['clipboard-read', 'clipboard-write'],
@@ -520,7 +508,7 @@ try {
     stored: JSON.parse(localStorage.getItem('funkloch.taeglich')),
   }));
   check(ended.stage === String(plan.stage), `Tageskarte zeigt Etappe ${ended.stage}`);
-  check(ended.score === shown(plan.score), `Tageskarte zeigt ${ended.score} Punkte`);
+  check(ended.score === String(plan.score), `Tageskarte zeigt ${ended.score} Punkte`);
   check(ended.restartShown === false, 'die Tageskarte bietet keine neue Partie an');
   check(ended.dailyShown === true, 'sie zeigt stattdessen Ergebnis und Wartezeit');
   check(ended.bestShown === false, 'und keinen Bestwert aus dem freien Spiel');
@@ -557,11 +545,11 @@ try {
     line: document.getElementById('share-line').textContent,
     label: document.getElementById('share').textContent,
   }));
-  check(shared.line === `funkloch 24.09. — Etappe ${plan.stage}, ${shown(plan.score)} Punkte`,
+  check(shared.line === `funkloch 24.09. — Etappe ${plan.stage}, ${plan.score} Punkte`,
     `Ergebniszeile: ${shared.line}`);
   check(shared.line.includes('24.09.'), 'sie nennt das Datum');
   check(shared.line.includes(`Etappe ${plan.stage}`), 'sie nennt die Etappe');
-  check(shared.line.includes(`${shown(plan.score)} Punkte`), 'sie nennt die Punkte');
+  check(shared.line.includes(`${plan.score} Punkte`), 'sie nennt die Punkte');
   // Nothing that would hand the reader the board, let alone the moves.
   check(!/r\d+c\d+/.test(shared.line), 'sie verrät keinen Knoten');
   const clip = await daily.evaluate(() => navigator.clipboard.readText().catch(() => null));
@@ -578,7 +566,7 @@ try {
     score: document.getElementById('over-score').textContent,
     moves: JSON.parse(localStorage.getItem('funkloch.taeglich')).moves.length,
   }));
-  check(again.stage === String(plan.stage) && again.score === shown(plan.score),
+  check(again.stage === String(plan.stage) && again.score === String(plan.score),
     'ein Neuladen zeigt dasselbe Ergebnis wieder');
 
   // Not merely hidden behind the card: the board itself refuses. Clicked with
@@ -594,7 +582,7 @@ try {
     over: document.getElementById('over').hidden,
   }));
   check(denied.moves === again.moves, `kein Zug kommt hinzu (${denied.moves})`);
-  check(denied.stage === String(plan.stage) && denied.score === shown(plan.score),
+  check(denied.stage === String(plan.stage) && denied.score === String(plan.score),
     'und das Ergebnis bleibt stehen');
   check(denied.over === false, 'die Karte bleibt liegen');
 

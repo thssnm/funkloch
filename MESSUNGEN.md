@@ -669,6 +669,9 @@ Eintrag.)*
 **Werkzeug:** `tools/score.js --divisors=…`
 **Ergebnis:** **Teiler 2, ausschließlich in der Anzeige.** Die
 Bestwert-Migration ist umgesetzt.
+**Überholt:** der Teiler ist wieder draußen, siehe den nächsten Eintrag. Die
+Messung selbst gilt unverändert — was nicht mehr gilt, ist die Entscheidung,
+die daraus gezogen wurde.
 
 ### Teil 1: Bringt ein fester Teiler die Zahlen ins Lesbare?
 
@@ -760,6 +763,11 @@ Was auch Teiler 2 nicht behebt: die Verteilung bleibt quadratisch in der Streak
 und damit schief — p90 zu Median ist 5- bis 6-fach, egal welcher Teiler. Ein
 Teiler verschiebt die Größenordnung, er macht die Verteilung nicht symmetrisch.
 
+*(Diese Entscheidung ist zurückgenommen — siehe den nächsten Eintrag. Was hier
+über die Trennung von Rechnung und Anzeige steht, hat sich dabei bewährt und
+gilt weiter: genau weil der Teiler nur in der Anzeige saß, kostete das
+Zurücknehmen keine Migration.)*
+
 **Eingeführt, ausschließlich in der Anzeige.** `run.js` rechnet, speichert und
 vergleicht weiter ungeteilt; `index.html` teilt erst auf dem Weg in den Text.
 Das ist keine Kosmetik an der Umsetzung, sondern die Bedingung, unter der sie
@@ -826,3 +834,70 @@ npm run smoke                                      # prüft den Verwurf mit
   der Seite importiert, gäbe ihr recht, wie falsch sie auch wäre.
 - **Nicht angefasst:** `src/run.js`. Der Teiler ist Anzeige, keine Regel — die
   Messungen oben und alle Werkzeuge rechnen weiter mit der ungeteilten Zahl.
+
+---
+
+## 2026-09-24 — Teiler wieder raus: kleine Zuwächse müssen lesbar sein
+
+**Werkzeug:** keins; das Argument steht am Bildschirm, nicht in der Verteilung.
+**Ergebnis: Teiler entfernt.** Angezeigt wird der Rohwert — übrige Sender mal
+Etappennummer, aufsummiert. `SCORE_SCALE` steht auf 1, Bestwerte mit `scale: 2`
+werden verworfen.
+
+### Der Grund
+
+Die Halbierung macht kleine Zuwächse unlesbar. Ein in Etappe 3 gesparter Sender
+bringt 3 Punkte und muss auch als 3 erscheinen, sonst ist der Zusammenhang
+zwischen Etappe und Wert nicht erkennbar — und dieser Zusammenhang ist genau
+das, wofür die Gewichtung überhaupt eingeführt wurde. Große Zahlen sind das
+kleinere Problem.
+
+Der Eintrag davor hat die Verteilung gemessen und die Lesbarkeit der
+*Größenordnung* optimiert. Er hat dabei übersehen, dass die Lesbarkeit des
+*Zuwachses* die wichtigere ist: eine Punktzahl wird selten mit einer fremden
+verglichen, aber bei jedem geräumten Brett wächst sie vor den Augen des
+Spielers, und dieser Moment ist es, an dem die Regel erklärt wird oder nicht.
+
+### Was die Halbierung am Zuwachs anrichtet
+
+Nicht nur, dass der Zuwachs halb so groß erscheint — er ist bei ungeraden
+Etappennummern **nicht einmal konstant**. Angezeigt wird `round(S/2)`, also
+hängt der sichtbare Sprung davon ab, ob die laufende Summe gerade ist:
+
+| laufende Summe S | +1 Sender in Etappe 3 | angezeigt vorher → nachher | sichtbarer Zuwachs |
+| --- | --- | --- | --- |
+| 10 | 13 | 5 → 7 | **+2** |
+| 11 | 14 | 6 → 7 | **+1** |
+
+Derselbe Handgriff auf demselben Brett, zwei verschiedene Belohnungen. In
+Etappe 1 ist es am schärfsten: ein gesparter Sender zeigt dort abwechselnd +1
+und **+0**, ist also in der Hälfte der Fälle unsichtbar.
+
+Das ist kein Rundungsdetail, sondern der Zusammenbruch der Aussage, die die
+Gewichtung machen soll: „ein Sender hier ist so viel wert wie die Etappennummer".
+
+### Was es kostet
+
+Die Zahlen aus dem vorigen Eintrag gelten unverändert und werden bewusst in Kauf
+genommen: p99 bei 412 bis 651, Maximum bei 1011, Streuung größer als der
+Mittelwert. Der Score bleibt quadratisch in der Streak. Wer zwei Läufe
+vergleichen will, vergleicht große Zahlen — wer einen Lauf *versteht*, sieht
+jetzt jeden Sender mit seinem Etappenwert eintreffen.
+
+### Was blieb
+
+- `index.html` — `SCORE_DIVISOR` und `shown()` sind weg; HUD, Endkarte,
+  Bestwert und die Ergebniszeile des Tagesbretts zeigen `state.score`.
+  `SCORE_SCALE = 1`; die Liste am Feld führt jetzt drei Stände: kein Feld war
+  die flache Summe, 2 die halbiert angezeigte, 1 die gewichtete wie gezählt.
+- Bestwerte mit `scale: 2` werden verworfen. Die Zahl darunter lag ungeteilt im
+  Speicher und würde die Rechnung überstehen — aber nicht das Lesen: wer diese
+  Fassung mit „best 3" verlassen hat, käme auf „best 6" für denselben Lauf
+  zurück. Ein Rekord, der sich von selbst ändert, ist schlechter als einer, der
+  neu gespielt werden muss.
+- `tools/ui-smoke.js` — Erwartungen wieder auf den Rohwert, gespeicherte Form
+  `{score, scale: 1}`, und die Verwurfsprüfung deckt jetzt ohne Kennzeichen,
+  `scale: 2` und eine fremde Skala ab.
+- **Nicht angefasst:** `src/run.js` und die Werkzeuge. Sie haben nie geteilt —
+  deshalb hat dieses Zurücknehmen nichts gekostet außer der Anzeige. Das ist der
+  Teil der vorigen Entscheidung, der sich bewährt hat.

@@ -657,49 +657,32 @@
       }
 
       /**
-       * Which scale a stored score is on. Every scoring change bumps it, and
-       * what each value meant stays listed here:
+       * Which scale a stored score is on. The score is shown exactly as it is
+       * counted — leftover transmitters times the stage they were saved on,
+       * summed — and 1 says so. What each value has meant stays listed here:
        *
-       *   (field absent)  the flat sum of leftover transmitters
-       *   2               leftovers weighted by the stage they were saved on
+       *   (field absent)  the flat sum of leftovers, before the weighting
+       *   2               the weighted sum, shown halved
+       *   1               the weighted sum, shown as it is counted
        *
-       * A record is shown only when its scale matches exactly. Anything else —
-       * an unmarked entry from before the weighting, or one from a build the
-       * browser has since been rolled back from — is dropped, not converted.
-       * Converting would mean inventing the run behind the number: the same
-       * digits mean a far shorter run on the weighted scale than on the flat
-       * one, and there is no way back from the total to the stages it came
-       * from. A best score costs one run to set again; a record silently shown
-       * on the wrong scale is wrong for as long as it stands.
+       * The halving is gone. It was meant to tame a number that grows as
+       * `rest · n(n+1)/2` over n stages, and it did — but it cost the thing the
+       * weighting was for. A transmitter saved on stage 3 is worth 3, and has
+       * to appear as 3, or the tie between stage and value is invisible.
+       * Halved, the same saved transmitter showed up as +1 or +2 depending on
+       * whether the running total happened to be even: the same act, a
+       * different visible reward. Large numbers are the smaller problem.
+       *
+       * A record is shown only when its scale matches exactly. Anything else is
+       * dropped, not converted — an unmarked entry from before the weighting,
+       * or one from the halved build. The number under `scale: 2` was stored
+       * undivided and would survive the arithmetic, but not the reading: a
+       * player who left that build looking at "best 3" would come back to
+       * "best 6" for the same run, and a record that changes on its own is
+       * worse than one that has to be played again. There is no way back from a
+       * total to the stages it came from, so nothing here is ever converted.
        */
-      const SCORE_SCALE = 2;
-
-      /**
-       * What the score is divided by before anyone sees it — and only before
-       * anyone sees it. `run.js` counts, stores and compares the undivided
-       * number; this is the last step before it becomes text.
-       *
-       * Why divide at all: leftovers weighted by stage grow as `rest · n(n+1)/2`
-       * over a run of n stages, so the number is quadratic in how far someone
-       * got. Measured over 500 runs per playing strength, the undivided score
-       * reached a p99 of 412 to 651 and a maximum of 1011 — too coarse to hold
-       * two runs side by side. Halving puts the median of the reference player
-       * at 16 and every maximum into three digits, and it is the largest
-       * divisor that costs nothing: no run that scored anything rounds down to
-       * zero (`Math.round`, so an undivided 1 still shows 1), and 1.1 % of pairs
-       * that differed become equal. Dividing by 3 doubles the ties and drops
-       * 7 % of a weak player's scoring runs to zero; by 4 the median falls to
-       * single digits. The table is in `MESSUNGEN.md`.
-       *
-       * Why only in the display: the stored record keeps the undivided value
-       * with its `scale`, so the scale hangs on the number and not on how it
-       * happened to be drawn. Changing this divisor later then costs nothing —
-       * no record migrates, because no record ever saw it.
-       */
-      const SCORE_DIVISOR = 2;
-
-      /** The score as it is shown. The only place the divisor is applied. */
-      const shown = (score) => String(Math.round(score / SCORE_DIVISOR));
+      const SCORE_SCALE = 1;
 
       /**
        * Points are the only record kept. The stage a run reached is still shown
@@ -915,13 +898,13 @@
         hud.open.textContent = String(state.uncovered.length);
         hud.openLabel.textContent = state.uncovered.length === 1 ? 'Funkloch' : 'Funklöcher';
         hud.left.textContent = String(state.depot.length);
-        hud.score.textContent = shown(state.score);
+        hud.score.textContent = String(state.score);
         // Lower case, and the separator comes from CSS: an empty record has to
         // stay empty, or the dot in front of it shows up on its own. Silent on
         // a daily board — there is no record there to aim at, and showing the
         // free mode's next to a daily score would invite exactly the comparison
         // that is not meant.
-        hud.scoreBest.textContent = mode === 'frei' && best > 0 ? `best ${shown(best)}` : '';
+        hud.scoreBest.textContent = mode === 'frei' && best > 0 ? `best ${best}` : '';
 
         drawChip(hud.now, state.current ?? null);
         hud.next.forEach((chip, index) => drawChip(chip, state.preview[index] ?? null));
@@ -941,8 +924,8 @@
         if (state.status === 'lost') {
           const daily = mode === 'taeglich';
           over.stage.textContent = String(state.stage);
-          over.score.textContent = shown(state.score);
-          over.best.textContent = `${shown(best)} Punkte`;
+          over.score.textContent = String(state.score);
+          over.best.textContent = `${best} Punkte`;
           // A daily board ends on a result and a wait, not on an offer of
           // another game: there is no other game until midnight.
           over.bestLabel.hidden = daily;
@@ -1011,7 +994,7 @@
         const [, month, day] = today.split('-');
         // The same number the card shows, so a shared result and the screen it
         // came from cannot disagree.
-        return `funkloch ${day}.${month}. — Etappe ${state.stage}, ${shown(state.score)} Punkte`;
+        return `funkloch ${day}.${month}. — Etappe ${state.stage}, ${state.score} Punkte`;
       }
 
       /**
