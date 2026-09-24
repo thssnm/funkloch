@@ -37,7 +37,11 @@ export const HOP_MS = 60;
 /** Minimum diameter of a tap target, in CSS pixels. */
 export const MIN_HIT_PX = 44;
 
-/** Padding around the graph bounds, in user units — room for the widest ring. */
+/** Padding around the graph bounds, in user units — room for the widest ring.
+ *  A caller that is short of space can ask for less, but not for less than
+ *  RING_RADIUS: below that a transmitter on an outer node draws its ring past
+ *  the viewBox, and `overflow: visible` then puts it over whatever is next to
+ *  the board. See the `padding` option on {@link createScene}. */
 const PADDING = 36;
 
 /** Radius of the visible node dot; the covered/transmitter sizes are CSS scales. */
@@ -91,18 +95,24 @@ function distancesFrom(graph, id, k) {
  * Builds the SVG for a level. Call once per level, then feed states to
  * {@link render}.
  * @param {{graph: import('./graph.js').Graph, k: number}} level
- * @param {{document?: Document}} [options]
+ * @param {{document?: Document, padding?: number}} [options] `padding` is the
+ *        margin around the graph in user units; less of it means the same board
+ *        drawn larger in the same box. Clamped to RING_RADIUS from below.
  * @returns {{svg: SVGSVGElement, nodes: Map<*, object>, edges: Array<object>,
  *            level: object, viewBox: {width: number}}}
  */
-export function createScene(level, { document: doc = globalThis.document } = {}) {
+export function createScene(
+  level,
+  { document: doc = globalThis.document, padding = PADDING } = {},
+) {
   const { nodes, edges } = level.graph;
+  const margin = Math.max(padding, RING_RADIUS);
   const xs = nodes.map((node) => node.x);
   const ys = nodes.map((node) => node.y);
-  const minX = Math.min(...xs) - PADDING;
-  const minY = Math.min(...ys) - PADDING;
-  const width = Math.max(...xs) - Math.min(...xs) + 2 * PADDING;
-  const height = Math.max(...ys) - Math.min(...ys) + 2 * PADDING;
+  const minX = Math.min(...xs) - margin;
+  const minY = Math.min(...ys) - margin;
+  const width = Math.max(...xs) - Math.min(...xs) + 2 * margin;
+  const height = Math.max(...ys) - Math.min(...ys) + 2 * margin;
 
   const svg = doc.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', `${minX} ${minY} ${width} ${height}`);

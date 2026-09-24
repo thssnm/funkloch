@@ -46,27 +46,51 @@
         min-height: 100%;
       }
 
-      .hud {
+      /* Three rows, in order of how much they matter while a run is on.
+         Their own gap, tighter than the one between the page's blocks, so the
+         header reads as one thing and not as three. */
+      .head {
         display: flex;
-        align-items: baseline;
-        gap: 16px;
-        flex-wrap: wrap;
-        color: var(--muted);
+        flex-direction: column;
+        gap: 8px;
         font-variant-numeric: tabular-nums;
       }
-      .hud b { color: var(--text); font-weight: 600; }
-      .hud .over { color: var(--over); }
-      /* The record sits next to the live number, quieter than it: it is there
-         to be aimed at, not to compete with the board. */
-      .hud .best { font-size: 13px; font-style: normal; opacity: 0.75; }
+
+      /* Row 1: bookkeeping. Small and dimmed on purpose — it is what you check
+         between runs, never what you play against. */
+      .ledger {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .ledger b { color: var(--text); font-weight: 600; }
+      /* Pushes the score to the far edge, so the two readings bracket the row. */
+      .ledger-score { margin-left: auto; }
+      /* The record is quieter than the live number: it is there to be aimed at.
+         The separator is drawn here rather than written into the element, so an
+         empty record stays genuinely empty for anything reading the text. */
+      .ledger .best { font-style: normal; opacity: 0.75; }
+      .ledger .best:not(:empty)::before { content: '·'; margin: 0 5px; opacity: 0.6; }
+
+      /* Row 2: the race. Two numbers that pull against each other, so they sit
+         at opposite ends with the rule measuring out the distance between. */
+      .race { display: flex; align-items: center; gap: 12px; }
+      .race-value { display: flex; align-items: baseline; gap: 6px; }
+      /* Number before label in both, so the eye finds the digits in one place
+         instead of learning two orders. */
+      .race-value b { font-size: 30px; font-weight: 700; line-height: 1; color: var(--text); }
+      .race-value span { font-size: 13px; color: var(--muted); }
+      .race-rule { flex: 1 1 auto; min-width: 16px; height: 1px; background: var(--line); }
 
       /* The mark, small, ahead of the stage count. It must not set the height
-         of the row: the text already gives the line box 24px, and centring an
-         18px box inside it cannot add to that. Baseline alignment would,
-         which is why this one item opts out of it. */
+         of the row: 13px text gives the line box about 20px, and centring a
+         16px box inside it cannot add to that. Baseline alignment would, which
+         is why this one item opts out of it. */
       .hud-mark {
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
         flex: none;
         align-self: center;
         /* The flex gap is meant for the space between readings; the mark
@@ -300,32 +324,64 @@
       .over dt { color: var(--muted); text-align: right; }
       .over dd { margin: 0; text-align: left; font-weight: 600; }
       .over .record { margin: 10px 0 0; color: var(--signal); font-size: 14px; }
+      /* The one place a new game can be started from. Sized here rather than
+         stretched by the .controls flex row it no longer lives in. */
+      .over .again { margin: 16px auto 0; flex: 0 0 auto; min-width: 160px; }
 
       @media (prefers-reduced-motion: reduce) {
         .over { animation: none; }
       }
 
       /* ---- chrome --------------------------------------------------------- */
-      #status { margin: 0; min-height: 1.5em; color: var(--muted); }
+      /* No reserved line. It speaks on a cleared stage and at no other time,
+         which is the same moment the button row below appears, so the height
+         it used to hold open all run long is the board's instead. */
+      #status { margin: 0; color: var(--muted); }
       #status.is-won { color: var(--signal); }
       #status.is-over { color: var(--over); }
 
-      .depot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      /* Row 3: the hand. The first card is bigger and lit, the next two are
+         small and pale — that says "now, then, then" without the words that
+         used to be there saying it. */
+      .hand { display: flex; align-items: center; gap: 10px; }
       .chip {
         display: grid;
         place-items: center;
-        width: 40px;
-        height: 40px;
+        width: 44px;
+        height: 44px;
         border-radius: 12px;
         border: 2px solid var(--line);
         background: var(--panel);
-        font-weight: 700;
-        font-variant-numeric: tabular-nums;
       }
-      .chip.now { width: 52px; height: 52px; font-size: 22px; border-color: var(--sender); color: var(--sender); }
-      .chip.next { opacity: 0.6; font-size: 16px; }
+      .chip.now { width: 56px; height: 56px; border-color: var(--sender); color: var(--sender); }
+      .chip.next { opacity: 0.6; color: var(--muted); }
       .chip.empty { opacity: 0.25; }
-      .depot-label { color: var(--muted); font-size: 14px; }
+      /* Reach drawn, not written: a filled centre and one ring per hop, which
+         is the same picture the board makes when the signal spreads. Prefixed,
+         because `.dot` and `.ring` belong to the board and a chip wearing them
+         would answer every selector that asks for a node. */
+      .chip svg { display: block; width: 82%; height: 82%; overflow: visible; }
+      .chip-core { fill: currentColor; }
+      .chip-ring { fill: none; stroke: currentColor; stroke-width: 1.6; }
+      /* The rings alone did not carry the small card. Measured on the 44px
+         chip at both pixel ratios: three rings land at radius 6.15 / 10.45 /
+         14.76 px with a 1.64px stroke, so 2.66px of clear space between them,
+         and a scan along the centre line comes back to the panel colour
+         between every pair (peaks 84-95, valleys 23 on a 33 background) at
+         DPR 1 as well as DPR 2. They do not smear.
+         What they do not do is count: two rings and three differ by one thin
+         stroke in a crowded target, and the card has to be read at a glance,
+         not studied. Hence the digit, which is the cheap half of the fix —
+         growing the rings would have cost the 44px card its size. It sits in
+         the corner on a disc of the card's own colour, because the glyph box
+         reaches back to 10.6 from the centre and would otherwise lie across
+         the outermost ring at 15.2. */
+      .chip-plate { fill: var(--panel); }
+      .chip-digit {
+        fill: currentColor;
+        font: 700 9px system-ui, -apple-system, "Segoe UI", sans-serif;
+        opacity: 0.9;
+      }
 
       .sets { display: flex; gap: 8px; }
       .sets button {
@@ -342,7 +398,11 @@
         background: #1c2430;
       }
 
+      /* Empty for most of a run — `Weiter` only shows up on a cleared stage,
+         and `Neue Partie` has moved onto the end card. Hidden outright then,
+         so the row does not spend the board's height on nothing. */
       .controls { display: flex; gap: 10px; }
+      .controls[hidden] { display: none; }
       button {
         flex: 1;
         min-height: 44px;
@@ -395,27 +455,35 @@
     </script>
 
     <main>
-      <div class="hud">
-        <svg class="hud-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path class="mark-edge" d="M4.5 4.5 12 12M19.5 4.5 12 12M4.5 19.5 12 12M19.5 19.5 12 12" />
-          <circle class="mark-hole" cx="12" cy="12" r="3.6" />
-          <g class="mark-node">
-            <circle cx="4.5" cy="4.5" r="2.6" /><circle cx="19.5" cy="4.5" r="2.6" />
-            <circle cx="4.5" cy="19.5" r="2.6" /><circle cx="19.5" cy="19.5" r="2.6" />
-          </g>
-        </svg>
-        <span>Etappe <b id="hud-stage">–</b> <i class="best" id="hud-stage-best"></i></span>
-        <span><b id="hud-open">–</b> <span id="hud-open-label">Funklöcher</span></span>
-        <span>Depot <b id="hud-left">–</b></span>
-        <span>Punkte <b id="hud-score">0</b> <i class="best" id="hud-score-best"></i></span>
-      </div>
+      <div class="head">
+        <div class="ledger" id="hud-ledger">
+          <svg class="hud-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path class="mark-edge" d="M4.5 4.5 12 12M19.5 4.5 12 12M4.5 19.5 12 12M19.5 19.5 12 12" />
+            <circle class="mark-hole" cx="12" cy="12" r="3.6" />
+            <g class="mark-node">
+              <circle cx="4.5" cy="4.5" r="2.6" /><circle cx="19.5" cy="4.5" r="2.6" />
+              <circle cx="4.5" cy="19.5" r="2.6" /><circle cx="19.5" cy="19.5" r="2.6" />
+            </g>
+          </svg>
+          <span>Etappe <b id="hud-stage">–</b><i class="best" id="hud-stage-best"></i></span>
+          <span class="ledger-score">Punkte <b id="hud-score">0</b><i class="best" id="hud-score-best"></i></span>
+        </div>
 
-      <div class="depot">
-        <span class="depot-label">in der Hand</span>
-        <span class="chip now" id="chip-now">–</span>
-        <span class="depot-label">danach</span>
-        <span class="chip next" id="chip-1">–</span>
-        <span class="chip next" id="chip-2">–</span>
+        <div class="race" id="hud-race">
+          <span class="race-value">
+            <b id="hud-open">–</b> <span id="hud-open-label">Funklöcher</span>
+          </span>
+          <span class="race-rule" aria-hidden="true"></span>
+          <span class="race-value">
+            <b id="hud-left">–</b> <span>Depot</span>
+          </span>
+        </div>
+
+        <div class="hand" id="hud-hand">
+          <span class="chip now" id="chip-now"></span>
+          <span class="chip next" id="chip-1"></span>
+          <span class="chip next" id="chip-2"></span>
+        </div>
       </div>
 
       <div id="stage">
@@ -433,14 +501,14 @@
             <dt>Bestwert</dt><dd id="over-best">–</dd>
           </dl>
           <p class="record" id="over-record" hidden>Neuer Bestwert.</p>
+          <button class="again" id="restart" type="button">Neue Partie</button>
         </div>
       </div>
 
       <p id="status" role="status"></p>
 
-      <div class="controls">
+      <div class="controls" id="controls" hidden>
         <button id="go" type="button" hidden>Weiter</button>
-        <button id="restart" type="button">Neue Partie</button>
       </div>
 
       <p class="hint">
@@ -454,9 +522,12 @@
       import { createScene, fitHitAreas, render } from './src/render.js';
       import { attachInput } from './src/input.js';
 
+      const SVG_NS = 'http://www.w3.org/2000/svg';
+
       const stage = document.getElementById('stage');
       const statusLine = document.getElementById('status');
       const goButton = document.getElementById('go');
+      const controls = document.getElementById('controls');
       const hud = {
         stage: document.getElementById('hud-stage'),
         stageBest: document.getElementById('hud-stage-best'),
@@ -526,13 +597,73 @@
       let detach = null;
       let boardKey = null;
 
+      /**
+       * Draws one card of the hand: a filled centre and one ring per hop of
+       * reach, so a radius 3 wears three rings. Rings and not a digit because
+       * that is the shape the board itself makes when the signal spreads — the
+       * card and the board then say the same thing in the same language.
+       *
+       * Fixed in a 32-unit box and scaled by the chip, so the small cards and
+       * the big one are one drawing at two sizes. The outermost ring of a
+       * radius 3 lands at 15.2 of the 16 available; the mix in ENDLESS_RUN
+       * tops out there, and a wider reach would need the step reworked rather
+       * than simply extended.
+       * @param {HTMLElement} chip
+       * @param {number|null} radius null for a card that is not dealt
+       */
+      function drawChip(chip, radius) {
+        chip.classList.toggle('empty', radius === null);
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 32 32');
+        svg.setAttribute('role', 'img');
+        svg.setAttribute('aria-label', radius === null ? 'keine Karte' : `Reichweite ${radius}`);
+
+        const core = document.createElementNS(SVG_NS, 'circle');
+        core.setAttribute('class', 'chip-core');
+        core.setAttribute('cx', '16');
+        core.setAttribute('cy', '16');
+        core.setAttribute('r', '3');
+        svg.append(core);
+
+        for (let hop = 0; hop < (radius ?? 0); hop++) {
+          const ring = document.createElementNS(SVG_NS, 'circle');
+          ring.setAttribute('class', 'chip-ring');
+          ring.setAttribute('cx', '16');
+          ring.setAttribute('cy', '16');
+          ring.setAttribute('r', String(6 + hop * 4.2));
+          svg.append(ring);
+        }
+
+        // The digit the rings turned out to need on the small card; see the
+        // measurement next to .chip-digit in the stylesheet.
+        if (radius !== null) {
+          const plate = document.createElementNS(SVG_NS, 'circle');
+          plate.setAttribute('class', 'chip-plate');
+          plate.setAttribute('cx', '26.5');
+          plate.setAttribute('cy', '26.5');
+          plate.setAttribute('r', '5');
+          const digit = document.createElementNS(SVG_NS, 'text');
+          digit.setAttribute('class', 'chip-digit');
+          digit.setAttribute('x', '26.5');
+          digit.setAttribute('y', '29.8');
+          digit.setAttribute('text-anchor', 'middle');
+          digit.textContent = String(radius);
+          svg.append(plate, digit);
+        }
+        chip.replaceChildren(svg);
+      }
+
       /** Rebuilds the SVG only when the board actually changed. */
       function mount() {
         const key = `${state.seed}:${state.stage}`;
         if (key === boardKey) return;
         boardKey = key;
         detach?.();
-        scene = createScene({ graph: state.graph, k: 1 });
+        // A tighter margin than the default: this board is the whole screen,
+        // not one item on a page, and 36 units of air around it cost about a
+        // sixth of the drawing. RING_RADIUS is the floor and render.js clamps
+        // to it, so a transmitter on an outer node still fits its ring.
+        scene = createScene({ graph: state.graph, k: 1 }, { padding: 26 });
         // The end-of-run card lives inside the stage so it can lie over the
         // board; it has to be put back, or the first new board takes it with it.
         stage.replaceChildren(scene.svg, over.card);
@@ -575,26 +706,22 @@
         trackRecords();
 
         hud.stage.textContent = String(state.stage);
-        hud.stageBest.textContent = best.stage > 0 ? `Best ${best.stage}` : '';
+        // Lower case, and the separator comes from CSS: an empty record has to
+        // stay empty, or the dot in front of it shows up on its own.
+        hud.stageBest.textContent = best.stage > 0 ? `best ${best.stage}` : '';
         hud.open.textContent = String(state.uncovered.length);
         hud.openLabel.textContent = state.uncovered.length === 1 ? 'Funkloch' : 'Funklöcher';
         hud.left.textContent = String(state.depot.length);
         hud.score.textContent = String(state.score);
-        hud.scoreBest.textContent = best.score > 0 ? `Best ${best.score}` : '';
+        hud.scoreBest.textContent = best.score > 0 ? `best ${best.score}` : '';
 
-        hud.now.textContent = state.current ?? '–';
-        hud.now.classList.toggle('empty', state.current === null);
-        state.preview.forEach((radius, index) => {
-          hud.next[index].textContent = String(radius);
-          hud.next[index].classList.remove('empty');
-        });
-        for (let i = state.preview.length; i < hud.next.length; i++) {
-          hud.next[i].textContent = '–';
-          hud.next[i].classList.add('empty');
-        }
+        drawChip(hud.now, state.current ?? null);
+        hud.next.forEach((chip, index) => drawChip(chip, state.preview[index] ?? null));
 
         statusLine.classList.toggle('is-won', state.status === 'stageCleared');
         goButton.hidden = state.status !== 'stageCleared';
+        // Nothing to show means no row: the height belongs to the board.
+        controls.hidden = goButton.hidden;
         // On a lost run the card below says everything; a second sentence under
         // the board would only repeat it louder.
         statusLine.textContent =

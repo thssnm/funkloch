@@ -42,6 +42,8 @@ const check = (ok, what) => {
 // What the run should do, computed before the browser ever opens.
 const script = [];
 let state = createRun({ seed, config: ENDLESS_RUN });
+/** The hand the first board is dealt with, to check the cards against. */
+const opening = [state.current, ...state.preview];
 while (state.status === 'playing' || state.status === 'stageCleared') {
   if (state.status === 'stageCleared') {
     script.push({ go: true });
@@ -77,27 +79,86 @@ try {
     'der alte Sendernetz-Rekord wird beim Laden entfernt');
   // Not merely gone from storage: the HUD counts from this run's own stage 1,
   // so the old 99 was never read either.
-  check(await page.textContent('#hud-stage-best') === 'Best 1', 'und nicht übernommen');
+  check(await page.textContent('#hud-stage-best') === 'best 1', 'und nicht übernommen');
 
   const opaque = await page.locator('.node.is-blocked').count();
   const nodes = await page.locator('.node').count();
   console.log(`Brett 1: ${nodes} Knoten, ${opaque} davon undurchlässig`);
   check(nodes === 18, 'erste Etappe hat 18 Knoten');
   check(await page.textContent('#hud-open-label') === 'Funklöcher', 'die Statuszeile zählt Funklöcher');
-  // The word the player reads for the stock of transmitters. It lives in three
-  // places — the HUD, the row of chips, the end card — and a rename that misses
-  // one of them leaves the page speaking two languages about the same thing.
-  check((await page.evaluate(() =>
-    document.getElementById('hud-left').closest('span').textContent.trim())).startsWith('Depot'),
-    'die Statuszeile nennt das Depot');
-  check(await page.locator('.depot .chip').count() === 3,
-    'die Depot-Zeile trägt die Hand und die zwei Vorschauen');
+  // The word the player reads for the stock of transmitters, and a rename that
+  // misses one of its places leaves the page speaking two languages about the
+  // same thing. Number first, label after — the order the race row settled on.
+  check((await page.evaluate(() => document.getElementById('hud-left')
+    .closest('.race-value').textContent.replace(/\s+/g, ' ').trim())).endsWith('Depot'),
+    'die Rennzeile nennt das Depot, Zahl zuerst');
+
+  // --- the three rows of the header ----------------------------------------
+  // Bookkeeping small and dimmed on top, the two numbers of the race below it
+  // at opposite ends of a rule, the hand at the bottom. The order is the point:
+  // it is what says which of these you play against.
+  const head = await page.evaluate(() => {
+    const race = document.querySelector('.race').getBoundingClientRect();
+    return {
+      rows: [...document.querySelectorAll('.head > *')].map((el) => el.className),
+      ledgerPx: parseFloat(getComputedStyle(document.querySelector('.ledger')).fontSize),
+      numberPx: parseFloat(getComputedStyle(document.querySelector('.race-value b')).fontSize),
+      ruleW: Math.round(document.querySelector('.race-rule').getBoundingClientRect().width),
+      // Number before label in both, so the eye learns one order, not two.
+      order: [...document.querySelectorAll('.race-value')]
+        .map((v) => v.firstElementChild.tagName.toLowerCase()),
+      edges: [...document.querySelectorAll('.race-value')].map((v) => {
+        const b = v.getBoundingClientRect();
+        return { left: Math.round(b.left - race.left), right: Math.round(race.right - b.right) };
+      }),
+    };
+  });
+  check(head.rows.join(' ') === 'ledger race hand', `Kopf hat drei Zeilen: ${head.rows.join(' ')}`);
+  check(head.ledgerPx === 13, `die Buchführung misst ${head.ledgerPx}px`);
+  check(head.numberPx >= 24, `die Rennzahlen messen ${head.numberPx}px`);
+  check(head.order.join(',') === 'b,b', 'beide Werte nennen die Zahl vor dem Label');
+  check(head.edges[0].left === 0 && head.edges[1].right === 0,
+    'die beiden Werte sitzen an den Rändern');
+  check(head.ruleW > 100, `die Trennlinie füllt die ${head.ruleW}px dazwischen`);
+  check(await page.locator('.depot-label').count() === 0,
+    'die Wörter in der Hand und danach sind weg');
+
+  // --- reach as rings ------------------------------------------------------
+  const cards = await page.$$eval('.hand .chip', (chips) => chips.map((chip) => ({
+    rings: chip.querySelectorAll('.chip-ring').length,
+    digit: chip.querySelector('.chip-digit')?.textContent ?? null,
+    label: chip.querySelector('svg')?.getAttribute('aria-label') ?? null,
+    width: Math.round(chip.getBoundingClientRect().width),
+  })));
+  check(cards.length === 3, `die Hand zeigt ${cards.length} Karten`);
+  opening.forEach((radius, index) => {
+    check(cards[index]?.rings === radius,
+      `Karte ${index + 1}: ${cards[index]?.rings} Ringe für Reichweite ${radius}`);
+    check(cards[index]?.digit === String(radius),
+      `und die Ziffer sagt ${cards[index]?.digit}`);
+    check(cards[index]?.label === `Reichweite ${radius}`, `vorgelesen: ${cards[index]?.label}`);
+  });
+  check(cards[0].width > cards[1].width && cards[1].width === cards[2].width,
+    `die erste Karte ist größer (${cards[0].width} gegen ${cards[1].width}px)`);
+
+  // --- Neue Partie is not under a running board ----------------------------
+  const restart = await page.evaluate(() => {
+    const button = document.getElementById('restart');
+    return {
+      onCard: button.closest('#over') !== null,
+      laidOut: button.offsetParent !== null,
+      width: button.getBoundingClientRect().width,
+    };
+  });
+  check(restart.onCard === true, 'Neue Partie sitzt auf der Endkarte');
+  check(restart.laidOut === false && restart.width === 0,
+    'und nimmt während der Partie keinen Platz im Layout');
 
   // The mark in front of the stage count is only allowed to sit *in* the row,
   // never to set its height. Measured against the same row with the mark taken
   // out, which is the only comparison that means anything.
   const row = await page.evaluate(() => {
-    const hud = document.querySelector('.hud');
+    const hud = document.querySelector('.ledger');
     const mark = hud.querySelector('.hud-mark');
     const withMark = hud.getBoundingClientRect().height;
     mark.style.display = 'none';
@@ -229,13 +290,22 @@ try {
   check(seen.overScore === String(expected.score), `Karte zeigt ${seen.overScore} Punkte`);
   check(seen.stage === String(expected.stage), `HUD-Etappe ${seen.stage}`);
   check(seen.score === String(expected.score), `HUD-Punkte ${seen.score}`);
-  check(seen.stageBest === `Best ${expected.stage}`, `HUD-Rekord ${seen.stageBest}`);
+  check(seen.stageBest === `best ${expected.stage}`, `HUD-Rekord ${seen.stageBest}`);
   check(seen.overBest === `Etappe ${expected.stage}, ${expected.score} Punkte`,
     `Karte zeigt Bestwert ${seen.overBest}`);
   check(seen.record === true, 'der erste Lauf ist ein Bestwert');
   check(seen.status === '', 'die Statuszeile schweigt beim Verlieren');
   check(seen.stored === JSON.stringify({ stage: expected.stage, score: expected.score }),
     `gespeichert: ${seen.stored}`);
+
+  // The one door into a new game, and the board has to survive being swapped
+  // out from under the card that opened it.
+  check(await page.locator('#over #restart').isVisible() === true,
+    'auf der Endkarte ist Neue Partie erreichbar');
+  await page.click('#restart');
+  await page.waitForSelector('.board .node');
+  check(await page.locator('#over').count() === 1, 'die Karte bleibt im DOM, wenn ein Brett wechselt');
+  check(await page.locator('#over').isVisible() === false, 'und liegt nicht über der neuen Partie');
 
   // A fresh visit remembers the record and starts clean.
   await page.reload();
@@ -246,15 +316,10 @@ try {
     scoreBest: document.getElementById('hud-score-best').textContent,
     over: document.getElementById('over').hidden,
   }));
-  check(after.stageBest === `Best ${expected.stage}`, `Rekord überlebt den Neustart: ${after.stageBest}`);
-  check(after.scoreBest === `Best ${expected.score}`, `Punkterekord überlebt: ${after.scoreBest}`);
+  check(after.stageBest === `best ${expected.stage}`, `Rekord überlebt den Neustart: ${after.stageBest}`);
+  check(after.scoreBest === `best ${expected.score}`, `Punkterekord überlebt: ${after.scoreBest}`);
   check(after.stage === '1', 'die neue Partie steht auf Etappe 1');
   check(after.over === true, 'die Karte ist wieder weg');
-
-  // And the board survives a new board being mounted under it.
-  await page.click('#restart');
-  await page.waitForSelector('.board .node');
-  check(await page.locator('#over').count() === 1, 'die Karte bleibt im DOM, wenn ein Brett wechselt');
 
   check(noise.length === 0, `keine Konsolenfehler${noise.length ? `: ${noise.join(' | ')}` : ''}`);
 } finally {
