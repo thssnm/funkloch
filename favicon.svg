@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Funkloch">
+  <title>Funkloch</title>
+  <!-- The icon in one sentence: four supplied neighbours around a node that is
+       not. Same drawing as the HUD mark in index.html, but with the palette
+       written out — a favicon gets no stylesheet. -->
+  <rect width="64" height="64" rx="14" fill="#10131a"/>
+  <g transform="translate(8 8) scale(2)">
+    <!-- Edges first, so the nodes sit on top of them and clip them short. -->
+    <g fill="none" stroke="#2f6d66" stroke-width="2" stroke-linecap="round">
+      <path d="M4.5 4.5 12 12M19.5 4.5 12 12M4.5 19.5 12 12M19.5 19.5 12 12"/>
+    </g>
+    <!-- The hole: no fill of its own beyond the background, a heavy rim. -->
+    <circle cx="12" cy="12" r="3.6" fill="#10131a" stroke="#8a94a8" stroke-width="2"/>
+    <g fill="#5ad1c0">
+      <circle cx="4.5" cy="4.5" r="2.6"/>
+      <circle cx="19.5" cy="4.5" r="2.6"/>
+      <circle cx="4.5" cy="19.5" r="2.6"/>
+      <circle cx="19.5" cy="19.5" r="2.6"/>
+    </g>
+  </g>
+</svg>

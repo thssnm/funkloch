@@ -24,6 +24,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',

@@ -1,0 +1,17 @@
+{
+  "name": "Funkloch",
+  "short_name": "Funkloch",
+  "description": "Ein Abdeckungspuzzle auf einem Graphen: kein Knoten ohne Signal.",
+  "lang": "de",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#10131a",
+  "theme_color": "#10131a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

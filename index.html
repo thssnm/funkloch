@@ -4,6 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Funkloch</title>
+    <!-- All relative, so the page keeps working under a deploy sub-path. -->
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#10131a" />
     <style>
       :root {
         --bg: #10131a;
@@ -54,6 +59,25 @@
       /* The record sits next to the live number, quieter than it: it is there
          to be aimed at, not to compete with the board. */
       .hud .best { font-size: 13px; font-style: normal; opacity: 0.75; }
+
+      /* The mark, small, ahead of the stage count. It must not set the height
+         of the row: the text already gives the line box 24px, and centring an
+         18px box inside it cannot add to that. Baseline alignment would,
+         which is why this one item opts out of it. */
+      .hud-mark {
+        width: 18px;
+        height: 18px;
+        flex: none;
+        align-self: center;
+        /* The flex gap is meant for the space between readings; the mark
+           belongs to the stage count, so it sits closer than that. */
+        margin-right: -6px;
+      }
+      /* Prefixed on purpose: `.node` and `.edge` belong to the board, and a
+         mark wearing them would answer every selector that asks for one. */
+      .hud-mark .mark-edge { fill: none; stroke: var(--signal-dim); stroke-width: 2; stroke-linecap: round; }
+      .hud-mark .mark-hole { fill: var(--bg); stroke: var(--muted); stroke-width: 2; }
+      .hud-mark .mark-node { fill: var(--signal); }
 
       /* Positioned, so the board can fill it outright: a percentage height on
          a flex item does not resolve against a flex-derived height. */
@@ -248,6 +272,29 @@
          the card would otherwise sit on the board from the first frame on. */
       .over[hidden] { display: none; }
       @keyframes settle { from { opacity: 0; } }
+      /* The wordmark is drawn rather than set: the o is the same ring the
+         board draws for a node with no signal, in the same two colours. Inline
+         SVG and not a file, so it follows the palette instead of having to be
+         redrawn for every change of it. `overflow: visible` matters — the two
+         halves are anchored around the ring, so the total width follows
+         whatever the system font is and may reach past the viewBox. */
+      .wordmark {
+        display: block;
+        width: 184px;
+        max-width: 72vw;
+        height: auto;
+        margin: 0 auto 14px;
+        overflow: visible;
+      }
+      .wordmark text {
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 40px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        fill: var(--text);
+      }
+      .wordmark .mark-hole { fill: none; stroke: var(--muted); stroke-width: 5; }
+
       .over h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; color: var(--muted); }
       .over dl {
         margin: 0;
@@ -355,6 +402,14 @@
 
     <main>
       <div class="hud">
+        <svg class="hud-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path class="mark-edge" d="M4.5 4.5 12 12M19.5 4.5 12 12M4.5 19.5 12 12M19.5 19.5 12 12" />
+          <circle class="mark-hole" cx="12" cy="12" r="3.6" />
+          <g class="mark-node">
+            <circle cx="4.5" cy="4.5" r="2.6" /><circle cx="19.5" cy="4.5" r="2.6" />
+            <circle cx="4.5" cy="19.5" r="2.6" /><circle cx="19.5" cy="19.5" r="2.6" />
+          </g>
+        </svg>
         <span>Etappe <b id="hud-stage">–</b> <i class="best" id="hud-stage-best"></i></span>
         <span><b id="hud-open">–</b> <span id="hud-open-label">Funklöcher</span></span>
         <span>Beutel <b id="hud-left">–</b></span>
@@ -371,6 +426,12 @@
 
       <div id="stage">
         <div class="over" id="over" role="status" hidden>
+          <svg class="wordmark" id="wordmark" viewBox="0 0 184 48" role="img" aria-label="funkloch">
+            <title>funkloch</title>
+            <text x="94" y="40" text-anchor="end">funkl</text>
+            <circle class="mark-hole" cx="114" cy="27" r="14" />
+            <text x="134" y="40">ch</text>
+          </svg>
           <h2>Beutel leer.</h2>
           <dl>
             <dt>Etappe</dt><dd id="over-stage">–</dd>

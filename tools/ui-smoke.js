@@ -84,6 +84,23 @@ try {
   console.log(`Brett 1: ${nodes} Knoten, ${opaque} davon undurchlässig`);
   check(nodes === 18, 'erste Etappe hat 18 Knoten');
   check(await page.textContent('#hud-open-label') === 'Funklöcher', 'die Statuszeile zählt Funklöcher');
+
+  // The mark in front of the stage count is only allowed to sit *in* the row,
+  // never to set its height. Measured against the same row with the mark taken
+  // out, which is the only comparison that means anything.
+  const row = await page.evaluate(() => {
+    const hud = document.querySelector('.hud');
+    const mark = hud.querySelector('.hud-mark');
+    const withMark = hud.getBoundingClientRect().height;
+    mark.style.display = 'none';
+    const without = hud.getBoundingClientRect().height;
+    mark.style.display = '';
+    return { withMark, without, mark: mark.getBoundingClientRect().height };
+  });
+  check(row.withMark === row.without,
+    `die HUD-Zeile bleibt ${row.withMark}px hoch, mit Zeichen wie ohne`);
+  check(row.mark > 0 && row.mark < row.withMark,
+    `das Zeichen misst ${row.mark}px und bleibt damit unter der Zeile`);
   check(opaque === Math.round(18 * ENDLESS_RUN.blockedRatio), 'Blockaden nach Dichte gesetzt');
   check(await page.locator('.node.is-blocked .shell').count() === opaque, 'jede Blockade trägt ihr Achteck');
   check((await page.locator('#over').isVisible()) === false, 'die Endkarte liegt nicht über dem Start');
@@ -113,6 +130,28 @@ try {
     stored: localStorage.getItem('funkloch.endlos.best'),
   }));
   await page.screenshot({ path: `${shots}/ui-over.png` });
+
+  const wordmark = await page.evaluate(() => {
+    const mark = document.getElementById('wordmark');
+    if (mark === null) return null;
+    const box = mark.getBoundingClientRect();
+    const list = document.querySelector('#over dl').getBoundingClientRect();
+    return {
+      label: mark.getAttribute('aria-label'),
+      letters: [...mark.querySelectorAll('text')].map((node) => node.textContent).join(''),
+      ring: mark.querySelector('circle.mark-hole') !== null,
+      width: Math.round(box.width),
+      height: Math.round(box.height),
+      aboveList: box.bottom <= list.top,
+    };
+  });
+  check(wordmark !== null, 'die Endkarte trägt den Schriftzug');
+  check(wordmark?.width > 0 && wordmark?.height > 0,
+    `der Schriftzug wird gezeichnet (${wordmark?.width}×${wordmark?.height}px)`);
+  check(wordmark?.letters === 'funklch' && wordmark?.ring === true,
+    'das o ist der Ring, nicht der Buchstabe');
+  check(wordmark?.label === 'funkloch', 'vorgelesen heißt er trotzdem funkloch');
+  check(wordmark?.aboveList === true, 'er steht über Etappe, Punkten und Bestwert');
 
   check(seen.overStage === String(expected.stage), `Karte zeigt Etappe ${seen.overStage}`);
   check(seen.overScore === String(expected.score), `Karte zeigt ${seen.overScore} Punkte`);

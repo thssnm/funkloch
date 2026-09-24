@@ -108,3 +108,10 @@ Vorausdenken belohnt.
   devDependency und nur für `tools/preview.js` und `tools/ui-smoke.js`.
 - Nach Änderungen an `index.html`, `render.js` oder `input.js`: `npm run smoke`.
   Element-IDs sind die Nahtstelle zwischen Seite und Test.
+- `.node`, `.edge` und `.dot` gehören dem Brett. Anderes SVG auf der Seite —
+  Marke, Icons — braucht eigene Klassennamen (`.mark-node`, `.mark-edge`), sonst
+  antwortet es auf jeden Selektor, der einen Knoten meint, und `.node`
+  zählt plötzlich 19 statt 18.
+- Die App-Icons sind abgeleitet, nicht gezeichnet: `favicon.svg` ist die Quelle,
+  `tools/make-icons.js` rastert sie. Wer ein PNG von Hand ändert, gabelt das
+  Icon in vier leicht verschiedene Zeichnungen.
