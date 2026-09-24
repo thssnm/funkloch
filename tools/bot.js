@@ -13,7 +13,7 @@
  */
 
 import { bfsWithin } from '../src/graph.js';
-import { advance, createRun, DEFAULT_RUN, place, remove } from '../src/run.js';
+import { advance, createRun, DEFAULT_RUN, place } from '../src/run.js';
 
 /**
  * Best node for the transmitter in hand: the one lighting the most dark nodes.
@@ -148,86 +148,6 @@ export function lookaheadChoice(state) {
 }
 
 /**
- * Like {@link lookaheadChoice}, but also willing to clear a node it has already
- * used. Removal costs the transmitter that was standing there and gives nothing
- * back, so it only pays when the node itself is worth more than the ball it
- * currently carries — a radius-1 sitting where a radius-3 wants to go.
- *
- * Repairs are considered for the move in hand only; the two lookahead plies
- * stay on free nodes.
- *
- * @param {object} state
- * @returns {{remove: *|null, place: *}|null}
- */
-export function repairChoice(state) {
-  const { ids, balls } = tableFor(state.graph);
-  const size = ids.length;
-  const full = size === 32 ? -1 : (1 << size) - 1;
-
-  const standing = [];
-  let occupied = 0;
-  for (const [id, radius] of state.radii) {
-    const i = ids.indexOf(id);
-    occupied |= 1 << i;
-    standing.push({ i, mask: balls[i * 4 + radius] });
-  }
-  const coveredBy = (skip) => {
-    let mask = 0;
-    for (let j = 0; j < standing.length; j++) if (j !== skip) mask |= standing[j].mask;
-    return mask;
-  };
-  const covered = coveredBy(-1);
-
-  const horizon = [state.current, ...state.preview].filter((radius) => radius !== undefined);
-  let best = { score: -1, gain: -1, place: -1, remove: null };
-
-  /** Explores the two hypothetical plies over free nodes. */
-  const walk = (depth, mask, used, opening) => {
-    if (depth === horizon.length || mask === full) {
-      const score = popcount(mask);
-      if (score > best.score || (score === best.score && opening.gain > best.gain)) {
-        best = { score, gain: opening.gain, place: opening.place, remove: opening.remove };
-      }
-      return;
-    }
-    const radius = horizon[depth];
-    for (let i = 0; i < size; i++) {
-      if (used & (1 << i)) continue;
-      const next = mask | balls[i * 4 + radius];
-      if (next === mask) continue;
-      walk(depth + 1, next, used | (1 << i), opening);
-    }
-  };
-
-  const radius = horizon[0];
-  // Plain placements on free nodes.
-  for (let i = 0; i < size; i++) {
-    if (occupied & (1 << i)) continue;
-    const next = covered | balls[i * 4 + radius];
-    if (next === covered) continue;
-    walk(1, next, occupied | (1 << i), {
-      place: i, remove: null, gain: popcount(next) - popcount(covered),
-    });
-  }
-  // Placements that first clear the node.
-  for (let j = 0; j < standing.length; j++) {
-    const i = standing[j].i;
-    const withoutIt = coveredBy(j);
-    const next = withoutIt | balls[i * 4 + radius];
-    if (next === withoutIt) continue;
-    walk(1, next, occupied | (1 << i), {
-      place: i, remove: i, gain: popcount(next) - popcount(covered),
-    });
-  }
-
-  if (best.place >= 0) {
-    return { place: ids[best.place], remove: best.remove === null ? null : ids[best.remove] };
-  }
-  const free = state.graph.nodes.find((node) => !state.radii.has(node.id));
-  return free ? { place: free.id, remove: null } : null;
-}
-
-/**
  * Plays one run to the end.
  * @param {number} seed
  * @param {object} config
@@ -238,7 +158,6 @@ export function repairChoice(state) {
 export function playRun(seed, config, choose = greedyChoice) {
   let state = createRun({ seed, config });
   let placements = 0;
-  let removals = 0;
   while (state.status === 'playing' || state.status === 'stageCleared') {
     if (state.status === 'stageCleared') {
       state = advance(state);
@@ -246,15 +165,7 @@ export function playRun(seed, config, choose = greedyChoice) {
     }
     const choice = choose(state);
     if (choice === null) break;
-    if (typeof choice === 'object') {
-      if (choice.remove !== null && choice.remove !== undefined) {
-        state = remove(state, choice.remove);
-        removals++;
-      }
-      state = place(state, choice.place);
-    } else {
-      state = place(state, choice);
-    }
+    state = place(state, choice);
     placements++;
   }
   return {
@@ -262,7 +173,6 @@ export function playRun(seed, config, choose = greedyChoice) {
     score: state.score,
     stagesCleared: state.cleared.length,
     placements,
-    removals,
     lostAt: state.status === 'won' ? 0 : state.stage,
   };
 }
@@ -286,10 +196,9 @@ export function playGreedy(seed, config) {
  */
 function compare(config, runs, firstSeed) {
   const result = {
-    greedyWins: 0, planWins: 0, repairWins: 0,
-    greedyLost: [0, 0, 0], planLost: [0, 0, 0], repairLost: [0, 0, 0],
-    greedyScore: 0, planScore: 0, repairScore: 0,
-    removalsUsed: 0, runsWithRemoval: 0,
+    greedyWins: 0, planWins: 0,
+    greedyLost: [0, 0, 0], planLost: [0, 0, 0],
+    greedyScore: 0, planScore: 0,
     firstMoveDiffers: 0, movesDiffer: 0, moves: 0,
   };
 
@@ -301,12 +210,6 @@ function compare(config, runs, firstSeed) {
     else result.greedyLost[greedy.lostAt - 1]++;
     if (planned.won) { result.planWins++; result.planScore += planned.score; }
     else result.planLost[planned.lostAt - 1]++;
-
-    const repaired = playRun(seed, config, repairChoice);
-    if (repaired.won) { result.repairWins++; result.repairScore += repaired.score; }
-    else result.repairLost[repaired.lostAt - 1]++;
-    if (repaired.removals > 0) result.runsWithRemoval++;
-    result.removalsUsed += repaired.removals;
 
     // How often the two even want different things, walked along the greedy line.
     let state = createRun({ seed, config });
@@ -358,24 +261,20 @@ function compareMain(runs, firstSeed) {
     const r = compare(config, runs, firstSeed);
     const pct = (x) => `${((100 * x) / runs).toFixed(1)}%`;
     rows.push([
-      label, depots.join('/'), pct(r.greedyWins), pct(r.planWins), pct(r.repairWins),
+      label, depots.join('/'), pct(r.greedyWins), pct(r.planWins),
       `+${(((r.planWins - r.greedyWins) * 100) / runs).toFixed(1)}`,
-      `${(((r.repairWins - r.planWins) * 100) / runs).toFixed(1)}`,
-      pct(r.runsWithRemoval),
-      (r.removalsUsed / runs).toFixed(2),
       pct(r.firstMoveDiffers),
     ]);
-    spread.push([label, r.greedyLost.join('/'), r.planLost.join('/'), r.repairLost.join('/')]);
+    spread.push([label, r.greedyLost.join('/'), r.planLost.join('/')]);
   }
 
   printTable(
-    ['Depot', 'Groessen', 'gierig', 'voraus', 'voraus+rep', 'Abstand g->v', 'Gewinn durch rep',
-     'Partien mit Entfernen', 'Entfernen je Partie', 'Zug 1 abweichend'],
+    ['Depot', 'Groessen', 'gierig', 'voraus', 'Abstand g->v', 'Zug 1 abweichend'],
     rows,
   );
   console.log();
   printTable(
-    ['Depot', 'gierig verliert in 1/2/3', 'voraus verliert in 1/2/3', 'voraus+rep verliert in 1/2/3'],
+    ['Depot', 'gierig verliert in 1/2/3', 'voraus verliert in 1/2/3'],
     spread,
   );
   console.log(`\n${runs} Partien je Konfiguration, beide Bots auf denselben Seeds`);

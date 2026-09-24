@@ -232,12 +232,6 @@
       .hit:focus-visible { stroke: var(--text); stroke-width: 2; stroke-dasharray: 4 4; }
       .node.is-pressed .dot { transform: scale(1.35); transition-duration: 80ms; }
       .node.is-pressed.is-covered .dot { transform: scale(1.5); }
-      /* Held long enough to register. Without a range preview to light up, the
-         node itself has to say that the press was noticed. */
-      .node.is-inspecting .dot { stroke: var(--text); stroke-width: 3; }
-      /* Held long enough that letting go will take the transmitter off. */
-      .node.is-arming.is-transmitter .dot { fill: var(--over); stroke: var(--over); }
-      .node.is-arming.is-transmitter .ring { stroke: var(--over); stroke-dasharray: 5 5; }
 
       /* ---- win: one calm breath, nothing more -----------------------------
          Brightness, not opacity: fading the dots would let the edges show
@@ -450,15 +444,13 @@
       </div>
 
       <p class="hint">
-        Tippen setzt den Sender aus der Hand. Langes Halten auf einem gesetzten
-        Sender nimmt ihn wieder weg — er ist trotzdem verbraucht. Mit Maus:
-        rechte Taste. Achteckige Knoten leuchten selbst, geben das Signal aber
-        nicht weiter.
+        Tippen setzt den Sender aus der Hand — gesetzt ist gesetzt. Achteckige
+        Knoten leuchten selbst, geben das Signal aber nicht weiter.
       </p>
     </main>
 
     <script type="module">
-      import { advance, createRun, ENDLESS_RUN, place, remove } from './src/run.js';
+      import { advance, createRun, ENDLESS_RUN, place } from './src/run.js';
       import { createScene, fitHitAreas, render } from './src/render.js';
       import { attachInput } from './src/input.js';
 
@@ -546,13 +538,13 @@
         stage.replaceChildren(scene.svg, over.card);
         detach = attachInput(scene, {
           onToggle: (id) => apply(place(state, id)),
-          // Long press, or right click on a desktop: take a placed transmitter
-          // back off. It is spent either way, so this repairs a misplacement
-          // without making placements free.
-          onToggleMark: (id) => apply(remove(state, id)),
-          // Deliberately empty. Estimating how far a transmitter reaches is the
-          // game; reading it off a highlight is not. showRange stays in
-          // render.js for the other modes.
+          // No onToggleMark on purpose: a placement is final here, so the board
+          // has exactly one action and input.js leaves the hold ladder off. A
+          // tap places, however long the finger rests.
+          //
+          // onPreview is empty for its own reason. Estimating how far a
+          // transmitter reaches is the game; reading it off a highlight is not.
+          // showRange stays in render.js for the other modes.
           onPreview: () => {},
           onPreviewEnd: () => {},
         });

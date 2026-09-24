@@ -6,11 +6,11 @@
  * place it. Clear the board before the depot runs out and whatever is left over
  * counts as score; run out with nodes still dark and the run is over.
  *
- * A placed transmitter can be taken off the board again, but it does not go
- * back into the depot — the card is spent either way. So a misplacement can be
- * repaired, at the cost of the transmitter, and placing still carries a real
- * price. What removal actually buys is the *node*: a radius-1 sitting on the
- * spot a radius-3 wants can be cleared out of the way.
+ * A placement is final. Lifting a placed transmitter back off the board was
+ * allowed once — it stayed spent either way, so what the lift bought was the
+ * *node*, not the card — and it is gone again: the planning bot reached for it
+ * in 5.7% of runs and gained 0.5 percentage points of win rate for it, which
+ * does not pay for blurring the one rule the whole mode rests on.
  *
  * Everything random is derived from `(seed, stage)`, so no rng state has to be
  * carried around: the state stays pure, serializable and replayable, and a bot
@@ -84,11 +84,27 @@ export const ENDLESS_RUN = {
    *
    * Kept as low as board variation allows, because it is not free: blocking
    * hits the planning bot harder than the greedy one, so the reward for
-   * thinking ahead shrinks with every node made opaque. Measured over 500 runs
-   * per density (mean stage reached, greedy vs. planning, and the planner's
-   * spread): at 0.12 the ratio between the bots falls to 1.94 and the spread to
-   * SD 4.56, while 0.05 still holds 2.14 and SD 6.63 — against 2.49 and SD 9.37
-   * on a board with nothing blocked at all.
+   * thinking ahead shrinks with every node made opaque. Mean stage reached,
+   * greedy vs. planning, with the planner's spread; `tools/blocked.js --bots`.
+   *
+   * Re-measured on the shipped tree, 500 runs per density, same tool and the
+   * same run count as the table it replaces: at 0.12 the ratio between the bots
+   * falls to 1.98 and the spread to SD 5.13, while 0.05 still holds 2.24 and
+   * SD 7.18 — against 2.47 and SD 9.74 on a board with nothing blocked at all.
+   *
+   *   0.00   5.57 / 13.74   2.47x   SD 9.74
+   *   0.05   5.23 / 11.73   2.24x   SD 7.18   <- this one
+   *   0.12   4.80 /  9.51   1.98x   SD 5.13
+   *   0.20   4.33 /  7.70   1.78x   SD 3.07
+   *   0.40   3.26 /  5.61   1.72x   SD 1.57
+   *
+   * The same run also covered 0.10 (4.90 / 10.02, 2.04x, SD 5.26), 0.15
+   * (4.62 / 8.91, 1.93x, SD 4.09) and 0.30 (3.76 / 6.58, 1.75x, SD 2.11).
+   *
+   * The table below is the one the density was originally chosen against. It
+   * stays because that is what the choice was made on. Neither bot has ever
+   * lifted a transmitter, so dropping that rule is not what moved the digits —
+   * the ordering and the shape are unchanged either way:
    *
    *   0.00   5.8 / 14.5   2.49x   SD 9.37
    *   0.05   5.3 / 11.3   2.14x   SD 6.63   <- this one
@@ -101,6 +117,10 @@ export const ENDLESS_RUN = {
    * holding it there, not the blocking. Re-measured over 1000 runs per density
    * on identical boards, the three that matter come out at 2.54x / 2.27x /
    * 1.93x for 0 / 0.05 / 0.15 — the same picture, a little sharper.)
+   *
+   * The endless sweep at the shipped density agrees with the fresh table:
+   * 1000 runs at 0.05 give 5.15 / 11.68, 2.27x, SD 7.06
+   * (`tools/endless.js --runs=1000`).
    *
    * An array instead of a number is drawn from uniformly, once per stage, so
    * the density can vary from board to board rather than being a constant of
@@ -320,22 +340,6 @@ export function place(state, id) {
   return next.status === 'playing' || next.status === 'lost'
     ? next
     : { ...next, cleared: [...state.cleared, { stage: state.stage, left: rest.length }] };
-}
-
-/**
- * Takes a placed transmitter back off the board. The transmitter is spent: it
- * does not return to the depot, so this never makes a placement risk-free — it
- * only frees the node it was standing on.
- *
- * A no-op on an empty node or once the run is over.
- * @param {object} state
- * @param {*} id
- * @returns {object}
- */
-export function remove(state, id) {
-  if (state.status !== 'playing') return state;
-  if (!state.radii.has(id)) return state;
-  return build(state, state.placed.filter((entry) => entry.id !== id), state.depot);
 }
 
 /**

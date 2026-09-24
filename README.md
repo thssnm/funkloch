@@ -25,9 +25,11 @@ Levels sind nach der höchsten Schlussregel sortiert, die sie erzwingen
 **Depot-Lauf** (`DEFAULT_RUN` in `src/run.js`) — drei wachsende Etappen (18,
 24, 30 Knoten) und ein Depot voller Sender mit Radius 1, 2 oder 3. Man zieht den
 vordersten, sieht die nächsten zwei, setzt ihn. Wer ein Brett räumt, bevor das
-Depot leer ist, behält den Rest als Punkte. Ein gesetzter Sender lässt sich
-wieder abnehmen, wandert aber nicht zurück ins Depot — die Karte ist so
-oder so verbraucht. Was das Abnehmen kauft, ist der *Knoten*.
+Depot leer ist, behält den Rest als Punkte. Gesetzt ist gesetzt: ein Sender
+lässt sich nicht wieder abnehmen. Das Abnehmen gab es einmal — es kostete die
+Karte und gab nur den Knoten zurück —, und es ist gemessen wieder verschwunden:
+der planende Bot griff in 5,7 % der Partien danach und gewann 0,5 Prozentpunkte
+damit, zu wenig für die klarste Regel des Spiels.
 
 **Endlos** (`ENDLESS_RUN` in `src/run.js`) — dasselbe ohne letzte Etappe. Das
 Brett wächst (18 → 60 Knoten), das Depot schrumpft relativ dazu (0,24 → 0,15

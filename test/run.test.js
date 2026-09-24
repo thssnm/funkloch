@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { bfsWithin, bfsWithinBlocked } from '../src/graph.js';
+import * as run from '../src/run.js';
 import {
-  advance, createRun, DEFAULT_RUN, ENDLESS_RUN, place, remove, snapshot, stageSpec,
+  advance, createRun, DEFAULT_RUN, ENDLESS_RUN, place, snapshot, stageSpec,
 } from '../src/run.js';
-import { greedyChoice, playGreedy, repairChoice } from '../tools/bot.js';
+import { greedyChoice, playGreedy } from '../tools/bot.js';
 
 /** A small, quick run for the tests. */
 const tiny = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.5 };
@@ -68,6 +69,13 @@ test('place', async (t) => {
     assert.equal(place(once, run.graph.nodes[0].id), once, 'a node holds at most one transmitter');
   });
 
+  await t.test('is the only way the board changes', () => {
+    // Lifting a placed transmitter was measured and dropped: the planner used
+    // it in 5.7% of runs for 0.5 percentage points of win rate. The rule is
+    // now that a placement is final, and the module offers no way around it.
+    assert.equal('remove' in run, false, 'run.js must not grow a remove() again');
+  });
+
   await t.test('ends the run when the depot runs out on an unfinished board', () => {
     // Spend the whole depot on one corner of the board.
     let run = createRun({ seed: 5, config: { ...tiny, depotRatio: 0.25, composition: [[1, 1]] } });
@@ -78,62 +86,6 @@ test('place', async (t) => {
     assert.equal(run.depot.length, 0);
     assert.ok(run.uncovered.length > 0);
     assert.equal(place(run, order[i]), run, 'a finished run accepts nothing more');
-  });
-});
-
-test('remove', async (t) => {
-  await t.test('takes a transmitter off but keeps the card spent', () => {
-    const run = createRun({ seed: 3, config: tiny });
-    const target = run.graph.nodes[0].id;
-    const placed = place(run, target);
-    const lifted = remove(placed, target);
-
-    assert.equal(lifted.placed.length, 0);
-    assert.equal(lifted.covered.size, 0);
-    assert.equal(lifted.depot.length, placed.depot.length,
-      'the transmitter must not go back into the depot');
-    assert.equal(lifted.current, placed.current, 'and the hand is unchanged');
-  });
-
-  await t.test('frees the node for a different transmitter', () => {
-    const run = createRun({ seed: 3, config: tiny });
-    const target = run.graph.nodes[0].id;
-    const again = place(remove(place(run, target), target), target);
-    assert.deepEqual(again.placed.map((entry) => entry.id), [target]);
-    // Two transmitters spent, one on the board.
-    assert.equal(again.depot.length, run.depot.length - 2);
-  });
-
-  await t.test('leaves everything else alone', () => {
-    let run = createRun({ seed: 3, config: tiny });
-    const [first, second] = run.graph.nodes.map((node) => node.id);
-    run = place(place(run, first), second);
-    const lifted = remove(run, first);
-    assert.deepEqual(lifted.placed.map((entry) => entry.id), [second]);
-    assert.ok(lifted.radii.has(second));
-    assert.ok(!lifted.radii.has(first));
-  });
-
-  await t.test('is a no-op where there is nothing to take off', () => {
-    const run = createRun({ seed: 3, config: tiny });
-    assert.equal(remove(run, run.graph.nodes[0].id), run);
-    assert.equal(remove(run, 'ghost'), run);
-  });
-
-  await t.test('cannot rescue a finished run', () => {
-    let run = createRun({ seed: 5, config: { ...tiny, depotRatio: 0.25, composition: [[1, 1]] } });
-    const order = run.graph.nodes.map((node) => node.id);
-    let i = 0;
-    while (run.status === 'playing') run = place(run, order[i++]);
-    assert.equal(run.status, 'lost');
-    assert.equal(remove(run, order[0]), run, 'the depot is empty; nothing can be undone');
-  });
-
-  await t.test('does not mutate the state it was given', () => {
-    const placed = place(createRun({ seed: 3, config: tiny }), createRun({ seed: 3, config: tiny }).graph.nodes[0].id);
-    const before = snapshot(placed);
-    remove(placed, placed.placed[0].id);
-    assert.deepEqual(snapshot(placed), before);
   });
 });
 
@@ -226,26 +178,6 @@ test('the greedy bot', async (t) => {
 
   await t.test('is deterministic', () => {
     assert.deepEqual(playGreedy(7, DEFAULT_RUN), playGreedy(7, DEFAULT_RUN));
-  });
-
-  await t.test('the repairing bot only removes when it pays', () => {
-    // Removing costs the whole ball and returns only the node, so a planner
-    // should reach for it rarely — the option must not become a safety net.
-    let removals = 0;
-    for (let seed = 1; seed <= 40; seed++) {
-      let state = createRun({ seed, config: DEFAULT_RUN });
-      while (state.status === 'playing' || state.status === 'stageCleared') {
-        if (state.status === 'stageCleared') { state = advance(state); continue; }
-        const choice = repairChoice(state);
-        if (choice === null) break;
-        if (choice.remove !== null) {
-          removals++;
-          state = remove(state, choice.remove);
-        }
-        state = place(state, choice.place);
-      }
-    }
-    assert.ok(removals < 8, `expected repairs to stay rare, saw ${removals} in 40 runs`);
   });
 
   await t.test('beats a depot that is plainly big enough', () => {

@@ -114,6 +114,68 @@ try {
   check((await page.locator('#over').isVisible()) === false, 'die Endkarte liegt nicht über dem Start');
   await page.screenshot({ path: `${shots}/ui-board.png` });
 
+  // --- the gesture that is gone --------------------------------------------
+  // Placing is final in this mode, so the board has one action and the hold
+  // ladder is switched off: no arming cue, no long press, no right click that
+  // lifts anything. Checked on an actual transmitter — on an empty node every
+  // one of these would "pass" by doing nothing at all.
+  const boardIds = await page.$$eval('.board .node', (nodes) => nodes.map((n) => n.dataset.id));
+  const isSender = (id) => page.locator(`.node[data-id="${id}"].is-transmitter`).count();
+  /** Presses with a finger, holds, and reports the node before and after release. */
+  const hold = async (id, ms) => {
+    const at = await page.$eval(`.node[data-id="${id}"] .hit`, (hit) => {
+      const box = hit.getBoundingClientRect();
+      return { clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 };
+    });
+    const init = { pointerType: 'touch', pointerId: 7, isPrimary: true, button: 0, ...at };
+    const hit = `.node[data-id="${id}"] .hit`;
+    await page.dispatchEvent(hit, 'pointerdown', init);
+    await page.waitForTimeout(ms);
+    const during = await page.$eval(`.node[data-id="${id}"]`, (n) => [...n.classList]);
+    await page.dispatchEvent(hit, 'pointerup', init);
+    await page.waitForTimeout(150);
+    return { during, after: await page.$eval(`.node[data-id="${id}"]`, (n) => [...n.classList]) };
+  };
+
+  const [standing, slow, viaKey] = boardIds;
+  await page.click(`.node[data-id="${standing}"] .hit`);
+  check(await isSender(standing) === 1, 'ein Tipp setzt den Sender');
+
+  const onSender = await hold(standing, 900);
+  check(!onSender.during.includes('is-arming') && !onSender.during.includes('is-inspecting'),
+    `langes Halten kündigt nichts an (${onSender.during.join(' ')})`);
+  check(await isSender(standing) === 1, 'und nimmt den gesetzten Sender nicht weg');
+
+  await page.click(`.node[data-id="${standing}"] .hit`, { button: 'right' });
+  check(await isSender(standing) === 1, 'die rechte Maustaste nimmt ihn auch nicht weg');
+
+  // Without the ladder a slow tap is still a tap; there is no band left in
+  // which a press means "I am only looking".
+  const onFree = await hold(slow, 900);
+  check(onFree.after.includes('is-transmitter'),
+    `ein langsamer Tipp setzt trotzdem (${onFree.after.join(' ')})`);
+
+  // Three things the gesture used to carry that have to survive without it.
+  check(await page.$eval('.board', (svg) => svg.style.touchAction) === 'manipulation',
+    'touch-action bleibt auf manipulation');
+  check(await page.evaluate((id) => {
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    document.querySelector(`.node[data-id="${id}"] .hit`).dispatchEvent(event);
+    return event.defaultPrevented;
+  }, standing) === true, 'das Kontextmenü bleibt über dem Brett unterdrückt');
+
+  await page.focus(`.node[data-id="${viaKey}"] .hit`);
+  await page.keyboard.press('Enter');
+  check(await isSender(viaKey) === 1, 'die Tastatur setzt weiterhin mit Enter');
+  await page.keyboard.press('m');
+  check(await isSender(viaKey) === 1, 'und m tut nichts mehr');
+
+  // Back to a clean board: the scripted run below expects an untouched stage 1.
+  await page.reload();
+  await page.waitForSelector('.board .node');
+  check(await page.locator('.node.is-transmitter').count() === 0,
+    'der Neustart räumt das Brett für den gespielten Lauf');
+
   for (const step of script) {
     if (step.go) await page.click('#go');
     else await page.click(`.node[data-id="${step.id}"] .hit`);
