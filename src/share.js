@@ -3,7 +3,7 @@
  * address of the game, and nothing else.
  *
  *   funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
- *   funkloch.thssn.dev
+ *   https://funkloch.thssn.dev
  *
  * Pure and DOM-free like the rest of the game half: it reads a run state and
  * returns a string, so the page, the tests and the smoke test's expectations
@@ -27,11 +27,12 @@
  * reads it in a chat can follow it to today's board. Kept here and nowhere
  * else, so moving the game is a change to this line.
  *
- * Without a scheme on purpose: chat apps link a bare host anyway, and it reads
- * as a name rather than as an address. The game's own domain; until 2026-10-12
- * this was the Vercel host, funkloch.vercel.app.
+ * With the scheme, so that it is a link everywhere. A bare host was linked by
+ * most chat apps but not all, and only by guessing from the top-level domain;
+ * `https://` takes the guess away. Until 2026-10-12 it was written bare, and
+ * before that it was the Vercel host, funkloch.vercel.app.
  */
-export const GAME_URL = 'funkloch.thssn.dev';
+export const GAME_URL = 'https://funkloch.thssn.dev';
 
 /**
  * The name at the head of every shared result, written the way the wordmark

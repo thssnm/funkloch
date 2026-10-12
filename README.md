@@ -66,10 +66,10 @@ in `src/share.js`:
 
 ```
 funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
-funkloch.thssn.dev
+https://funkloch.thssn.dev
 ```
 
-Die zweite Zeile ist die Adresse des Spiels (`GAME_URL` in `src/share.js`).
+Die zweite Zeile ist die Adresse des Spiels als Link (`GAME_URL` in `src/share.js`).
 Nichts davon verrät das Brett. Eine Grafik des Verlaufs gibt es nicht mehr;
 warum keine, steht in `MESSUNGEN.md`.
 

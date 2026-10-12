@@ -789,8 +789,8 @@ try {
   // share.js, for the same reason as the header.
   check(lines.length === 2, `zwei Zeilen, keine Grafik (${lines.length})`);
   check(lines[0] === expectedHeader, `Kopfzeile: ${lines[0]}`);
-  check(lines.at(-1) === 'funkloch.thssn.dev', `letzte Zeile: ${lines.at(-1)}`);
-  check((viaSheet.sent ?? '').includes('funkloch.thssn.dev'), 'der geteilte Text enthält die URL');
+  check(lines.at(-1) === 'https://funkloch.thssn.dev', `letzte Zeile: ${lines.at(-1)}`);
+  check((viaSheet.sent ?? '').includes('https://funkloch.thssn.dev'), 'der geteilte Text enthält die URL als Link');
   check(!(viaSheet.sent ?? '').includes('vercel.app'), 'und nicht mehr die alte Vercel-Adresse');
   check(lines[0].includes('24.09.'), 'sie nennt das Datum');
   check(lines[0].includes(`${plan.cleared} Level geschafft`), 'sie nennt die geschafften Level');

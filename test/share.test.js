@@ -45,7 +45,7 @@ test('shareText', async (t) => {
     const long = finished(Array.from({ length: 32 }, (_, i) => i % 4), 251);
     assert.equal(
       shareText(long, '2026-11-21'),
-      'funkl○ch 21.11. — 32 Level geschafft, 251 Punkte\nfunkloch.thssn.dev',
+      'funkl○ch 21.11. — 32 Level geschafft, 251 Punkte\nhttps://funkloch.thssn.dev',
     );
   });
 
@@ -53,7 +53,7 @@ test('shareText', async (t) => {
     const lines = shareText(state, '2026-09-24').split('\n');
     assert.equal(lines.at(-1), GAME_URL);
     assert.equal(lines.filter((line) => line.includes(GAME_URL)).length, 1);
-    assert.equal(GAME_URL, 'funkloch.thssn.dev');
+    assert.equal(GAME_URL, 'https://funkloch.thssn.dev');
   });
 
   await t.test('counts every level a played run cleared', () => {
