@@ -398,7 +398,20 @@ try {
   check(await page.locator('.node.is-transmitter').count() === 0,
     'der Neustart räumt das Brett für den gespielten Lauf');
 
+  let firstGo = true;
   for (const step of script) {
+    if (step.go && firstGo) {
+      // Level 1 just cleared, with senders to spare. They score nothing, and
+      // the status line says how points work instead of counting them.
+      firstGo = false;
+      const after = await page.evaluate(() => ({
+        status: document.getElementById('status').textContent,
+        score: document.getElementById('hud-score').textContent,
+      }));
+      check(after.score === '0', `nach dem Einstiegsbrett stehen ${after.score} Punkte`);
+      check(after.status === 'Level 1 geschafft. Ab jetzt bringt jeder übrige Sender Punkte.',
+        `die Statuszeile erklärt die Punkte: ${after.status}`);
+    }
     if (step.go) await page.click('#go');
     else await page.click(`.node[data-id="${step.id}"] .hit`);
   }
@@ -711,12 +724,15 @@ try {
   // --- das geteilte Ergebnis -----------------------------------------------
   // The expectation is built here from the planned run, not by importing
   // share.js: a test that borrows the page's own formatter would agree with
-  // it however wrong it was. Squares for spared senders, a dot for a level
-  // cleared with none to spare, a cross where the run ended.
+  // it however wrong it was. One mark per level for the senders spared there —
+  // · none, ○ one, ● two or more — a cross where the run ended, and nothing for
+  // the onboarding level, which scores nothing and every run clears. It still
+  // counts in the header.
   const pointsWord = plan.score === 1 ? 'Punkt' : 'Punkte';
-  const expectedHeader = `funkloch 24.09. — ${plan.cleared} Level geschafft, ${plan.score} ${pointsWord}`;
-  const expectedMarks = [...plan.spared.map((left) => (left > 0 ? '■'.repeat(left) : '·')), '×'];
-  console.log(`erwartet: ${expectedMarks.join(' ')}`);
+  // The name as the wordmark draws it, with the ring for the o.
+  const expectedHeader = `funkl○ch 24.09. — ${plan.cleared} Level geschafft, ${plan.score} ${pointsWord}`;
+  const expectedMarks = [...plan.spared.slice(1).map((left) => (left === 0 ? '·' : left === 1 ? '○' : '●')), '×'];
+  console.log(`erwartet: ${expectedMarks.join('')}`);
 
   const button = await daily.evaluate(() => {
     const share = document.getElementById('share');
@@ -766,11 +782,14 @@ try {
   check(lines[0].includes('24.09.'), 'sie nennt das Datum');
   check(lines[0].includes(`${plan.cleared} Level geschafft`), 'sie nennt die geschafften Level');
   check(lines[0].includes(`${plan.score} ${pointsWord}`), `sie nennt die Punkte (${pointsWord}; „1 Punkt" prüft test/share.test.js)`);
-  const marks = body.join(' ').split(' ');
-  check(marks.join(' ') === expectedMarks.join(' '),
-    `die Blöcke entsprechen den gesparten Sendern: ${marks.join(' ')}`);
-  check(body.every((line) => !line.includes(' ')),
-    'zwischen den Blöcken stehen nur geschützte Leerzeichen');
+  // The spaces only group the marks in fives; taken out, one character is one
+  // level.
+  const marks = [...body.join('').replace(/\s/g, '')];
+  check(marks.join('') === expectedMarks.join(''),
+    `die Zeichen entsprechen den gesparten Sendern ab Level 2: ${body.join(' / ')}`);
+  check(body.every((line) => line.split(' ').every((group) => group.length <= 5)),
+    'in Fünfergruppen');
+  check(marks.every((mark) => /^[·○●×]$/.test(mark)), 'ein Zeichen je Level, nur · ○ ● und ×');
   // Nothing that would hand the reader the board, let alone the moves.
   check(!/r\d+c\d+/.test(viaSheet.sent ?? ''), 'es verrät keinen Knoten');
 

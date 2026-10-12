@@ -39,7 +39,8 @@ Modus, den `index.html` spielt.
 Level 1 ist das Einstiegsbrett und gehört nicht zur Kurve: 9 Knoten, 6 Sender,
 keine Achtecke. Es erklärt die Regel, indem man es gewinnt — Antippen setzt,
 das Signal breitet sich aus, alles muss versorgt sein —, und es ist so
-ausgelegt, dass auch der gierige Bot es nie verliert.
+ausgelegt, dass auch der gierige Bot es nie verliert. Weil es so großzügig ist,
+bringen seine Reste keine Punkte; es zählt aber als geschafft.
 
 Bestwert sind die **Punkte**, und nur sie. Das Level ist Standanzeige ohne
 eigenen Rekord: zwei Bestwerte ließen offen, welcher zählt, und von den beiden
@@ -61,20 +62,22 @@ Brett, statt eine neue Partie anzubieten. Umgeschaltet wird in der Kopfzeile.
 „Ergebnis teilen" öffnet auf dem Handy die native Teilen-Auswahl (Web Share
 API), sonst kopiert es in die Zwischenablage und sagt „Kopiert."; klappt auch
 das nicht, steht der Text zum Markieren da. Geteilt wird das Ergebnis und ein
-Bild des Verlaufs, gebaut in `src/share.js`:
+Streifen des Verlaufs, gebaut in `src/share.js`:
 
 ```
-funkloch 06.10. — 15 Level geschafft, 78 Punkte
-■ ■■ ■■ ■ · · ■ ■ · ■
-■ · ■ ■ · ×
+funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
+●●○·· ○○·○○
+·○○·×
 funkloch.vercel.app
 ```
 
-Ein Zeichen je gespieltem Level, der Reihe nach: ein `■` je übrig gebliebenem
-Sender, `·` für ein Level ohne Rest, `×` für das, an dem die Partie scheiterte.
-Zehn Level je Zeile, damit auch ein langer Lauf in eine Chatnachricht passt.
-Die letzte Zeile ist die Adresse des Spiels (`GAME_URL` in `src/share.js`).
-Nichts davon verrät das Brett.
+Ein Zeichen je Level ab Level 2, der Reihe nach, als Rampe von leer nach voll:
+`·` kein Sender übrig, `○` einer, `●` zwei oder mehr, und `×` für das Level, an
+dem die Partie scheiterte. Ein Zeichen ist immer ein Level, auch wenn ein
+Chatfenster die Abstände frisst; die Leerzeichen gruppieren nur zu fünft. Die
+letzte Zeile ist die Adresse des Spiels (`GAME_URL` in `src/share.js`). Nichts
+davon verrät das Brett. Warum Kreise und nicht Blöcke, Ziffern oder Emoji, steht
+in `MESSUNGEN.md`.
 
 Der Tag wird **in UTC** gerechnet (`utcDay` in `src/run.js`), nicht in der
 lokalen Zone. Das ist der ganze Punkt: mit einer lokalen Datumsgrenze hätte

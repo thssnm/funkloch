@@ -4,6 +4,7 @@
  *
  *   node tools/onboarding.js [--runs=1000] [--seed=1] [--nodes=8,9,10] [--senders=2,3,4,5]
  *   node tools/onboarding.js --full='heute;ersetzt;vorn' --first=9:6 [--daily]
+ *   node tools/onboarding.js --points [--runs=1000]   share of the score from level 1
  *
  * The second form plays whole runs, to see what the onboarding level does to
  * the curve behind it; see `variant` for the ways it can be fitted in.
@@ -28,7 +29,9 @@
  */
 
 import { mulberry32 } from '../src/generator.js';
-import { createRun, ENDLESS_RUN, levelSpec, place } from '../src/run.js';
+import {
+  advance, createRun, ENDLESS_RUN, levelSpec, place,
+} from '../src/run.js';
 import { greedyChoice, lookaheadChoice } from './bot64.js';
 import { dailySeeds, measure, printTable } from './endless.js';
 
@@ -73,6 +76,91 @@ function variant(name, onboarding) {
     levelNodes: { ...BEFORE.levelNodes, start: BEFORE.levelNodes.start - BEFORE.levelNodes.growth },
     senderCurve: { start, floor, tau },
   };
+}
+
+/**
+ * How much of a run's score the onboarding level hands out for free.
+ *
+ * Level 1 is generous on purpose, so its leftovers are points nobody worked
+ * for. The score is played three ways, each as its own config, never computed
+ * from another: level 1 counting (`scores: true`, as 0.2.0 shipped it); level 1
+ * not counting (`scores: false`, the levels from 2 on weighted exactly as
+ * before, so a sender saved on level 3 is still worth 3); and before the
+ * onboarding level, for reference. The shares are taken from the counting
+ * variant — they say what not counting takes away. From level 2 on the boards
+ * are the same in all three, so the last two differ only by what the old
+ * 18-node level 1 paid.
+ */
+function points(runs, firstSeed) {
+  const quantile = (sorted, q) => {
+    const pos = q * (sorted.length - 1);
+    const low = Math.floor(pos);
+    return sorted[low] + (sorted[Math.ceil(pos)] - sorted[low]) * (pos - low);
+  };
+  const play = (seed, config, choose) => {
+    let state = createRun({ seed, config });
+    while (state.status === 'playing' || state.status === 'levelCleared') {
+      if (state.status === 'levelCleared') { state = advance(state); continue; }
+      state = place(state, choose(state));
+    }
+    const fromFirst = state.cleared.find((entry) => entry.level === 1)?.left ?? 0;
+    return { score: state.score, fromFirst };
+  };
+  const summary = (scores) => {
+    const sorted = [...scores].sort((a, b) => a - b);
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const sd = Math.sqrt(scores.reduce((sum, x) => sum + (x - mean) ** 2, 0) / scores.length);
+    return [
+      quantile(sorted, 0.1), quantile(sorted, 0.25), quantile(sorted, 0.5), quantile(sorted, 0.9),
+      quantile(sorted, 0.99), sorted.at(-1), mean.toFixed(1), sd.toFixed(1),
+      `${((100 * scores.filter((s) => s === 0).length) / scores.length).toFixed(1)}%`,
+    ].map((x) => (typeof x === 'number' && !Number.isInteger(x) ? x.toFixed(1) : String(x)));
+  };
+  const pct = (x) => `${(100 * x).toFixed(1)}%`;
+
+  const shareRows = [];
+  const scoreRows = [];
+  for (const [label, choose] of [['voraus', lookaheadChoice], ['gierig', greedyChoice]]) {
+    const counting = { ...ENDLESS_RUN, firstLevel: { ...ENDLESS_RUN.firstLevel, scores: true } };
+    const notCounting = { ...ENDLESS_RUN, firstLevel: { ...ENDLESS_RUN.firstLevel, scores: false } };
+    const now = [];
+    const without = [];
+    const before = [];
+    for (let i = 0; i < runs; i++) {
+      now.push(play(firstSeed + i, counting, choose));
+      without.push(play(firstSeed + i, notCounting, choose).score);
+      before.push(play(firstSeed + i, variant('heute'), choose).score);
+    }
+    const shares = now.map(({ score, fromFirst }) => (score === 0 ? 0 : fromFirst / score));
+    const byScore = [...now.keys()].sort((a, b) => now[a].score - now[b].score);
+    const lowerQuartile = byScore.slice(0, Math.floor(runs / 4)).map((i) => shares[i]).sort((a, b) => a - b);
+    const sortedShares = [...shares].sort((a, b) => a - b);
+    const total = now.reduce((sum, r) => sum + r.score, 0);
+    const free = now.reduce((sum, r) => sum + r.fromFirst, 0);
+    shareRows.push([
+      label,
+      (free / runs).toFixed(2),
+      pct(quantile(sortedShares, 0.5)),
+      pct(quantile(lowerQuartile, 0.5)),
+      pct(quantile(sortedShares, 0.75)),
+      pct(free / total),
+    ]);
+    scoreRows.push([label, 'Level 1 zählt (0.2.0)', ...summary(now.map((r) => r.score))]);
+    scoreRows.push([label, 'Level 1 zählt nicht', ...summary(without)]);
+    scoreRows.push([label, 'vor dem Einstiegsbrett', ...summary(before)]);
+  }
+
+  console.log(`Punkte aus Level 1, ${runs} Partien je Bot ab Seed ${firstSeed}`);
+  printTable(
+    ['Bot', 'Punkte aus L1 Mittel', 'Anteil Median', 'Anteil Median im unteren Quartil (nach Endstand)',
+     'Anteil p75', 'Anteil gesamt'],
+    shareRows,
+  );
+  console.log('\nVerteilung des Endstands');
+  printTable(
+    ['Bot', 'Zählung', 'p10', 'p25', 'Median', 'p90', 'p99', 'max', 'Mittel', 'SD', 'null Punkte'],
+    scoreRows,
+  );
 }
 
 /** Runs every variant with both bots and prints the comparison. */
@@ -151,6 +239,11 @@ function main() {
     // --full=heute;ersetzt;vorn;vorn,tau=3 --first=9:6 [--daily]
     const [nodes, senders] = (args.first ?? '9:6').split(':').map(Number);
     full(args.full.split(';'), first(nodes, senders), runs, firstSeed, 'daily' in args);
+    return;
+  }
+
+  if ('points' in args) {
+    points(runs, firstSeed);
     return;
   }
 

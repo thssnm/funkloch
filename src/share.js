@@ -1,32 +1,51 @@
 /**
- * The text a finished daily run is shared as: a header with the result, and a
- * picture of how it went — one mark per level played, as many blocks as
- * senders were left over there, and a cross where the run ended.
+ * The text a finished daily run is shared as: a header with the result, a
+ * strip with one mark per level — how many senders were left over there, on a
+ * ramp from light to full — ending in a cross where the run died, and the
+ * address of the game.
+ *
+ *   funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
+ *   ●●○·· ○○·○○
+ *   ·○○·×
+ *   funkloch.vercel.app
  *
  * Pure and DOM-free like the rest of the game half: it reads a run state and
  * returns a string, so the page, the tests and the smoke test's expectations
  * can all be checked against the same thing without a browser.
  *
- * The last line is the address of the game, `GAME_URL`.
- *
  * Nothing in it gives the day away. Leftover counts say how well a board went,
  * not what it looked like or where anything was placed: two players who both
  * kept two senders on level 3 may have played it entirely differently.
  *
- * The characters are chosen to survive being pasted anywhere:
+ * Why this strip, measured on 365 daily runs of the planning bot and in a
+ * render test across three fonts with collapsed spacing (MESSUNGEN.md,
+ * `tools/share-forms.js`):
  *
- * - `■` (U+25A0) and not `█` (U+2588): full blocks touch and run together into
- *   one bar, so "three left" has to be measured rather than counted; squares
- *   keep a gap. And not an emoji square like 🟩: emoji carry the line-break
- *   class ID, which allows a break between *every* pair, so a row of them can
- *   wrap in the middle of a level. U+25A0 is in WGL4 and in every system font
- *   that matters, and it breaks like a letter.
- * - `·` (U+00B7) for a level cleared with nothing to spare, and `×` (U+00D7)
- *   for the one the run died on. Both Latin-1, so there is no font they are
- *   missing from.
- * - Inside a row and between the groups of the one-line form, the spaces are
- *   no-break spaces (U+00A0), so a chat box wraps a long result between words
- *   of the header, never through a level.
+ * - **One character per level, always.** The block strip of 0.2.0 drew a level
+ *   as a group of squares, and in a proportional font the gap between groups
+ *   collapses: three squares could be one level with three left or three
+ *   levels with one. Square glyphs run together even inside a group. Circles
+ *   touch at a point at most and stay countable.
+ * - **A picture, not a number.** `·` none left, `○` one, `●` two or more: a
+ *   ramp from light to full that reads without a legend. Capping at two costs
+ *   9 of 284 different strips over the first six levels, because three or more
+ *   left over happens on 4 % of levels.
+ * - **Three steps, not four.** No fourth circle (`◉ ◎ ⊙ ⦿`) came from the same
+ *   font as `○` and `●` in the render test; drawn larger by a fallback font,
+ *   the third step looked fuller than the fourth and the ramp tipped over.
+ * - **Every font has them.** Emoji circles rendered as empty boxes; part-filled
+ *   circles came without their outline. `·` and `×` are Latin-1, `○` and `●`
+ *   held in every font tried.
+ *
+ * `○` means two things in the text: in the header it is the ring of the
+ * wordmark, in the strip one sender left over. Taken knowingly — the one sits
+ * inside a word, the other in a row of marks, and the context says which.
+ *
+ * The digit strip that came before (`form: 'digits'`) stays, in case the
+ * decision turns: one digit per level, the exact count.
+ *
+ * The spaces split the strip into groups of five as a counting aid and carry no
+ * meaning, so a chat box that collapses or wraps them changes nothing.
  */
 
 /**
@@ -40,16 +59,43 @@
  */
 export const GAME_URL = 'funkloch.vercel.app';
 
-/** One sender left over on a level. */
-export const BLOCK = '■';
-/** A level cleared with nothing to spare. */
-export const NOTHING_LEFT = '·';
+/**
+ * The name at the head of every shared result, written the way the wordmark
+ * draws it: the o is the ring of a node with no signal. `○` (U+25CB) held in
+ * every font of the render test (`tools/share-forms.js --render`), and sits at
+ * the height of the lower-case letters around it.
+ */
+export const GAME_NAME = 'funkl○ch';
+
+/** The ramp, by senders left over: none, one, two or more. */
+export const RAMP = ['·', '○', '●'];
+
 /** The level the run ended on. */
 export const FAILED = '×';
 
-const NBSP = ' ';
-/** As wide as a digit wherever digits are tabular, so level numbers line up. */
-const FIGURE_SPACE = ' ';
+/**
+ * In the digit strip, stands in for ten or more left over, so that a level
+ * stays one character. It cannot happen today: from level 2 on the curve deals
+ * at most 9 senders and clearing a board takes at least one, so at most 8 are
+ * left. `test/share.test.js` holds the curve to that; this is the floor under
+ * it if the curve ever moves. The ramp caps at two and needs no such thing.
+ */
+export const TEN_OR_MORE = '+';
+
+/** Levels to a group, and groups to a line. */
+export const GROUP = 5;
+export const GROUPS_PER_LINE = 2;
+
+/**
+ * The mark of a cleared level with `left` senders over, in either form.
+ * @param {number} left
+ * @param {'ramp'|'digits'} form
+ * @returns {string}
+ */
+function mark(left, form) {
+  if (form === 'digits') return left > 9 ? TEN_OR_MORE : String(left);
+  return RAMP[Math.min(left, RAMP.length - 1)];
+}
 
 /**
  * A point count with its noun: "1 Punkt", otherwise "Punkte".
@@ -61,57 +107,43 @@ export function points(count) {
 }
 
 /**
- * The marks of every level a run has played, in order: blocks for the leftover
- * senders of a cleared level (or `NOTHING_LEFT` for none), then `FAILED` for the
- * level a lost run ended on.
+ * One character per level the strip shows, in order: the mark of each cleared
+ * level, then `FAILED` for the level a lost run ended on.
+ *
+ * An onboarding level that does not score (`firstLevel.scores === false` in the
+ * run's config) is left out once cleared: every run clears it with senders to
+ * spare, so it would only put the same mark at the front of every strip. It
+ * still counts in "N Level geschafft". A run that dies on it shows its cross.
  * @param {object} state a run state from run.js
+ * @param {{form?: 'ramp'|'digits'}} [options]
  * @returns {Array<{level: number, mark: string}>}
  */
-export function levelMarks(state) {
-  const marks = state.cleared.map(({ level, left }) => ({
-    level,
-    mark: left > 0 ? BLOCK.repeat(left) : NOTHING_LEFT,
-  }));
+export function levelMarks(state, { form = 'ramp' } = {}) {
+  const skipFirst = state.config?.endless && state.config.firstLevel?.scores === false;
+  const marks = state.cleared
+    .filter(({ level }) => !(skipFirst && level === 1))
+    .map(({ level, left }) => ({ level, mark: mark(left, form) }));
   if (state.status === 'lost') marks.push({ level: state.level, mark: FAILED });
   return marks;
 }
 
 /**
  * The shared result.
- *
- * `rows` is the long form, one line per level with its number in front. It
- * reads well for a short run and badly for a long one: a run that reaches level
- * 15 is fifteen lines, more than a chat message should be. `line` is the
- * dense form — the marks in order, separated by a space, no numbers; the
- * position *is* the number, and the header says how many there are.
- *
- * Ten levels to a line, not all of them on one. The spaces do not break, so a
- * single line cannot be wrapped by a chat box, and played by the planning bot a
- * 33-level daily run is 68 characters wide — twice a phone's chat bubble. At
- * ten a line no line passes about 30 characters, a run of ten or fewer is the
- * plain single line, and the levels can still be counted off in tens.
  * @param {object} state a finished run state from run.js
  * @param {string} day the UTC day it was played, `YYYY-MM-DD`
- * @param {{form?: 'line'|'rows'}} [options]
+ * @param {{form?: 'ramp'|'digits'}} [options]
  * @returns {string}
  */
-export function shareText(state, day, { form = 'line' } = {}) {
+export function shareText(state, day, { form = 'ramp' } = {}) {
   const [, month, date] = day.split('-');
-  const header = `funkloch ${date}.${month}. — ${state.cleared.length} Level geschafft, `
+  const header = `${GAME_NAME} ${date}.${month}. — ${state.cleared.length} Level geschafft, `
     + points(state.score);
-  const marks = levelMarks(state);
-  if (form === 'rows') {
-    const width = String(marks.at(-1)?.level ?? 1).length;
-    const rows = marks.map(({ level, mark }) =>
-      `${String(level).padStart(width, FIGURE_SPACE)}${NBSP}${mark}`);
-    return [header, ...rows, GAME_URL].join('\n');
-  }
+  const marks = levelMarks(state, { form }).map((entry) => entry.mark);
+  const groups = [];
+  for (let i = 0; i < marks.length; i += GROUP) groups.push(marks.slice(i, i + GROUP).join(''));
   const lines = [];
-  for (let i = 0; i < marks.length; i += LEVELS_PER_LINE) {
-    lines.push(marks.slice(i, i + LEVELS_PER_LINE).map(({ mark }) => mark).join(NBSP));
+  for (let i = 0; i < groups.length; i += GROUPS_PER_LINE) {
+    lines.push(groups.slice(i, i + GROUPS_PER_LINE).join(' '));
   }
   return [header, ...lines, GAME_URL].join('\n');
 }
-
-/** How many levels the one-line form puts on a line before starting the next. */
-export const LEVELS_PER_LINE = 10;

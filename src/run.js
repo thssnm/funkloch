@@ -194,8 +194,16 @@ export const ENDLESS_RUN = {
    *
    * No blocked node: 5 % of 9 rounds to none, which keeps the first board to
    * the one rule it teaches.
+   *
+   * `scores: false` — its leftovers are worth nothing. The board is generous on
+   * purpose, so what it leaves over is handed out, not earned: about four
+   * points for every run, 10.6 % of the planner's median score and 27.8 % in
+   * its lower quartile, and all of it for a weak run that ends on level 2
+   * (`tools/onboarding.js --points`, 1000 runs). Not counting it puts the score
+   * back where it stood before the onboarding level (planner median 31.5
+   * against 32). It still counts as a level cleared.
    */
-  firstLevel: { nodes: 9, senders: 6 },
+  firstLevel: { nodes: 9, senders: 6, scores: false },
   /** nodeCount(level) = min(max, start + growth * (level - 1)), from level 2 on */
   levelNodes: { start: 18, growth: 4, max: 60 },
   /** ratio(level) = floor + (start - floor) * exp(-(level - 1) / tau) */
@@ -397,6 +405,19 @@ export function levelSpec(config, index) {
 }
 
 /**
+ * Whether the leftovers of `level` (1-based) count towards the score. They do
+ * on every level but an onboarding level marked `scores: false`: what a
+ * deliberately generous board leaves over is not something the player did.
+ * Exported so the page can say so instead of knowing it a second time.
+ * @param {object} config
+ * @param {number} level
+ * @returns {boolean}
+ */
+export function levelScores(config, level) {
+  return !(level === 1 && config.endless && config.firstLevel?.scores === false);
+}
+
+/**
  * Draws a board, retrying until the generator yields one.
  * @param {() => number} rng
  * @param {{nodeCount: number, lattice: string}} spec
@@ -562,7 +583,11 @@ function build(base, placed, senders) {
   // leftover is worth s, the same positive constant for every decision on that
   // board, and leftovers do not carry into the next level, so no weighting can
   // reorder a move. Measured rather than assumed; see `MESSUNGEN.md`.
-  const score = base.score + (cleared ? senders.length * base.level : 0);
+  //
+  // The one exception is an onboarding level marked `scores: false`; see
+  // `levelScores`.
+  const score = base.score
+    + (cleared && levelScores(base.config, base.level) ? senders.length * base.level : 0);
 
   const state = {
     ...base,

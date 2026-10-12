@@ -1019,6 +1019,10 @@ etwas geändert hat. Verglichen werden darf nur innerhalb derselben Zählung.
 Wer eine alte Tabelle neu misst, setzt die neue darunter und lässt die alte mit
 ihrem Vermerk stehen.
 
+Nicht betroffen und ohne Vermerk: Ballgrößen, Siegquoten, Zuganteile, Punkte,
+Teiler, und Tabellen, deren Levelspalte eine Levelnummer ist (Levelblöcke,
+„erste Abweichung in Level").
+
 ---
 
 ## 2026-10-12 — Level 1 als Einstiegsbrett
@@ -1186,6 +1190,9 @@ ist keine Skalenänderung wie beim Teiler — dieselbe Zahl bedeutet fast
 dasselbe —, und `SCORE_SCALE` bleibt deshalb auf 1. Hier nicht entschieden;
 wer alte Rekorde verwerfen will, hebt `SCORE_SCALE`.
 
+*(Nachgetragen: Level 1 zählt inzwischen nicht mehr zum Score, siehe den
+nächsten Eintrag.)*
+
 ### Reproduktion
 
 ```sh
@@ -1223,6 +1230,307 @@ den Planer. Die Brettgrößen-Tabelle läuft in Sekunden.
   gespielte Partie endet; ein Tagesversuch ohne Regelkennzeichen wird nicht
   nachgespielt.
 
-Nicht betroffen und ohne Vermerk: Ballgrößen, Siegquoten, Zuganteile, Punkte,
-Teiler, und Tabellen, deren Levelspalte eine Levelnummer ist (Levelblöcke,
-„erste Abweichung in Level").
+---
+
+## 2026-10-12 — Level 1 zählt nicht, Ergebniszeile in Ziffern
+
+**Konstanten:** `ENDLESS_RUN.firstLevel.scores` in `src/run.js` (`false`, neu);
+das Format in `src/share.js`
+**Werkzeug:** `tools/onboarding.js --points` (neu), `tools/share-forms.js` (neu)
+**Ergebnis:** Level 1 bringt keine Punkte mehr, zählt aber weiter als geschafft.
+Die Ergebniszeile zeigt je Level ab Level 2 eine Ziffer — die übrigen Sender —,
+in Fünfergruppen, dazu `×` für das gescheiterte Level.
+
+### 1. Wie viel Level 1 zum Score beitrug
+
+Das Einstiegsbrett ist absichtlich großzügig; seine Reste sind Punkte, für die
+niemand etwas geleistet hat. `tools/onboarding.js --points --runs=1000`, Seeds
+1–1000, Anteil der Punkte aus Level 1 am Endstand, solange Level 1 zählte (wie in
+0.2.0 ausgeliefert):
+
+| Bot | Punkte aus L1 Mittel | Anteil Median | Anteil Median im unteren Quartil (nach Endstand) | Anteil p75 | Anteil gesamt |
+| --- | --- | --- | --- | --- | --- |
+| voraus | 4.01 | 10.6 % | 27.8 % | 20.0 % | 5.2 % |
+| gierig | 4.01 | 40.0 % | 100.0 % | 66.7 % | 34.6 % |
+
+Spürbar, und am stärksten dort, wo am wenigsten gespielt wurde: das untere
+Viertel der gierigen Partien besteht vollständig aus Punkten von Level 1 — es
+sind die Partien, die in Level 2 enden.
+
+Verteilung des Endstands, jede Zählung als eigene Config gespielt, nicht
+nachgerechnet:
+
+| Bot | Zählung | p10 | p25 | Median | p90 | p99 | max | Mittel | SD | null Punkte |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| voraus | Level 1 zählt (0.2.0) | 13 | 19 | 36 | 186.2 | 595 | 1036 | 77.0 | 112.6 | 0.0 % |
+| voraus | **Level 1 zählt nicht** | **9** | **16** | **31.5** | **183.1** | **591** | **1032** | **73.0** | **112.6** | **0.6 %** |
+| voraus | vor dem Einstiegsbrett | 10 | 17 | 32 | 185 | 592 | 1032 | 74.0 | 112.6 | 0.2 % |
+| gierig | Level 1 zählt (0.2.0) | 4 | 6 | 10 | 21 | 35 | 69 | 11.6 | 7.4 | 0.0 % |
+| gierig | **Level 1 zählt nicht** | **0** | **2** | **6** | **17** | **30** | **65** | **7.6** | **7.4** | **15.9 %** |
+| gierig | vor dem Einstiegsbrett | 1 | 3 | 6 | 18 | 31 | 65 | 8.2 | 7.5 | 8.9 % |
+
+Ab Level 2 werden die Level gewichtet wie bisher: ein in Level 3 gesparter
+Sender bleibt 3 wert. „Zählt nicht" landet damit fast genau auf der Verteilung
+von vor dem Einstiegsbrett — der Unterschied ist, was das alte 18-Knoten-Level 1
+gezahlt hat. Bestwerte aus der Zeit vor 0.2.0 sind wieder vergleichbar.
+
+Der Preis steht in der letzten Spalte: jede sechste schwach gespielte Partie
+endet mit null Punkten, obwohl sie Level 1 gewonnen hat. Die Statuszeile nach
+Level 1 sagt deshalb nicht mehr „4 Sender übrig", was nach Punkten klingt, die
+nicht kommen, sondern „Ab jetzt bringt jeder übrige Sender Punkte" — die
+Punkteregel genau in dem Moment, bevor sie zum ersten Mal gilt.
+
+**Entschieden:** Level 1 zählt nicht zum Score, fällt aus der Ergebniszeile und
+bleibt in „N Level geschafft".
+
+### 2. Die Ergebniszeile
+
+Die Blockzeile aus 0.2.0 war mehrdeutig: ein Level war eine Gruppe von `■`, und
+in proportionaler Schrift verschwindet der Abstand zwischen den Gruppen — drei
+Blöcke konnten ein Level mit drei Resten sein oder drei Level mit je einem. Und
+sie bestand überwiegend aus `·`, weil meist null bis zwei Sender übrig bleiben.
+
+Kriterium: eindeutig lesbar ohne Levelnummern, auch wenn die Abstände
+kollabieren, und so abwechslungsreich, dass zwei Partien verschieden aussehen.
+
+#### Wie viel übrig bleibt
+
+`tools/share-forms.js --days=365`, Tagesbretter ab 2026-01-01, Planer, Rest je
+geschafftem Level:
+
+| Level | 0 | 1 | 2 | 3 | 4+ | n | max |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.0 % | 0.0 % | 0.3 % | 18.6 % | 81.1 % | 365 | 5 |
+| 2+ | 38.5 % | 38.3 % | 19.2 % | 3.8 % | 0.2 % | 3561 | 4 |
+| 2–5 | 31.8 % | 43.6 % | 21.9 % | 2.7 % | 0.0 % | 1436 | 3 |
+| 6–10 | 43.1 % | 33.8 % | 17.9 % | 4.7 % | 0.4 % | 1099 | 4 |
+| 11+ | 42.9 % | 35.7 % | 16.9 % | 4.4 % | 0.2 % | 1026 | 4 |
+
+#### Kandidaten im Rendertest
+
+Jeder Kandidat in drei Schriften (system-ui, Georgia, monospace) bei
+`letter-spacing: -1px` gesetzt, also mit kollabierten Abständen
+(`tools/share-forms.js --render=…`):
+
+- **Eckige Zeichen fallen durch.** `■■■■` verschmilzt zu einem Balken, gleich
+  hohe Balken `▃▃` zu einem breiten. Die Level sind nicht mehr zählbar.
+- **Kreise halten** (`●○`): zwei Kreise berühren sich höchstens in einem Punkt.
+- **Füllstände `◔◑` fallen durch**: sie kamen aus einer Ersatzschrift ohne
+  Umriss, nur als Keil.
+- **Emoji fallen durch**: farbige Kreise erschienen als leere Kästchen — die
+  Umgebung hatte keine Emoji-Schrift. Genau das „nicht überall darstellbar".
+- **Ziffern halten** in jeder Schrift; sie verschmelzen nie.
+- **Umkreiste Ziffern** `①②` halten, kamen aber aus einer anderen Schrift als
+  `○`, sichtbar größer. Nicht überall gleich.
+
+Übrig blieben zwei: **A**, ein Zeichen pro Level in drei Stufen — `●`
+komfortabel, `○` knapp, `×` gescheitert —, und **B**, die Restzahl als Ziffer.
+
+Die Schwelle für A liegt bei **mindestens einem übrigen Sender**: „knapp" heißt
+dann wörtlich, mit dem letzten Sender geschafft. Ab Level 2 teilt sie 38.5 % zu
+61.5 %, nahe an halb und halb, und ein Zeichen trägt so am meisten Information
+(0.96 Bit). Bei einer Schwelle von 2 kippt es auf 77 % zu 23 % (0.78 Bit), und
+lange Partien bestehen fast nur aus `○`.
+
+#### Abwechslung
+
+365 Tagesbretter. „Zwei Tage gleich" ist die Wahrscheinlichkeit, dass zwei
+zufällige Tage dieselbe Zeile zeigen. „Erste 6" vergleicht nur die ersten sechs
+gezeigten Level — so lang ist eine kurze Partie, und kurze Partien sind die
+häufigsten.
+
+| Format | ganz: verschieden | zwei Tage gleich | erste 6: verschieden | zwei Tage gleich |
+| --- | --- | --- | --- | --- |
+| Blöcke (0.2.0) | 348 | 0.31 % | 286 | 0.45 % |
+| A, ≥1 | 251 | 0.86 % | 48 | 4.84 % |
+| A, ≥1, ab L2 | 251 | 0.86 % | 94 | 1.99 % |
+| A, ≥2, ab L2 | 231 | 1.32 % | 69 | 5.40 % |
+| B | 348 | 0.31 % | 286 | 0.45 % |
+| **B, ab L2 (ausgeliefert)** | **337** | **0.34 %** | **284** | **0.45 %** |
+
+**Entschieden: B.** Bei kurzen Partien gewinnt B deutlich an Abwechslung — 286
+gegen 48 verschiedene Muster, mit Level 1 in der Zeile verglichen, und 284 gegen
+94 so, wie es ausgeliefert wird, ohne Level 1. Bei A ist das erste Zeichen
+fast immer `●` (Level 1 lässt in 99.7 % der Partien mindestens zwei übrig);
+ohne Level 1 wird A besser, bleibt aber bei einem Drittel von B.
+
+Emoji sind raus, weil sie im Rendertest als leere Kästchen erschienen.
+
+So sieht 2026-10-06 aus, gespielt vom Planer:
+
+```
+funkloch 06.10. — 15 Level geschafft, 77 Punkte
+22100 11011
+0110×
+funkloch.vercel.app
+```
+
+Die Leerzeichen gruppieren nur zu fünft, als Hilfe beim Abzählen; kollabieren
+sie, ändert sich nichts.
+
+#### Nie zwei Ziffern
+
+Eine zweistellige Zahl bräche die Regel „ein Zeichen pro Level". Sie kann nicht
+vorkommen: ab Level 2 teilt die Kurve höchstens 9 Sender aus (erstmals in
+Level 10, geprüft bis Level 500), und ein Brett zu räumen braucht mindestens
+einen, also bleiben höchstens 8. Level 1 teilt 6 aus und steht nicht in der
+Zeile. Gemessen kam ab Level 2 höchstens 4 vor (365 Tagesbretter, Planer; 300
+Partien je Bot ebenso). `test/share.test.js` hält die Kurve bei höchstens 10
+ausgeteilten Sendern; ändert sie sich, schlägt der Test an. Für den Fall, dass
+es doch je passiert, setzt `share.js` ein einzelnes `+`.
+
+### Bestwerte
+
+0.2.0 ist ausgeliefert, und solange es lief, zählte Level 1 mit. Bestwerte aus
+diesen Tagen sind um etwa vier Punkte zu hoch und lassen sich von älteren und
+neueren nicht unterscheiden — alle tragen `scale: 1`. `SCORE_SCALE` ist nicht
+angehoben: das würde auch die Bestwerte von vor 0.2.0 verwerfen, die wieder
+genau vergleichbar sind. Hier nicht entschieden.
+
+### Reproduktion
+
+```sh
+node tools/onboarding.js --points --runs=1000      # rund 5 Minuten
+node tools/share-forms.js --days=365               # rund 35 Sekunden
+node tools/share-forms.js --render=formen.png      # Rendertest, braucht playwright
+```
+
+### Was blieb
+
+- `src/run.js` — `firstLevel: { nodes: 9, senders: 6, scores: false }` und
+  `levelScores(config, level)`, das `build()` und die Seite fragen. Ohne
+  `scores: false`, und im festen Lauf ohne Einstiegsbrett, zählt jedes Level
+  wie bisher.
+- `src/share.js` — Ziffern statt Blöcken, Fünfergruppen, zwei je Zeile;
+  Level 1 fällt heraus, wenn es nicht zählt; `TEN_OR_MORE` als Sicherung. Die
+  Zeilenform mit Levelnummern ist entfernt.
+- `index.html` — die Statuszeile nach Level 1 erklärt die Punkte statt die
+  Reste zu zählen.
+- `tools/onboarding.js --points`, `tools/share-forms.js` — neu.
+- `test/run.test.js`, `test/share.test.js`, `tools/ui-smoke.js` — Level 1
+  bringt 0 Punkte und zählt als geschafft; die Zeile ist Ziffern ab Level 2 in
+  Fünfergruppen; die Kurve teilt nie mehr als 10 Sender aus; der Smoke-Test
+  prüft Punkte und Statuszeile nach Level 1.
+
+*(Nachgetragen: die Ergebniszeile ist inzwischen eine Kreisrampe, siehe den
+nächsten Eintrag. Die Ziffern bleiben als `form: 'digits'` erhalten.)*
+
+---
+
+## 2026-10-12 — Ergebniszeile als Kreisrampe
+
+**Konstante:** `RAMP` in `src/share.js` (`·`, `○`, `●`)
+**Werkzeug:** `tools/share-forms.js` (Kandidaten C ergänzt)
+**Ergebnis:** Die Ergebniszeile zeigt je Level ab Level 2 ein Zeichen auf einer
+Rampe von leer nach voll — `·` kein Sender übrig, `○` einer, `●` zwei oder mehr
+—, in Fünfergruppen, dazu `×` für das gescheiterte Level. Die Ziffern (B)
+bleiben als `form: 'digits'` im Code, falls sich die Entscheidung umkehrt. Die
+Kopfzeile schreibt den Namen als `funkl○ch`, mit dem Ring der Wortmarke.
+
+### Die Frage
+
+Variante C: eine Kreisrampe, ein Zeichen pro Level, der Rest wird mitgeführt
+statt in „knapp/komfortabel" eingeteilt wie bei A. Vorgeschlagen war eine
+vierstufige Rampe `· ○ ◉ ●` für 0, 1, 2, 3+; `◉` war der Wackelkandidat, und
+falls kein viertes Zeichen hält, die dreistufige Fassung `· ○ ●` mit Deckelung
+bei zwei. Erwartung: C liegt nahe an B, weil es fast dieselbe Information trägt.
+
+### Rendertest
+
+Wie bei A und B, drei Schriften (system-ui, Georgia, monospace) bei
+`letter-spacing: -1px`, dazu jedes Zeichen einzeln gefragt, aus welcher Schrift
+Chromium es zeichnet:
+
+| Zeichen | gezeichnet aus |
+| --- | --- |
+| `·` `×` | Noto Sans |
+| `○` `●` | Liberation Serif |
+| `◉` `◎` `⊙` | DejaVu Sans |
+| `⦿` | Adwaita Mono |
+
+**Kein viertes Zeichen hält.** `◉`, `◎` und `⊙` kommen aus einer anderen
+Schriftfamilie als `○` und `●` und sind deutlich größer: die dritte Stufe wirkt
+voller als die vierte, die Rampe kippt, und ohne Legende liest man `◉` als „mehr
+als voll". `⦿` kommt aus einer dritten Schrift und ist zu klein. Die vierstufige
+Fassung fällt damit aus. Die dreistufige hält in allen drei Schriften: `·`, `○`,
+`●` bleiben einzeln zählbar, auch wenn die Abstände kollabieren.
+
+### Abwechslung
+
+`tools/share-forms.js --days=365`, dieselben 365 Tagesbretter ab 2026-01-01,
+Planer, dieselbe Tabelle wie im vorigen Eintrag, alle Formate ohne Level 1:
+
+| Format | ganz: verschieden | zwei Tage gleich | **erste 6: verschieden** | **zwei Tage gleich** |
+| --- | --- | --- | --- | --- |
+| A `●○×`, Schwelle 1 | 251 | 0.86 % | **94** | **1.99 %** |
+| B Ziffern | 337 | 0.34 % | **284** | **0.45 %** |
+| C vierstufig `·○◉●` (nur Vergleich) | 337 | 0.34 % | 284 | 0.45 % |
+| **C dreistufig `·○●` (ausgeliefert)** | **334** | **0.34 %** | **275** | **0.47 %** |
+
+Die Erwartung trifft zu. Die vierstufige Rampe hätte auf diesen 365 Tagen genau
+so viele Muster ergeben wie B; mehr als vier übrige Sender kommen ab Level 2 nie
+vor. Die Deckelung bei zwei kostet nur 9 von 284 Mustern bei
+kurzen Partien, weil drei oder mehr übrige Sender nur in 4 % der Level vorkommen
+(Tabelle „Wie viel übrig bleibt" im vorigen Eintrag).
+
+### Dieselben Partien, B und C
+
+Vom Planer gespielt:
+
+```
+funkl○ch 05.10. — 6 Level geschafft, 11 Punkte     funkl○ch 05.10. — 6 Level geschafft, 11 Punkte
+01200 ×                                             ·○●·· ×
+
+funkl○ch 06.10. — 15 Level geschafft, 77 Punkte    funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
+22100 11011                                         ●●○·· ○○·○○
+0110×                                               ·○○·×
+
+funkl○ch 21.11. — 32 Level geschafft, 251 Punkte   funkl○ch 21.11. — 32 Level geschafft, 251 Punkte
+12201 01100                                         ○●●·○ ·○○··
+10011 01001                                         ○··○○ ·○··○
+00121 00010                                         ··○●○ ···○·
+0×                                                  ·×
+```
+
+(Links B, rechts C; jeweils mit `funkloch.vercel.app` als letzter Zeile.)
+
+### Befund
+
+**C wird ausgeliefert, dreistufig `· ○ ●` mit Deckelung bei zwei.** Die
+Deckelung kostet nur 9 von 284 Mustern bei kurzen Partien, weil drei oder mehr
+übrige Sender nur in 4 % der Level vorkommen. Dafür liest sich die Zeile als
+Bild statt als Zahlenfolge, und bei langen Partien ist der Unterschied am
+größten: dreißig Ziffern sind eine Zahl, die man abliest, dreißig Kreise ein
+Verlauf, den man sieht.
+
+Die vierstufige Fassung fällt aus, weil kein viertes Zeichen in allen drei
+Schriften aus derselben Schriftfamilie kommt wie `○` und `●`, und die Rampe
+sonst kippt.
+
+### Doppelbedeutung von `○`
+
+Mit der Kopfzeile `funkl○ch` steht `○` im Text in zwei Rollen: in der Kopfzeile
+der Ring der Wortmarke, in der Zeile darunter ein übriger Sender. **Bewusst in
+Kauf genommen**, weil der Kontext eindeutig ist — das eine steht mitten in
+einem Wort, das andere in einer Reihe von Zeichen ohne Buchstaben.
+
+### Reproduktion
+
+```sh
+node tools/share-forms.js --days=365               # Abwechslung, rund 35 Sekunden
+node tools/share-forms.js --render=formen.png      # Rendertest, braucht playwright
+```
+
+Welche Schrift ein Zeichen zeichnet, steht nicht im Werkzeug; geprüft mit
+`CSS.getPlatformFontsForNode` über das DevTools-Protokoll in Chromium.
+
+### Was blieb
+
+- `src/share.js` — `RAMP` und `form: 'ramp'` als Vorgabe; `form: 'digits'` mit
+  `TEN_OR_MORE` bleibt. `GAME_NAME = 'funkl○ch'` für die Kopfzeile.
+- `tools/share-forms.js` — die Rampen und die Ersatzkandidaten für `◉` im
+  Rendertest, die Rampen in der Abwechslungstabelle, die Kopfzeile im
+  Rendertest.
+- `test/share.test.js`, `tools/ui-smoke.js` — die Zeile ist die Rampe ab
+  Level 2 in Fünfergruppen, gedeckelt bei zwei; die Ziffernform hat ihre
+  eigenen Prüfungen behalten; die Kopfzeile beginnt mit `funkl○ch`.

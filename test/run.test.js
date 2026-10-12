@@ -308,6 +308,31 @@ test('the onboarding level', async (t) => {
     assert.deepEqual(withIt.senders, without.senders);
   });
 
+  await t.test('scores nothing, and every later level as before', () => {
+    let state = createRun({ seed: 12, config: ENDLESS_RUN });
+    while (state.status === 'playing') state = place(state, greedyChoice(state));
+    assert.equal(state.status, 'levelCleared');
+    assert.ok(state.senders.length > 0, 'senders were left over');
+    assert.equal(state.score, 0, 'but the onboarding level hands out no points');
+    assert.equal(state.cleared.length, 1, 'it still counts as cleared');
+
+    while (state.status === 'playing' || state.status === 'levelCleared') {
+      state = state.status === 'levelCleared' ? advance(state) : place(state, greedyChoice(state));
+    }
+    assert.equal(
+      state.score,
+      state.cleared.filter(({ level }) => level > 1).reduce((sum, { level, left }) => sum + left * level, 0),
+      'level 2 on weighted exactly as before',
+    );
+  });
+
+  await t.test('scores like any level in a mode that says so', () => {
+    const counting = { ...ENDLESS_RUN, firstLevel: { ...ENDLESS_RUN.firstLevel, scores: true } };
+    let state = createRun({ seed: 12, config: counting });
+    while (state.status === 'playing') state = place(state, greedyChoice(state));
+    assert.equal(state.score, state.senders.length);
+  });
+
   await t.test('is never lost by the greedy bot', () => {
     // The bar from tools/onboarding.js, on a sample the test suite can afford:
     // a newcomer plays worse than greedy, so greedy must clear every board.

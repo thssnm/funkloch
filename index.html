@@ -631,7 +631,8 @@
 
     <script type="module">
       import {
-        advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelsCleared, msUntilNextDay, place,
+        advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelScores, levelsCleared,
+        msUntilNextDay, place,
         utcDay,
       } from './src/run.js';
       import { createScene, fitHitAreas, render } from './src/render.js';
@@ -1000,10 +1001,16 @@
         controls.hidden = goButton.hidden;
         // On a lost run the card below says everything; a second sentence under
         // the board would only repeat it louder.
+        //
+        // After a level whose leftovers do not score — the onboarding board —
+        // "4 Sender übrig" would read as four points that never arrive. That
+        // moment is instead the one to say how points work, just before the
+        // first level where they do.
         statusLine.textContent =
-          state.status === 'levelCleared'
-            ? `Level ${state.level} geschafft. ${state.senders.length} Sender übrig.`
-            : '';
+          state.status !== 'levelCleared' ? ''
+            : levelScores(state.config, state.level)
+              ? `Level ${state.level} geschafft. ${state.senders.length} Sender übrig.`
+              : `Level ${state.level} geschafft. Ab jetzt bringt jeder übrige Sender Punkte.`;
 
         over.card.hidden = state.status !== 'lost';
         if (state.status === 'lost') {
