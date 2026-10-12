@@ -68,7 +68,7 @@ Streifen des Verlaufs, gebaut in `src/share.js`:
 funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
 ●●○·· ○○·○○
 ·○○·×
-funkloch.vercel.app
+funkloch.thssn.dev
 ```
 
 Ein Zeichen je Level ab Level 2, der Reihe nach, als Rampe von leer nach voll:
@@ -79,8 +79,12 @@ letzte Zeile ist die Adresse des Spiels (`GAME_URL` in `src/share.js`). Nichts
 davon verrät das Brett. Warum Kreise und nicht Blöcke, Ziffern oder Emoji, steht
 in `MESSUNGEN.md`.
 
-Der Tag wird **in UTC** gerechnet (`utcDay` in `src/run.js`), nicht in der
-lokalen Zone. Das ist der ganze Punkt: mit einer lokalen Datumsgrenze hätte
+Der Tag wird **in Berlin** gerechnet (`boardDay` und `DAILY_TIME_ZONE` in
+`src/run.js`), mit echter Zeitzone über `Intl.DateTimeFormat` und nicht mit
+festem Versatz, und nicht in der Zone des Geräts. Das Brett wechselt um
+Mitternacht deutscher Zeit, im Sommer wie im Winter; der Countdown zählt auf
+dieselbe Mitternacht. Entscheidend ist nicht, dass die Zone neutral ist, sondern
+dass sie für alle dieselbe ist: mit einer gerätelokalen Datumsgrenze hätte
 Neuseeland das Brett von morgen, während Kalifornien noch auf dem von gestern
 sitzt, und zwei Ergebnisse wären nicht vergleichbar.
 

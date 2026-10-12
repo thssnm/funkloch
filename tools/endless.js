@@ -51,7 +51,8 @@ export function playEndless(seed, config, choose) {
   return { streak: state.cleared.length, score: state.score, diedIn: state.level };
 }
 
-/** First day of the daily seeds `--daily` plays, UTC. */
+/** First day of the daily seeds `--daily` plays: noon UTC, which is the same
+ *  date in Berlin, so the boards are the ones those dates deal. */
 export const DAILY_FROM = Date.UTC(2026, 0, 1, 12);
 
 /**

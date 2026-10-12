@@ -7,7 +7,7 @@
  *   funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
  *   ●●○·· ○○·○○
  *   ·○○·×
- *   funkloch.vercel.app
+ *   funkloch.thssn.dev
  *
  * Pure and DOM-free like the rest of the game half: it reads a run state and
  * returns a string, so the page, the tests and the smoke test's expectations
@@ -54,10 +54,10 @@
  * else, so moving the game is a change to this line.
  *
  * Without a scheme on purpose: chat apps link a bare host anyway, and it reads
- * as a name rather than as an address. A domain of its own is planned; this is
- * the Vercel host until then.
+ * as a name rather than as an address. The game's own domain; until 2026-10-12
+ * this was the Vercel host, funkloch.vercel.app.
  */
-export const GAME_URL = 'funkloch.vercel.app';
+export const GAME_URL = 'funkloch.thssn.dev';
 
 /**
  * The name at the head of every shared result, written the way the wordmark
@@ -130,7 +130,7 @@ export function levelMarks(state, { form = 'ramp' } = {}) {
 /**
  * The shared result.
  * @param {object} state a finished run state from run.js
- * @param {string} day the UTC day it was played, `YYYY-MM-DD`
+ * @param {string} day the day of the board it was played on, `YYYY-MM-DD` (`boardDay`)
  * @param {{form?: 'ramp'|'digits'}} [options]
  * @returns {string}
  */

@@ -114,7 +114,7 @@ test('shareText', async (t) => {
     const lines = shareText(state, '2026-09-24').split('\n');
     assert.equal(lines.at(-1), GAME_URL);
     assert.equal(lines.filter((line) => line.includes(GAME_URL)).length, 1);
-    assert.equal(GAME_URL, 'funkloch.vercel.app');
+    assert.equal(GAME_URL, 'funkloch.thssn.dev');
   });
 
   await t.test('matches what a played run actually spared', () => {

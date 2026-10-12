@@ -12,7 +12,8 @@
  * up at all.
  *
  * The daily board gets its own pass at the end, on a stopped clock: that the
- * same UTC day gives the same board in two separate browsers, that a second
+ * same Berlin day gives the same board in two separate browsers in different
+ * time zones, that the board changes at Berlin midnight, that a second
  * attempt at it is refused however the page is reloaded or clicked, and that
  * the text the share button hands on carries the date, the levels cleared, the
  * points and one mark per level for the senders spared there, and nothing that
@@ -33,7 +34,7 @@ import { spawn } from 'node:child_process';
 import { chromium } from 'playwright';
 
 import {
-  advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelsCleared, place, utcDay,
+  advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelsCleared, place,
 } from '../src/run.js';
 import { lookaheadChoice } from './bot64.js';
 
@@ -596,11 +597,15 @@ try {
 
   // --- das Tagesbrett ------------------------------------------------------
   // A fixed clock, so "today" is a day we know, and its board and its whole
-  // planned run are known before the page opens. Noon UTC: far enough from
-  // both midnights that nothing here depends on how long the run takes.
+  // planned run are known before the page opens. Noon UTC is 14:00 in Berlin
+  // (summer time, UTC+2): far enough from midnight that nothing here depends on
+  // how long the run takes. Dates and midnights are written out as the known
+  // facts they are, not asked of run.js, so the test does not grade itself.
   const day = Date.UTC(2026, 8, 24, 12, 0, 0);
+  const dayName = '2026-09-24';
+  const berlinMidnight = Date.UTC(2026, 8, 24, 22); // 2026-09-25 00:00 CEST
   const plan = planRun(dailySeed(day));
-  console.log(`Tagesbrett ${utcDay(day)}: erwartet ${plan.cleared} Level geschafft,`
+  console.log(`Tagesbrett ${dayName}: erwartet ${plan.cleared} Level geschafft,`
     + ` ${plan.score} Punkte, ${plan.script.length} Eingaben`);
 
   const context = await browser.newContext({ viewport: { width: 560, height: 960 } });
@@ -625,7 +630,7 @@ try {
   // from them.
   await daily.evaluate((today) => localStorage.setItem('funkloch.taeglich', JSON.stringify({
     day: today, moves: ['r9c9', 'r8c8', null, 'r7c7'], stage: 3, score: 12, done: true,
-  })), utcDay(day));
+  })), dayName);
 
   await daily.click('#mode-taeglich');
   await daily.waitForSelector('.board .node');
@@ -655,22 +660,36 @@ try {
   await daily.waitForSelector('.board .node');
   check(await boardShape(daily) === first, 'dasselbe Datum gibt dasselbe Brett');
 
-  // A second browser, same day, nothing shared but the clock: the same board.
-  // This is the claim the whole mode rests on.
-  const other = await browser.newContext({ viewport: { width: 560, height: 960 } });
+  // A second browser, same Berlin day, nothing shared but the clock: the same
+  // board. This is the claim the whole mode rests on. Its own time zone is set
+  // to Auckland, where it is already the 25th: the device's zone must not
+  // matter, only Berlin's.
+  const other = await browser.newContext({
+    viewport: { width: 560, height: 960 }, timezoneId: 'Pacific/Auckland',
+  });
   const stranger = await other.newPage();
-  await stranger.clock.install({ time: new Date(Date.UTC(2026, 8, 24, 21, 30)) });
-  await stranger.goto(`http://127.0.0.1:${port}/index.html`);
-  await stranger.waitForSelector('.board .node');
-  await stranger.click('#mode-taeglich');
-  await stranger.waitForSelector('.board .node');
-  check(await boardShape(stranger) === first,
-    'ein anderer Spieler bekommt am selben UTC-Tag dasselbe Brett');
-  // And the next day is a different one, or the mode would be one board.
-  await stranger.clock.setFixedTime(new Date(Date.UTC(2026, 8, 25, 12)));
-  await stranger.reload();
-  await stranger.waitForSelector('.board .node');
-  check(await boardShape(stranger) !== first, 'am nächsten Tag ist es ein anderes Brett');
+  /** Opens the daily board in the stranger's browser at a fixed instant. */
+  const strangerAt = async (instant) => {
+    await stranger.clock.setFixedTime(new Date(instant));
+    await stranger.goto(`http://127.0.0.1:${port}/index.html`);
+    await stranger.waitForSelector('.board .node');
+    if (await stranger.getAttribute('#mode-taeglich', 'aria-pressed') !== 'true') {
+      await stranger.click('#mode-taeglich');
+      await stranger.waitForSelector('.board .node');
+    }
+    return boardShape(stranger);
+  };
+  check(await strangerAt(Date.UTC(2026, 8, 24, 21, 30)) === first,
+    'ein anderer Spieler in einer anderen Zeitzone bekommt am selben Berliner Tag dasselbe Brett');
+
+  // The change lies on Berlin midnight: a second before it, still the 24th;
+  // a second after, the 25th — the same board as at noon on the 25th.
+  const nextDay = await strangerAt(Date.UTC(2026, 8, 25, 12));
+  check(nextDay !== first, 'am nächsten Tag ist es ein anderes Brett');
+  check(await strangerAt(berlinMidnight - 1000) === first, 'um 23:59:59 Berliner Zeit noch das Brett vom 24.');
+  check(await strangerAt(berlinMidnight + 1000) === nextDay, 'um 00:00:01 Berliner Zeit schon das vom 25.');
+  check(await strangerAt(Date.UTC(2026, 8, 24, 23, 30)) === nextDay,
+    'um 23:30 UTC, als UTC noch den 24. zählte, ist es das Brett vom 25.');
   await other.close();
 
   // Play the day out.
@@ -696,23 +715,24 @@ try {
   check(ended.dailyShown === true, 'sie zeigt stattdessen Ergebnis und Wartezeit');
   check(ended.bestShown === false, 'und keinen Bestwert aus dem freien Spiel');
   check(ended.seedShown === false, 'und keinen Seed, über den sich das Brett nachspielen ließe');
-  // Noon UTC, so about twelve hours are left of the day. Checked against the
-  // page's own clock rather than against a fixed string: the faked clock keeps
-  // ticking while the run is played, so the seconds have moved on by the time
-  // the card appears, and the property worth asserting is that the number
-  // really tracks the time to UTC midnight.
-  const counted = await daily.evaluate(() => {
+  // 14:00 in Berlin, so about ten hours are left of the day. Checked against
+  // the page's own clock rather than against a fixed string: the faked clock
+  // keeps ticking while the run is played, so the seconds have moved on by the
+  // time the card appears, and the property worth asserting is that the
+  // number really tracks the time to Berlin midnight — the moment the board
+  // changes, not UTC's two hours later.
+  const counted = await daily.evaluate((midnight) => {
     const shown = document.getElementById('countdown').textContent;
     const parts = shown.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
     if (parts === null) return { shown, ok: false };
     const seconds = Number(parts[1]) * 3600 + Number(parts[2]) * 60 + Number(parts[3]);
-    const left = (86400000 - (Date.now() % 86400000)) / 1000;
+    const left = (midnight - Date.now()) / 1000;
     return { shown, ok: Math.abs(seconds - left) < 90, left: Math.round(left) };
-  });
+  }, berlinMidnight);
   check(counted.ok, `Zeit bis zum nächsten Brett: ${counted.shown}`
-    + ` (bis Mitternacht UTC: ${counted.left}s)`);
-  check(ended.stored?.day === utcDay(day) && ended.stored?.done === true,
-    `gespeichert: ${utcDay(day)}, abgeschlossen`);
+    + ` (bis Mitternacht in Berlin: ${counted.left}s)`);
+  check(ended.stored?.day === dayName && ended.stored?.done === true,
+    `gespeichert: ${dayName}, abgeschlossen`);
   check(ended.stored?.levelsCleared === plan.cleared && !('stage' in (ended.stored ?? {})),
     `und mit ${ended.stored?.levelsCleared} geschafften Level, ohne altes stage-Feld`);
   // Same reason as the card above: shooting through the fade photographs a
@@ -777,8 +797,9 @@ try {
   // rather than imported from share.js, for the same reason as the marks.
   const body = lines.slice(1, -1);
   check(lines[0] === expectedHeader, `Kopfzeile: ${lines[0]}`);
-  check(lines.at(-1) === 'funkloch.vercel.app', `letzte Zeile: ${lines.at(-1)}`);
-  check((viaSheet.sent ?? '').includes('funkloch.vercel.app'), 'der geteilte Text enthält die URL');
+  check(lines.at(-1) === 'funkloch.thssn.dev', `letzte Zeile: ${lines.at(-1)}`);
+  check((viaSheet.sent ?? '').includes('funkloch.thssn.dev'), 'der geteilte Text enthält die URL');
+  check(!(viaSheet.sent ?? '').includes('vercel.app'), 'und nicht mehr die alte Vercel-Adresse');
   check(lines[0].includes('24.09.'), 'sie nennt das Datum');
   check(lines[0].includes(`${plan.cleared} Level geschafft`), 'sie nennt die geschafften Level');
   check(lines[0].includes(`${plan.score} ${pointsWord}`), `sie nennt die Punkte (${pointsWord}; „1 Punkt" prüft test/share.test.js)`);

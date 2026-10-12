@@ -1534,3 +1534,99 @@ Welche Schrift ein Zeichen zeichnet, steht nicht im Werkzeug; geprüft mit
 - `test/share.test.js`, `tools/ui-smoke.js` — die Zeile ist die Rampe ab
   Level 2 in Fünfergruppen, gedeckelt bei zwei; die Ziffernform hat ihre
   eigenen Prüfungen behalten; die Kopfzeile beginnt mit `funkl○ch`.
+
+---
+
+## 2026-10-12 — Tagesbrett wechselt um Mitternacht in Berlin
+
+**Konstante:** `DAILY_TIME_ZONE = 'Europe/Berlin'` in `src/run.js` (neu; vorher
+UTC)
+**Werkzeug:** keins; geprüft mit Unit- und Smoke-Tests
+**Ergebnis:** Das Tagesbrett wechselt um Mitternacht deutscher Zeit statt um
+Mitternacht UTC, also um 0 Uhr statt um 2 Uhr (Sommer) bzw. 1 Uhr (Winter). Alle
+spielen weiter gleichzeitig dasselbe Brett.
+
+### Begründung
+
+Entscheidend ist nicht, dass die Zeitzone neutral ist, sondern dass sie **für
+alle dieselbe** ist. Das Tagesbrett ist nur etwas wert, wenn alle im selben
+Moment dasselbe Brett spielen und Ergebnisse vergleichen können. Gerätelokale
+Zeit wäre falsch: Spieler in anderen Zeitzonen hätten ein anderes Brett —
+Neuseeland das von morgen, während Kalifornien noch auf dem von gestern sitzt —,
+und Ergebnisse wären nicht mehr vergleichbar.
+
+UTC erfüllte das, legte den Wechsel aber auf zwei Uhr nachts in Deutschland, wo
+gespielt wird. Berlin legt ihn auf die Mitternacht, die die Spieler tatsächlich
+haben; alle anderen wechseln weiter im selben Augenblick, nur nicht um ihre
+eigene Mitternacht.
+
+**Echte Zeitzone, kein fester Versatz.** Berlin ist im Winter UTC+1 und im
+Sommer UTC+2. Ein fester Versatz von zwei Stunden legte den Wechsel fünf Monate
+im Jahr auf ein Uhr nachts. `boardDay`, `dailySeed` und `msUntilNextDay` fragen
+deshalb `Intl.DateTimeFormat` mit `timeZone: 'Europe/Berlin'`; die Mitternacht
+des nächsten Tages wird als Instant gesucht, indem der in diesem Moment gültige
+Versatz nachgeschlagen wird — zweimal, weil der erste Versuch auf der anderen
+Seite einer Umstellung liegen kann. Berlin stellt um zwei bzw. drei Uhr um, nie
+um Mitternacht; jedes Datum hat genau eine.
+
+**Der Countdown benutzt dieselbe Uhr.** `msUntilNextDay` und `boardDay` lesen
+dieselbe Wanduhr; ein Test läuft über 400 Tage in Sieben-Stunden-Schritten und
+prüft, dass das Datum genau dort wechselt, wo der Countdown endet, und eine
+Millisekunde vorher noch nicht.
+
+### Die Umstellungstage
+
+| Datum | Tag beginnt (UTC) | Tag endet (UTC) | Länge |
+| --- | --- | --- | --- |
+| 2026-03-29 (Sommerzeit beginnt) | 2026-03-28 23:00 | 2026-03-29 22:00 | **23 h** |
+| 2026-06-01 | 2026-05-31 22:00 | 2026-06-01 22:00 | 24 h |
+| 2026-10-25 (Sommerzeit endet) | 2026-10-24 22:00 | 2026-10-25 23:00 | **25 h** |
+
+Der Countdown zählt um die Umstellung herum ohne Sprung: um 03:00 MESZ am
+29. März stehen 21 Stunden aus, um das erste 02:30 am 25. Oktober 22½, um das
+zweite 21½. An einem 25-Stunden-Tag zeigt die Endkarte bis zu „24:59:59".
+
+### Welches Brett ein Datum hat
+
+Der Seed hängt am **Datum**, nicht am Augenblick: die Tageszahl seit
+1970-01-01 durch den murmur3-Mischer, wie bisher. Damit hat jedes Datum das
+Brett, das es immer hatte — die Umstellung verschiebt, *wann* ein Brett kommt,
+nicht, *welches* zu einem Datum gehört. Um 12:00 UTC sind sich beide Uhren über
+das Datum einig; über 20 000 Tage (1888 bis 2134, jeder dritte) liefern alter
+und neuer Code dort dasselbe Datum und denselben Seed. Die Tagesbrett-Messungen
+in diesem Protokoll (`--daily`, ab 2026-01-01 um 12:00 UTC) bleiben dadurch
+gültig.
+
+### Ein zusätzlicher Versuch?
+
+Der gespeicherte Tagesversuch hängt an der Datumszeichenkette. **Ein
+zusätzlicher Versuch am selben Brett entsteht nicht.** Brett und Eintrag hängen
+am selben Datum, also passt ein Eintrag immer zu dem Brett, auf dem er gespielt
+wurde; und das Berliner Datum liegt nie hinter dem UTC-Datum, ein alter Eintrag
+ist also entweder von heute oder von einem früheren Brett.
+
+Was in der Nacht der Auslieferung geschieht, zwischen Mitternacht in Berlin und
+Mitternacht UTC (0–2 Uhr im Sommer, 0–1 Uhr im Winter):
+
+- Das Brett des nächsten Tages ist bis zu zwei Stunden früher da.
+- Ein in diesem Fenster *unfertiger* Versuch am Brett des Vortags wird
+  abgebrochen — er wäre mit dem alten Code um zwei Uhr ebenso abgelaufen.
+
+Einmalig und harmlos. `DAILY_RULES` bleibt auf 2: die Züge eines Eintrags passen
+weiter zu dem Brett seines Datums.
+
+### Was blieb
+
+- `src/run.js` — `DAILY_TIME_ZONE`, `boardDay` (statt `utcDay`), `dailySeed`
+  und `msUntilNextDay` über `Intl.DateTimeFormat`, mit der Begründung im
+  Kommentar.
+- `index.html` — `boardDay` statt `utcDay`; `startDaily` liest die Uhr einmal
+  für Datum und Brett, damit beide nicht auf verschiedene Seiten von Mitternacht
+  fallen.
+- `test/run.test.js` — Datum und Wechsel auf Berliner Mitternacht, im Sommer
+  und im Winter; Countdown und Datumswechsel fallen zusammen; der 23- und der
+  25-Stunden-Tag; jedes Datum behält seinen alten Seed.
+- `tools/ui-smoke.js` — ein zweiter Browser in der Zeitzone Pacific/Auckland
+  bekommt am selben Berliner Tag dasselbe Brett; um 23:59:59 Berliner Zeit
+  noch das Brett vom 24., um 00:00:01 schon das vom 25., um 23:30 UTC ebenfalls;
+  der Countdown zählt auf Berliner Mitternacht.

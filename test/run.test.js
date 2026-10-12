@@ -505,6 +505,18 @@ test('amplifier nodes on a board', async (t) => {
 /** dailySeed of 2026-09-24, as computed by the build before freeSeed existed. */
 const DAILY_2026_09_24 = 207894553;
 
+/**
+ * dailySeed as it was while the board turned over at UTC midnight, copied
+ * from that build: the UTC day number through the murmur3 finaliser. A date
+ * has to keep its board across the move to Berlin midnight.
+ */
+const dailySeedAsItWas = (at) => {
+  const day = Math.floor(at / 86400000);
+  let hash = Math.imul(day ^ (day >>> 16), 0x85ebca6b) >>> 0;
+  hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35) >>> 0;
+  return (hash ^ (hash >>> 16)) >>> 0;
+};
+
 test('the free-run seed', async (t) => {
   const at = Date.UTC(2026, 9, 12, 17, 4, 31, 250);
 
@@ -544,34 +556,54 @@ test('the free-run seed', async (t) => {
 test('the daily board', async (t) => {
   const noon = Date.UTC(2026, 8, 24, 12, 0, 0);
 
-  await t.test('names the day in UTC, not in the local zone', () => {
-    assert.equal(run.utcDay(noon), '2026-09-24');
-    // The two moments a local date would get wrong: late on the 24th in UTC is
-    // already the 25th east of the line, and just after midnight UTC is still
-    // the 24th west of it. Both have to answer with the UTC day, or two players
-    // comparing results would not have played the same board.
-    assert.equal(run.utcDay(Date.UTC(2026, 8, 24, 23, 59, 59)), '2026-09-24');
-    assert.equal(run.utcDay(Date.UTC(2026, 8, 25, 0, 0, 0)), '2026-09-25');
+  // Instants are written in UTC on purpose and checked against what a Berlin
+  // wall clock showed then — CEST (UTC+2) until 2026-10-25, CET (UTC+1) after.
+  // Known facts, not the code's own arithmetic played back.
+  const berlinMidnight25Sep = Date.UTC(2026, 8, 24, 22); // 2026-09-25 00:00 CEST
+
+  await t.test('names the day on a Berlin wall clock, the same for everyone', () => {
+    assert.equal(run.DAILY_TIME_ZONE, 'Europe/Berlin');
+    assert.equal(run.boardDay(noon), '2026-09-24');
+    // The change is at Berlin midnight, not at UTC midnight two hours later.
+    assert.equal(run.boardDay(berlinMidnight25Sep - 1000), '2026-09-24');
+    assert.equal(run.boardDay(berlinMidnight25Sep), '2026-09-25');
+    assert.equal(run.boardDay(Date.UTC(2026, 8, 24, 23, 30)), '2026-09-25', 'UTC would still say the 24th');
+    // In winter Berlin is only one hour ahead: midnight is 23:00 UTC.
+    assert.equal(run.boardDay(Date.UTC(2026, 11, 31, 22, 59, 59)), '2026-12-31');
+    assert.equal(run.boardDay(Date.UTC(2026, 11, 31, 23, 0, 0)), '2027-01-01');
   });
 
   await t.test('takes a Date as readily as a timestamp', () => {
-    assert.equal(run.utcDay(new Date(noon)), run.utcDay(noon));
+    assert.equal(run.boardDay(new Date(noon)), run.boardDay(noon));
     assert.equal(run.dailySeed(new Date(noon)), run.dailySeed(noon));
   });
 
   await t.test('refuses a moment that is not one', () => {
     for (const bad of [undefined, null, 'heute', new Date('kein Datum'), NaN]) {
-      assert.throws(() => run.utcDay(bad), RangeError);
+      assert.throws(() => run.boardDay(bad), RangeError);
       assert.throws(() => run.dailySeed(bad), RangeError);
+      assert.throws(() => run.msUntilNextDay(bad), RangeError);
     }
   });
 
-  await t.test('gives one seed per day, whatever the hour', () => {
-    const early = run.dailySeed(Date.UTC(2026, 8, 24, 0, 0, 1));
-    const late = run.dailySeed(Date.UTC(2026, 8, 24, 23, 59, 59));
-    assert.equal(early, run.dailySeed(noon));
-    assert.equal(late, run.dailySeed(noon));
-    assert.notEqual(run.dailySeed(Date.UTC(2026, 8, 25, 12)), early);
+  await t.test('gives one seed per Berlin day, whatever the hour', () => {
+    const first = run.dailySeed(berlinMidnight25Sep - 86400000); // 24th, 00:00
+    const last = run.dailySeed(berlinMidnight25Sep - 1); // 24th, 23:59:59.999
+    assert.equal(first, run.dailySeed(noon));
+    assert.equal(last, run.dailySeed(noon));
+    assert.notEqual(run.dailySeed(berlinMidnight25Sep), first);
+    assert.equal(run.dailySeed(berlinMidnight25Sep), run.dailySeed(Date.UTC(2026, 8, 25, 12)));
+  });
+
+  await t.test('keeps the board each date always had', () => {
+    // The seed hangs on the date, not the instant: moving the change to Berlin
+    // midnight moved when a board comes, not which board a date has. At noon
+    // UTC the two clocks agree on the date, so the seed must be the old one.
+    for (let day = -2000; day < 2000; day += 7) {
+      const at = day * 86400000 + 43200000;
+      assert.equal(run.boardDay(at), new Date(at).toISOString().slice(0, 10));
+      assert.equal(run.dailySeed(at), dailySeedAsItWas(at), new Date(at).toISOString());
+    }
   });
 
   await t.test('is a seed createRun will take', () => {
@@ -596,18 +628,49 @@ test('the daily board', async (t) => {
   });
 
   await t.test('deals the same board to everyone on the same day', () => {
-    // Two players, two clocks, two moments of the same UTC day: one board.
-    const berlin = createRun({ seed: run.dailySeed(Date.UTC(2026, 8, 24, 7)), config: ENDLESS_RUN });
-    const auckland = createRun({ seed: run.dailySeed(Date.UTC(2026, 8, 24, 21)), config: ENDLESS_RUN });
-    assert.deepEqual(snapshot(auckland), snapshot(berlin));
+    // Two players, two moments of the same Berlin day — one of them in
+    // Auckland, where it is long since the 25th: one board.
+    const morning = createRun({ seed: run.dailySeed(Date.UTC(2026, 8, 24, 5)), config: ENDLESS_RUN });
+    const evening = createRun({ seed: run.dailySeed(Date.UTC(2026, 8, 24, 21, 30)), config: ENDLESS_RUN });
+    assert.deepEqual(snapshot(evening), snapshot(morning));
   });
 
-  await t.test('counts down to the next UTC midnight', () => {
-    assert.equal(run.msUntilNextDay(noon), 12 * 3600000);
-    assert.equal(run.msUntilNextDay(Date.UTC(2026, 8, 24, 23, 59, 59)), 1000);
+  await t.test('counts down to the next Berlin midnight', () => {
+    assert.equal(run.msUntilNextDay(noon), 10 * 3600000, 'noon UTC is 14:00 in Berlin');
+    assert.equal(run.msUntilNextDay(berlinMidnight25Sep - 1000), 1000);
     // At midnight exactly the day has already turned, so a whole one is ahead:
     // never zero, or the card would offer a board that is not there yet.
-    assert.equal(run.msUntilNextDay(Date.UTC(2026, 8, 25, 0, 0, 0)), 86400000);
+    assert.equal(run.msUntilNextDay(berlinMidnight25Sep), 24 * 3600000);
+  });
+
+  await t.test('counts the countdown on the same clock as the change', () => {
+    // Wherever the countdown lands, the date has just turned there, and a
+    // millisecond before it had not.
+    for (let hour = 0; hour < 24 * 400; hour += 7) {
+      const at = Date.UTC(2026, 0, 1) + hour * 3600000;
+      const next = at + run.msUntilNextDay(at);
+      assert.notEqual(run.boardDay(next), run.boardDay(at), new Date(at).toISOString());
+      assert.equal(run.boardDay(next - 1), run.boardDay(at), new Date(at).toISOString());
+    }
+  });
+
+  await t.test('has a 23-hour and a 25-hour day', () => {
+    // 2026-03-29: clocks go forward at 02:00 CET. The day runs from 23:00 UTC on
+    // the 28th to 22:00 UTC on the 29th.
+    const springStart = Date.UTC(2026, 2, 28, 23);
+    assert.equal(run.boardDay(springStart), '2026-03-29');
+    assert.equal(run.msUntilNextDay(springStart), 23 * 3600000);
+    assert.equal(run.boardDay(Date.UTC(2026, 2, 29, 22)), '2026-03-30');
+    // 2026-10-25: clocks go back at 03:00 CEST. From 22:00 UTC on the 24th to
+    // 23:00 UTC on the 25th.
+    const autumnStart = Date.UTC(2026, 9, 24, 22);
+    assert.equal(run.boardDay(autumnStart), '2026-10-25');
+    assert.equal(run.msUntilNextDay(autumnStart), 25 * 3600000);
+    assert.equal(run.boardDay(Date.UTC(2026, 9, 25, 23)), '2026-10-26');
+    // And the hour around each change counts down without a jump.
+    assert.equal(run.msUntilNextDay(Date.UTC(2026, 2, 29, 1)), 21 * 3600000, '03:00 CEST, just after');
+    assert.equal(run.msUntilNextDay(Date.UTC(2026, 9, 25, 0, 30)), 22.5 * 3600000, 'the first 02:30');
+    assert.equal(run.msUntilNextDay(Date.UTC(2026, 9, 25, 1, 30)), 21.5 * 3600000, 'the second 02:30');
   });
 
   await t.test('keeps the seed it has always dealt', () => {
@@ -617,7 +680,9 @@ test('the daily board', async (t) => {
   });
 
   await t.test('works before 1970, where the day number goes negative', () => {
-    assert.equal(run.utcDay(Date.UTC(1969, 6, 20, 20, 17)), '1969-07-20');
-    assert.equal(run.msUntilNextDay(Date.UTC(1969, 6, 20, 20, 17)), 3600000 * 3 + 43 * 60000);
+    // 1969 had no summer time in Germany: 20:17 UTC was 21:17 in Berlin.
+    assert.equal(run.boardDay(Date.UTC(1969, 6, 20, 20, 17)), '1969-07-20');
+    assert.equal(run.msUntilNextDay(Date.UTC(1969, 6, 20, 20, 17)), 3600000 * 2 + 43 * 60000);
+    assert.equal(run.dailySeed(Date.UTC(1969, 6, 20, 12)), dailySeedAsItWas(Date.UTC(1969, 6, 20, 12)));
   });
 });

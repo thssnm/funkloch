@@ -277,11 +277,66 @@ export const ENDLESS_RUN = {
 };
 
 /**
- * Milliseconds in a day. The daily board turns over at UTC midnight, and UTC
- * has no daylight saving, so a day is always exactly this long — which is what
- * lets the day number be a plain division instead of a calendar walk.
+ * Milliseconds in a calendar day as `Date.UTC` counts them. Used only to turn a
+ * date into a day number; how long a day of the daily board actually lasts is
+ * up to the time zone, and is 23 or 25 hours twice a year.
  */
 const DAY_MS = 86400000;
+
+/**
+ * The one clock the daily board runs on: it turns over at midnight in Berlin.
+ *
+ * What matters is not that the zone is neutral but that it is the same for
+ * everyone. The board is only worth playing if everyone plays the same one at
+ * the same moment, so that two results can be compared; a device-local date
+ * would hand New Zealand tomorrow's board while California is still on
+ * yesterday's. Until 2026-10-12 that one clock was UTC, which put the change
+ * at two in the morning in Germany, where the game is played. Berlin puts it on
+ * the midnight its players actually have, and every one else still changes at
+ * the same instant, just not at their own midnight.
+ *
+ * A real time zone and never a fixed offset: Berlin is UTC+1 in winter and
+ * UTC+2 in summer, so a fixed two hours would put the change at one in the
+ * morning for five months of the year. `Intl.DateTimeFormat` knows the rules.
+ */
+export const DAILY_TIME_ZONE = 'Europe/Berlin';
+
+/** Reads the wall clock in `DAILY_TIME_ZONE`, to the second. */
+const WALL_CLOCK = new Intl.DateTimeFormat('en-US', {
+  timeZone: DAILY_TIME_ZONE,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: 'numeric',
+  second: 'numeric',
+});
+
+/**
+ * The date and time on a Berlin wall clock at the moment `time`.
+ * @param {number} time epoch milliseconds
+ * @returns {{year: number, month: number, day: number, hour: number, minute: number, second: number}}
+ */
+function wallClock(time) {
+  const parts = {};
+  for (const { type, value } of WALL_CLOCK.formatToParts(new Date(time))) {
+    if (type !== 'literal') parts[type] = Number(value);
+  }
+  return parts;
+}
+
+/**
+ * How far Berlin's wall clock runs ahead of UTC at the moment `time`, in
+ * milliseconds: one hour in winter, two in summer.
+ * @param {number} time
+ * @returns {number}
+ */
+function offsetAt(time) {
+  const second = time - (((time % 1000) + 1000) % 1000);
+  const { year, month, day, hour, minute, second: s } = wallClock(second);
+  return Date.UTC(year, month - 1, day, hour, minute, s) - second;
+}
 
 /**
  * Normalises a `Date` or an epoch millisecond count to a number.
@@ -295,26 +350,28 @@ function toTime(at) {
 }
 
 /**
- * The day a moment falls in, as `YYYY-MM-DD`, **in UTC**.
- *
- * UTC and not the local zone, and this is the whole point of the function: the
- * daily board is only worth playing if it is the same board for everyone, and a
- * local date would hand New Zealand tomorrow's board while California still has
- * yesterday's. Two players comparing results would then not have played the
- * same thing. One clock for everyone, and it costs at most a few hours of
- * "today" feeling off at the edges of the world.
+ * The day of the daily board a moment falls in, as `YYYY-MM-DD` — the date on
+ * a wall clock in `DAILY_TIME_ZONE`, the same for every player wherever they
+ * are; see there for why one zone and not the device's own.
  *
  * `at` is required rather than defaulting to the current time, so that this
  * half of the code reads no clock and a test can ask about any day it likes.
  * @param {Date|number} at
  * @returns {string}
  */
-export function utcDay(at) {
-  return new Date(toTime(at)).toISOString().slice(0, 10);
+export function boardDay(at) {
+  const { year, month, day } = wallClock(toTime(at));
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /**
- * Seed of the daily board for the UTC day `at` falls in.
+ * Seed of the daily board for the day `at` falls in (`boardDay`).
+ *
+ * The seed hangs on the date alone — its day number counted from 1970-01-01 —
+ * not on the instant. So a date keeps the board it always had: moving the change
+ * from UTC midnight to Berlin midnight moved *when* each board comes, not which
+ * board belongs to which date, and the stored attempt, which is keyed by the
+ * same date string, always matches the board it was played on.
  *
  * Hashed rather than used directly, because the level seeds are `seed + level *
  * 7919`: consecutive days would otherwise deal boards from neighbouring corners
@@ -325,7 +382,8 @@ export function utcDay(at) {
  * @returns {number} integer in [0, 2^32), suitable as a `createRun` seed
  */
 export function dailySeed(at) {
-  return mix32(Math.floor(toTime(at) / DAY_MS));
+  const { year, month, day } = wallClock(toTime(at));
+  return mix32(Date.UTC(year, month - 1, day) / DAY_MS);
 }
 
 /**
@@ -365,15 +423,29 @@ export function freeSeed(at) {
 }
 
 /**
- * Milliseconds from `at` until the next UTC midnight, i.e. until the next daily
- * board. Never zero and never more than a day: at midnight exactly, the day has
- * already turned and a whole new one is ahead.
+ * Milliseconds from `at` until the next midnight in `DAILY_TIME_ZONE`, i.e.
+ * until the next daily board — the same clock `boardDay` reads, so the countdown
+ * and the change cannot drift apart.
+ *
+ * Never zero: at midnight exactly the day has already turned and a whole new
+ * one is ahead. A whole one is usually 24 hours, but 23 on the day the clocks
+ * go forward and 25 on the day they go back. Berlin changes its clocks at two
+ * and three in the morning, never at midnight, so every date has exactly one.
+ *
+ * Found by asking the zone rather than by adding an offset: the next date's
+ * midnight, written as if it were UTC, minus the offset in force at that
+ * instant. The offset is looked up twice, because the first guess may sit on
+ * the other side of a change.
  * @param {Date|number} at
  * @returns {number}
  */
 export function msUntilNextDay(at) {
   const time = toTime(at);
-  return DAY_MS - ((time % DAY_MS) + DAY_MS) % DAY_MS;
+  const { year, month, day } = wallClock(time);
+  const asIfUtc = Date.UTC(year, month - 1, day + 1);
+  let midnight = asIfUtc - offsetAt(asIfUtc);
+  midnight = asIfUtc - offsetAt(midnight);
+  return midnight - time;
 }
 
 /**

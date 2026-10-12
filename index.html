@@ -632,8 +632,7 @@
     <script type="module">
       import {
         advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelScores, levelsCleared,
-        msUntilNextDay, place,
-        utcDay,
+        msUntilNextDay, place, boardDay,
       } from './src/run.js';
       import { createScene, fitHitAreas, render } from './src/render.js';
       import { points, shareText } from './src/share.js';
@@ -844,7 +843,7 @@
 
       /** 'frei' or 'taeglich'. */
       let mode = 'frei';
-      /** The UTC day the daily attempt on screen belongs to. */
+      /** The Berlin day (`boardDay`) the daily attempt on screen belongs to. */
       let today = null;
       /** That attempt's moves, in order. */
       let moves = [];
@@ -1066,10 +1065,14 @@
        * Opens the daily board: today's if there is no attempt on it yet, and
        * otherwise the attempt already made, replayed to where it was left.
        *
-       * The date is asked of `utcDay`, which reads the clock in UTC and not in
-       * the local zone. That is the difference between everyone playing the
-       * same board and New Zealand playing tomorrow's while California is still
-       * on yesterday's, which would make two results incomparable.
+       * The date is asked of `boardDay`, which reads the clock in Berlin and
+       * not in the device's zone. The zone is not the point, its being the same
+       * for everyone is: a local date would have New Zealand playing tomorrow's
+       * board while California is still on yesterday's, and two results would
+       * no longer be comparable.
+       *
+       * The clock is read once, for the date and the board alike: read twice,
+       * the two could fall either side of midnight.
        */
       function startDaily() {
         if (mode === 'frei' && state !== null) parked = state;
@@ -1077,10 +1080,11 @@
         writeMode(mode);
         boardKey = null;
         record = false;
-        today = utcDay(Date.now());
+        const now = Date.now();
+        today = boardDay(now);
         const stored = readDaily();
         moves = stored?.day === today ? stored.moves : [];
-        let next = createRun({ seed: dailySeed(Date.now()), config: ENDLESS_RUN });
+        let next = createRun({ seed: dailySeed(now), config: ENDLESS_RUN });
         for (const move of moves) next = move === null ? advance(next) : place(next, move);
         apply(next);
       }
@@ -1159,7 +1163,7 @@
       function tick() {
         const now = Date.now();
         // Midnight went by with the card still open: there is a board to play.
-        if (utcDay(now) !== today) {
+        if (boardDay(now) !== today) {
           startDaily();
           return;
         }
