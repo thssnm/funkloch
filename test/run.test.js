@@ -4,25 +4,25 @@ import assert from 'node:assert/strict';
 import { bfsWithin, bfsWithinAmplified, bfsWithinBlocked } from '../src/graph.js';
 import * as run from '../src/run.js';
 import {
-  advance, createRun, DEFAULT_RUN, ENDLESS_RUN, place, snapshot, stageSpec,
+  advance, createRun, DEFAULT_RUN, ENDLESS_RUN, place, snapshot, levelSpec,
 } from '../src/run.js';
 import { greedyChoice, playGreedy } from '../tools/bot.js';
 
 /** A small, quick run for the tests. */
-const tiny = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.5 };
+const tiny = { ...DEFAULT_RUN, levelSizes: [12, 14], senderRatio: 0.5 };
 
 test('createRun', async (t) => {
-  await t.test('deals a board and a depot', () => {
+  await t.test('deals a board and its senders', () => {
     const run = createRun({ seed: 3, config: tiny });
-    assert.equal(run.stage, 1);
+    assert.equal(run.level,1);
     assert.equal(run.graph.nodes.length, 12);
     assert.equal(run.status, 'playing');
     assert.equal(run.score, 0);
     assert.equal(run.uncovered.length, 12);
-    assert.equal(run.depot.length, 6);
-    assert.equal(run.current, run.depot[0]);
-    assert.deepEqual(run.preview, run.depot.slice(1, 3), 'the player sees exactly the next two');
-    for (const radius of run.depot) assert.ok([1, 2, 3].includes(radius), `odd radius ${radius}`);
+    assert.equal(run.senders.length, 6);
+    assert.equal(run.current, run.senders[0]);
+    assert.deepEqual(run.preview, run.senders.slice(1, 3), 'the player sees exactly the next two');
+    for (const radius of run.senders) assert.ok([1, 2, 3].includes(radius), `odd radius ${radius}`);
   });
 
   await t.test('is reproducible from the seed alone', () => {
@@ -35,7 +35,7 @@ test('createRun', async (t) => {
 
   await t.test('rejects a malformed setup', () => {
     assert.throws(() => createRun({ seed: 1.5, config: tiny }), RangeError);
-    assert.throws(() => createRun({ seed: 1, config: { ...tiny, stages: [] } }), RangeError);
+    assert.throws(() => createRun({ seed: 1, config: { ...tiny, levelSizes: [] } }), RangeError);
   });
 });
 
@@ -48,7 +48,7 @@ test('place', async (t) => {
 
     assert.deepEqual(after.placed, [{ id: target, radius }]);
     assert.equal(after.radii.get(target), radius);
-    assert.equal(after.depot.length, run.depot.length - 1);
+    assert.equal(after.senders.length, run.senders.length - 1);
     for (const reached of bfsWithin(run.graph, target, radius)) {
       assert.ok(after.covered.has(reached), `${reached} should be lit`);
     }
@@ -76,41 +76,41 @@ test('place', async (t) => {
     assert.equal('remove' in run, false, 'run.js must not grow a remove() again');
   });
 
-  await t.test('ends the run when the depot runs out on an unfinished board', () => {
-    // Spend the whole depot on one corner of the board.
-    let run = createRun({ seed: 5, config: { ...tiny, depotRatio: 0.25, composition: [[1, 1]] } });
+  await t.test('ends the run when the senders run out on an unfinished board', () => {
+    // Spend every sender on one corner of the board.
+    let run = createRun({ seed: 5, config: { ...tiny, senderRatio: 0.25, composition: [[1, 1]] } });
     const order = run.graph.nodes.map((node) => node.id);
     let i = 0;
     while (run.status === 'playing') run = place(run, order[i++]);
     assert.equal(run.status, 'lost');
-    assert.equal(run.depot.length, 0);
+    assert.equal(run.senders.length, 0);
     assert.ok(run.uncovered.length > 0);
     assert.equal(place(run, order[i]), run, 'a finished run accepts nothing more');
   });
 });
 
-test('clearing stages', async (t) => {
+test('clearing levels', async (t) => {
   /** Plays greedily until the run ends, returning every state it passed. */
   const playOut = (seed, config) => {
     let run = createRun({ seed, config });
     const seen = [run];
-    while (run.status === 'playing' || run.status === 'stageCleared') {
-      run = run.status === 'stageCleared' ? advance(run) : place(run, greedyChoice(run));
+    while (run.status === 'playing' || run.status === 'levelCleared') {
+      run = run.status === 'levelCleared' ? advance(run) : place(run, greedyChoice(run));
       seen.push(run);
     }
     return seen;
   };
 
   await t.test('a cleared board pauses before the next one', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
+    const generous = { ...DEFAULT_RUN, levelSizes: [12, 14], senderRatio: 0.6 };
     const states = playOut(3, generous);
-    const cleared = states.find((run) => run.status === 'stageCleared');
-    assert.ok(cleared, 'expected a stage to be cleared');
+    const cleared = states.find((run) => run.status === 'levelCleared');
+    assert.ok(cleared, 'expected a level to be cleared');
     assert.equal(cleared.uncovered.length, 0);
-    assert.equal(cleared.stage, 1);
+    assert.equal(cleared.level,1);
 
     const next = advance(cleared);
-    assert.equal(next.stage, 2);
+    assert.equal(next.level,2);
     assert.equal(next.graph.nodes.length, 14);
     assert.equal(next.placed.length, 0);
     assert.equal(next.status, 'playing');
@@ -118,47 +118,47 @@ test('clearing stages', async (t) => {
   });
 
   await t.test('leftovers are the score, and only on a cleared board', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
+    const generous = { ...DEFAULT_RUN, levelSizes: [12, 14], senderRatio: 0.6 };
     const states = playOut(3, generous);
-    const cleared = states.find((run) => run.status === 'stageCleared');
-    assert.equal(cleared.score, cleared.depot.length, 'stage 1 weighs its leftovers once');
+    const cleared = states.find((run) => run.status === 'levelCleared');
+    assert.equal(cleared.score, cleared.senders.length, 'level 1 weighs its leftovers once');
 
     const midway = states.find((run) => run.status === 'playing' && run.placed.length === 1);
     assert.equal(midway.score, 0, 'nothing scores until the board is clear');
   });
 
-  await t.test('leftovers are weighted by the stage they were saved on', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
+  await t.test('leftovers are weighted by the level they were saved on', () => {
+    const generous = { ...DEFAULT_RUN, levelSizes: [12, 14], senderRatio: 0.6 };
     const states = playOut(3, generous);
-    const first = states.find((run) => run.status === 'stageCleared');
-    const second = states.filter((run) => run.status === 'stageCleared' || run.status === 'won').at(-1);
+    const first = states.find((run) => run.status === 'levelCleared');
+    const second = states.filter((run) => run.status === 'levelCleared' || run.status === 'won').at(-1);
     if (second === first) return; // the second board was not cleared on this seed
 
-    // What the second stage added is its own leftovers, counted twice.
-    assert.equal(second.stage, 2);
-    assert.equal(second.score - first.score, 2 * second.depot.length);
+    // What the second level added is its own leftovers, counted twice.
+    assert.equal(second.level,2);
+    assert.equal(second.score - first.score, 2 * second.senders.length);
   });
 
-  await t.test('the run score is the sum of leftovers times stage', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.6 };
+  await t.test('the run score is the sum of leftovers times level', () => {
+    const generous = { ...DEFAULT_RUN, levelSizes: [12, 14], senderRatio: 0.6 };
     for (const seed of [3, 4, 5, 6, 7]) {
       const last = playOut(seed, generous).at(-1);
-      const expected = last.cleared.reduce((sum, { stage, left }) => sum + left * stage, 0);
+      const expected = last.cleared.reduce((sum, { level, left }) => sum + left * level, 0);
       assert.equal(last.score, expected, `seed ${seed}`);
     }
   });
 
-  await t.test('the last stage ends the run rather than advancing', () => {
-    const generous = { ...DEFAULT_RUN, stages: [12, 14], depotRatio: 0.7 };
+  await t.test('the last level ends the run rather than advancing', () => {
+    const generous = { ...DEFAULT_RUN, levelSizes: [12, 14], senderRatio: 0.7 };
     const states = playOut(3, generous);
     const last = states.at(-1);
     if (last.status !== 'won') return; // an unlucky board; the other tests cover losing
-    assert.equal(last.stage, 2);
+    assert.equal(last.level,2);
     assert.equal(advance(last), last, 'a won run stays won');
     assert.ok(last.score > 0);
   });
 
-  await t.test('advance does nothing mid-stage', () => {
+  await t.test('advance does nothing mid-level', () => {
     const run = createRun({ seed: 3, config: tiny });
     assert.equal(advance(run), run);
   });
@@ -169,8 +169,8 @@ test('snapshots', async (t) => {
     const run = place(createRun({ seed: 3, config: tiny }), createRun({ seed: 3, config: tiny }).graph.nodes[0].id);
     const json = JSON.parse(JSON.stringify(run));
     assert.deepEqual(json, snapshot(run));
-    assert.equal(json.stage, 1);
-    assert.equal(json.stages, 2);
+    assert.equal(json.level,1);
+    assert.equal(json.levels, 2);
     assert.equal(json.placed.length, 1);
     assert.equal(typeof json.status, 'string');
   });
@@ -187,13 +187,13 @@ test('the greedy bot', async (t) => {
 
   await t.test('plays a whole run and reports the outcome', () => {
     // A seed greedy actually wins, so the won-run branch is exercised.
-    const result = playGreedy(2, { ...DEFAULT_RUN, depotRatio: 0.45 });
+    const result = playGreedy(2, { ...DEFAULT_RUN, senderRatio: 0.45 });
     assert.equal(result.won, true);
     assert.equal(typeof result.won, 'boolean');
     assert.ok(result.placements > 0);
-    assert.ok(result.stagesCleared >= 0 && result.stagesCleared <= DEFAULT_RUN.stages.length);
+    assert.ok(result.levelsCleared >= 0 && result.levelsCleared <= DEFAULT_RUN.levelSizes.length);
     if (result.won) {
-      assert.equal(result.stagesCleared, DEFAULT_RUN.stages.length, 'a won run clears every stage');
+      assert.equal(result.levelsCleared, DEFAULT_RUN.levelSizes.length, 'a won run clears every level');
     }
   });
 
@@ -201,12 +201,12 @@ test('the greedy bot', async (t) => {
     assert.deepEqual(playGreedy(7, DEFAULT_RUN), playGreedy(7, DEFAULT_RUN));
   });
 
-  await t.test('beats a depot that is plainly big enough', () => {
+  await t.test('wins with plainly enough senders', () => {
     let wins = 0;
     for (let seed = 1; seed <= 20; seed++) {
-      if (playGreedy(seed, { ...DEFAULT_RUN, depotRatio: 0.45 }).won) wins++;
+      if (playGreedy(seed, { ...DEFAULT_RUN, senderRatio: 0.45 }).won) wins++;
     }
-    assert.equal(wins, 20, 'greedy should never lose with a generous depot');
+    assert.equal(wins, 20, 'greedy should never lose with generous senders');
   });
 });
 
@@ -214,56 +214,60 @@ test('the greedy bot', async (t) => {
 // The endless shape
 // ---------------------------------------------------------------------------
 
-/** A quick endless run: small boards, generous depots, the configured blocking. */
+/** The endless shape without its onboarding level, for tests about the curve. */
+const { firstLevel: ONBOARDING, ...CURVE_ONLY } = ENDLESS_RUN;
+
+/** A quick endless run: small boards, generous senders, the configured blocking. */
 const endless = {
-  ...ENDLESS_RUN,
-  stageNodes: { start: 10, growth: 2, max: 14 },
-  depotCurve: { start: 0.9, floor: 0.8, tau: 4 },
+  ...CURVE_ONLY,
+  levelNodes: { start: 10, growth: 2, max: 14 },
+  senderCurve: { start: 0.9, floor: 0.8, tau: 4 },
 };
 
 test('endless runs', async (t) => {
-  await t.test('grow the board and shrink the depot along the curves', () => {
-    const first = stageSpec(ENDLESS_RUN, 0);
-    assert.equal(first.nodeCount, ENDLESS_RUN.stageNodes.start);
-    assert.equal(first.ratio.toFixed(3), ENDLESS_RUN.depotCurve.start.toFixed(3));
+  await t.test('grow the board and shrink the senders along the curves', () => {
+    const first = levelSpec(CURVE_ONLY, 0);
+    assert.equal(first.nodeCount, CURVE_ONLY.levelNodes.start);
+    assert.equal(first.ratio.toFixed(3), CURVE_ONLY.senderCurve.start.toFixed(3));
 
     let previous = first;
     for (let index = 1; index < 40; index++) {
-      const spec = stageSpec(ENDLESS_RUN, index);
+      const spec = levelSpec(CURVE_ONLY, index);
       assert.ok(spec.nodeCount >= previous.nodeCount, 'boards never shrink');
-      assert.ok(spec.ratio < previous.ratio, 'the depot ratio falls strictly');
-      assert.ok(spec.ratio > ENDLESS_RUN.depotCurve.floor, 'and stays above the floor');
+      assert.ok(spec.ratio < previous.ratio, 'the sender ratio falls strictly');
+      assert.ok(spec.ratio > ENDLESS_RUN.senderCurve.floor, 'and stays above the floor');
       previous = spec;
     }
-    assert.equal(stageSpec(ENDLESS_RUN, 39).nodeCount, ENDLESS_RUN.stageNodes.max, 'board size caps');
+    assert.equal(levelSpec(ENDLESS_RUN, 39).nodeCount, ENDLESS_RUN.levelNodes.max, 'board size caps');
   });
 
   await t.test('never end in a win: a cleared board leads to the next one', () => {
     let state = createRun({ seed: 4, config: endless });
-    let stages = 0;
-    while (stages < 6) {
-      if (state.status === 'stageCleared') {
+    let levels = 0;
+    while (levels < 6) {
+      if (state.status === 'levelCleared') {
         state = advance(state);
-        stages++;
+        levels++;
         continue;
       }
-      assert.equal(state.status, 'playing', 'the depots are large enough to clear these boards');
+      assert.equal(state.status, 'playing', 'the senders are enough to clear these boards');
       state = place(state, greedyChoice(state));
     }
-    assert.equal(state.stage, 7);
+    assert.equal(state.level,7);
     assert.equal(state.cleared.length, 6, 'six boards behind it');
-    assert.equal(snapshot(state).streak, 7, 'the streak is the stage being played');
-    assert.equal(snapshot(state).stages, null, 'there is no stage count to report');
-    assert.ok(state.score > 0, 'leftovers from every cleared stage add up');
+    assert.equal(snapshot(state).level, 7, 'the snapshot names the level being played');
+    assert.equal(snapshot(state).levelsCleared, 6, 'and counts the ones behind it');
+    assert.equal(snapshot(state).levels, null, 'there is no level count to report');
+    assert.ok(state.score > 0, 'leftovers from every cleared level add up');
     assert.equal(
       state.score,
-      state.cleared.reduce((sum, { stage, left }) => sum + left * stage, 0),
-      'and they add up weighted by their stage',
+      state.cleared.reduce((sum, { level, left }) => sum + left * level, 0),
+      'and they add up weighted by their level',
     );
   });
 
-  await t.test('still end when a depot runs out', () => {
-    const tight = { ...endless, depotCurve: { start: 0.12, floor: 0.1, tau: 4 } };
+  await t.test('still end when the senders run out', () => {
+    const tight = { ...endless, senderCurve: { start: 0.12, floor: 0.1, tau: 4 } };
     let state = createRun({ seed: 4, config: tight });
     while (state.status === 'playing') state = place(state, greedyChoice(state));
     assert.equal(state.status, 'lost');
@@ -275,9 +279,49 @@ test('endless runs', async (t) => {
   });
 });
 
+test('the onboarding level', async (t) => {
+  await t.test('is a small board with senders to spare', () => {
+    const spec = levelSpec(ENDLESS_RUN, 0);
+    assert.deepEqual([spec.nodeCount, spec.senders], [9, 6]);
+    const run = createRun({ seed: 5, config: ENDLESS_RUN });
+    assert.equal(run.graph.nodes.length, 9);
+    assert.equal(run.senders.length, 6);
+    assert.ok(run.graph.nodes.every((node) => node.blocked !== true), 'no octagon on the first board');
+  });
+
+  await t.test('replaces level 1 and leaves every later board as the curve dealt it', () => {
+    for (let index = 1; index < 6; index++) {
+      assert.deepEqual(levelSpec(ENDLESS_RUN, index), levelSpec(CURVE_ONLY, index));
+    }
+    // Level 2 is drawn from seed + 7919 alone, so it is the same board with or
+    // without the onboarding level in front of it.
+    const clearFirst = (config) => {
+      let state = createRun({ seed: 12, config });
+      while (state.status === 'playing') state = place(state, greedyChoice(state));
+      return advance(state);
+    };
+    const withIt = clearFirst(ENDLESS_RUN);
+    const without = clearFirst(CURVE_ONLY);
+    assert.equal(withIt.level, 2);
+    assert.equal(without.level, 2);
+    assert.deepEqual(withIt.graph, without.graph);
+    assert.deepEqual(withIt.senders, without.senders);
+  });
+
+  await t.test('is never lost by the greedy bot', () => {
+    // The bar from tools/onboarding.js, on a sample the test suite can afford:
+    // a newcomer plays worse than greedy, so greedy must clear every board.
+    for (let seed = 1; seed <= 300; seed++) {
+      let state = createRun({ seed, config: ENDLESS_RUN });
+      while (state.status === 'playing') state = place(state, greedyChoice(state));
+      assert.equal(state.status, 'levelCleared', `seed ${seed}`);
+    }
+  });
+});
+
 test('impermeable nodes on a board', async (t) => {
   await t.test('are dealt at the configured density and stop the signal', () => {
-    const config = { ...endless, stageNodes: { start: 30, growth: 0, max: 30 }, blockedRatio: 0.2 };
+    const config = { ...endless, levelNodes: { start: 30, growth: 0, max: 30 }, blockedRatio: 0.2 };
     const run = createRun({ seed: 8, config });
     const opaque = run.graph.nodes.filter((node) => node.blocked === true);
     assert.equal(opaque.length, 6, '20% of 30 nodes');
@@ -297,39 +341,39 @@ test('impermeable nodes on a board', async (t) => {
   });
 });
 
-test('fillDepot hits the composition proportionally', async (t) => {
-  /** Reads the depot of a stage-1 run with the given depot size. */
-  const depotOf = (size) => createRun({
+test('fillSenders hits the composition proportionally', async (t) => {
+  /** Reads the senders of a level-1 run dealt the given number of them. */
+  const sendersOf = (size) => createRun({
     seed: 11,
     config: {
-      ...DEFAULT_RUN, stages: [40], depotRatio: size / 40, blockedRatio: 0,
+      ...DEFAULT_RUN, levelSizes: [40], senderRatio: size / 40, blockedRatio: 0,
     },
-  }).depot;
+  }).senders;
 
   await t.test('keeps every radius within one of its exact share', () => {
     const total = DEFAULT_RUN.composition.reduce((sum, [, weight]) => sum + weight, 0);
     for (let size = 1; size <= 16; size++) {
-      const depot = depotOf(size);
-      assert.equal(depot.length, size, `depot of ${size}`);
+      const senders = sendersOf(size);
+      assert.equal(senders.length, size, `${size} senders`);
       for (const [radius, weight] of DEFAULT_RUN.composition) {
         const exact = (size * weight) / total;
-        const count = depot.filter((r) => r === radius).length;
+        const count = senders.filter((r) => r === radius).length;
         assert.ok(
           Math.abs(count - exact) < 1,
-          `depot of ${size}: ${count}x radius ${radius}, exact share ${exact.toFixed(2)}`,
+          `${size} senders: ${count}x radius ${radius}, exact share ${exact.toFixed(2)}`,
         );
       }
     }
   });
 
-  await t.test('never lets a bigger depot carry less reach', () => {
+  await t.test('never lets more senders carry less reach', () => {
     // Nominal ball sizes on these boards; the point is the ordering, not the
     // exact figure. The old truncating fill broke this between 8 and 9.
     const ball = { 1: 4, 2: 9, 3: 14 };
     let previous = 0;
     for (let size = 1; size <= 16; size++) {
-      const reach = depotOf(size).reduce((sum, radius) => sum + ball[radius], 0);
-      assert.ok(reach > previous, `depot of ${size} carries ${reach}, depot of ${size - 1} carried ${previous}`);
+      const reach = sendersOf(size).reduce((sum, radius) => sum + ball[radius], 0);
+      assert.ok(reach > previous, `${size} senders carry ${reach}, ${size - 1} carried ${previous}`);
       previous = reach;
     }
   });
@@ -339,12 +383,12 @@ test('blocked density', async (t) => {
   const board = (blockedRatio, seed) => createRun({
     seed,
     config: {
-      ...ENDLESS_RUN, stageNodes: { start: 40, growth: 0, max: 40 }, blockedRatio,
+      ...CURVE_ONLY, levelNodes: { start: 40, growth: 0, max: 40 }, blockedRatio,
     },
   });
   const opaqueOf = (run) => run.graph.nodes.filter((node) => node.blocked === true).length;
 
-  await t.test('a number applies to every stage', () => {
+  await t.test('a number applies to every level', () => {
     for (let seed = 1; seed <= 5; seed++) assert.equal(opaqueOf(board(0.05, seed)), 2);
   });
 
@@ -356,12 +400,12 @@ test('blocked density', async (t) => {
       dense.graph.edges,
       'same board',
     );
-    assert.deepEqual(bare.depot, dense.depot, 'same depot');
+    assert.deepEqual(bare.senders, dense.senders, 'same senders');
     assert.equal(opaqueOf(bare), 0);
     assert.equal(opaqueOf(dense), 6);
   });
 
-  await t.test('an array is drawn from, uniformly and per stage', () => {
+  await t.test('an array is drawn from, uniformly and per level', () => {
     const seen = new Map([[0, 0], [2, 0], [6, 0]]);
     for (let seed = 1; seed <= 600; seed++) {
       const count = opaqueOf(board([0, 0.05, 0.15], seed));
@@ -384,7 +428,7 @@ test('amplifier nodes on a board', async (t) => {
   const board = (amplifierRatio, seed) => createRun({
     seed,
     config: {
-      ...ENDLESS_RUN, stageNodes: { start: 40, growth: 0, max: 40 }, amplifierRatio,
+      ...CURVE_ONLY, levelNodes: { start: 40, growth: 0, max: 40 }, amplifierRatio,
     },
   });
   const amplifiersOf = (run) => run.graph.nodes.filter((node) => node.amplifier === true).length;
@@ -398,7 +442,7 @@ test('amplifier nodes on a board', async (t) => {
     const bare = board(0, 7);
     const rich = board(0.15, 7);
     assert.deepEqual(bare.graph.edges, rich.graph.edges, 'same board');
-    assert.deepEqual(bare.depot, rich.depot, 'same depot');
+    assert.deepEqual(bare.senders, rich.senders, 'same senders');
     assert.deepEqual(
       bare.graph.nodes.map((node) => node.blocked === true),
       rich.graph.nodes.map((node) => node.blocked === true),
@@ -429,7 +473,46 @@ test('amplifier nodes on a board', async (t) => {
     // And the board is the one the mode has always dealt: adding the field is
     // what moves the random stream, not leaving it off.
     const aware = createRun({ seed: 3, config: { ...ENDLESS_RUN, amplifierRatio: 0 } });
-    assert.notDeepEqual(aware.depot, run.depot);
+    assert.notDeepEqual(aware.senders, run.senders);
+  });
+});
+
+/** dailySeed of 2026-09-24, as computed by the build before freeSeed existed. */
+const DAILY_2026_09_24 = 207894553;
+
+test('the free-run seed', async (t) => {
+  const at = Date.UTC(2026, 9, 12, 17, 4, 31, 250);
+
+  await t.test('is a seed createRun will take, the same for the same moment', () => {
+    const seed = run.freeSeed(at);
+    assert.ok(Number.isInteger(seed) && seed >= 0 && seed < 2 ** 32);
+    assert.equal(run.freeSeed(new Date(at)), seed);
+    assert.deepEqual(
+      snapshot(createRun({ seed, config: ENDLESS_RUN })),
+      snapshot(createRun({ seed: run.freeSeed(at), config: ENDLESS_RUN })),
+      'the seed shown is enough to deal the run again',
+    );
+  });
+
+  await t.test('differs for every millisecond', () => {
+    const seeds = new Set();
+    for (let ms = 0; ms < 5000; ms++) seeds.add(run.freeSeed(at + ms));
+    assert.equal(seeds.size, 5000);
+  });
+
+  await t.test('does not deal one run\'s boards to a run started 7919 ms later', () => {
+    // The reason the timestamp is hashed: level i is drawn from seed + i * 7919,
+    // so an unhashed clock would hand run B's first board to run A's second.
+    const a = run.freeSeed(at);
+    const b = run.freeSeed(at + 7919);
+    assert.notEqual(b - a, 7919);
+    assert.ok(Math.abs(b - a) > 7919 * 200, `${a} and ${b} lie ${Math.abs(b - a)} apart`);
+  });
+
+  await t.test('refuses a moment that is not one', () => {
+    for (const bad of [undefined, null, NaN, new Date('kein Datum')]) {
+      assert.throws(() => run.freeSeed(bad), RangeError);
+    }
   });
 });
 
@@ -473,7 +556,7 @@ test('the daily board', async (t) => {
   });
 
   await t.test('scatters neighbouring days', () => {
-    // The point of hashing the day number: stage seeds are `seed + stage *
+    // The point of hashing the day number: level seeds are `seed + level *
     // 7919`, so days one apart must not land one apart, or Tuesday's first
     // board would be a near miss of Monday's second.
     const seeds = [];
@@ -500,6 +583,12 @@ test('the daily board', async (t) => {
     // At midnight exactly the day has already turned, so a whole one is ahead:
     // never zero, or the card would offer a board that is not there yet.
     assert.equal(run.msUntilNextDay(Date.UTC(2026, 8, 25, 0, 0, 0)), 86400000);
+  });
+
+  await t.test('keeps the seed it has always dealt', () => {
+    // dailySeed now shares its mixer with freeSeed; the days already played
+    // must not move. Values taken from the build before the split.
+    assert.equal(run.dailySeed(noon), DAILY_2026_09_24);
   });
 
   await t.test('works before 1970, where the day number goes negative', () => {

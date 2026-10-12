@@ -50,7 +50,7 @@ const withBlocker = {
   edges: line5.edges,
 };
 
-/** A depot-mode-shaped state: one transmitter of the given radius on `id`. */
+/** A run-shaped state: one transmitter of the given radius on `id`. */
 const stateOn = (graph, id, radius, covered) => ({
   radii: new Map([[id, radius]]),
   covered: new Set(covered),

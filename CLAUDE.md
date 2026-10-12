@@ -6,8 +6,8 @@ niemand sofort gesehen hat.
 
 ## Spiellogik bleibt rein und DOM-frei
 
-`src/game.js`, `src/run.js`, `src/graph.js`, `src/solver.js`, `src/tiers*.js`
-und `src/generator.js` kennen kein `document`, kein `window`, keine Timer und
+`src/game.js`, `src/run.js`, `src/graph.js`, `src/solver.js`, `src/tiers*.js`,
+`src/share.js` und `src/generator.js` kennen kein `document`, kein `window`, keine Timer und
 keinen `localStorage`. Jede Aktion gibt einen neuen, eingefrorenen Zustand
 zurück, dessen `toJSON()` ein einfaches, serialisierbares Abbild liefert.
 
@@ -32,12 +32,35 @@ Bretter mit undurchlässigen Knoten.
 ## Seedbarer PRNG statt `Math.random`
 
 Alles Zufällige läuft über `mulberry32(seed)` aus `src/generator.js`. `Math.random`
-kommt im Quelltext nicht vor und soll auch nicht dazukommen.
+kommt im Quelltext nicht vor und soll auch nicht dazukommen — auch nicht in
+`index.html`. Die Oberfläche ist keine Ausnahme: braucht sie einen frischen
+Seed, liest sie die Uhr und lässt `run.js` daraus einen machen (`freeSeed`,
+`dailySeed`), gehasht und nie der rohe Zeitstempel, weil ein Level aus
+`seed + level · 7919` gezogen wird. `test/no-math-random.test.js` sucht den
+Aufruf in `index.html`, `src/`, `tools/` und `test/`.
 
-Im Lauf wird alles aus `(seed, stage)` abgeleitet, damit kein RNG-Zustand
+Im Lauf wird alles aus `(seed, level)` abgeleitet, damit kein RNG-Zustand
 mitgeschleppt werden muss: das Brett hängt dann nicht davon ab, wie gespielt
 wurde, und ein Lauf ist reproduzierbar, vergleichbar und aus einer URL heraus
 wiederherstellbar (`?seed=7`).
+
+## `level` heißt zweierlei — die Renderschicht sagt `board`
+
+`level` als **Zahl** gibt es nur im Lauf (`src/run.js`, `index.html`, die
+Bot-Werkzeuge): das Brett, das gerade gespielt wird, `state.level`, mit
+`levelSpec`, `levelCleared`, `levelsCleared`. `level` als **Objekt** gibt es nur
+im Rätselmodus (`src/game.js`, Generator, Tiers, `tools/build-*-levels.js`,
+`levels/*.json`): ein gespeichertes Rätsel mit `graph`, `count`, `k`.
+
+`src/render.js` dient beiden und sagt deshalb weder das eine noch das andere:
+`createScene(board)`, `scene.board`. Sonst stünde in `index.html` `state.level`
+(eine Zahl) neben `scene.level` (ein Brett), und der nächste, der eins davon
+anfasst, verwechselt sie. Wer im Rätselmodus etwas umbenennt, lässt den Lauf in
+Ruhe, und umgekehrt — eine Umbenennung, die die Level-Dateien verschiebt, hat
+die falsche Hälfte erwischt.
+
+`#stage` in `index.html` ist die Bühne, der Container des Bretts, und hat mit
+keinem der beiden zu tun.
 
 ## Byte-Identität der Level-Sets ist ein Regressionstest
 
@@ -68,7 +91,7 @@ die er existiert.
 
 ## Kalibrierungskonstanten tragen ihre Messung im Kommentar
 
-Jede Zahl, die aus einer Messung stammt — `depotRatio`, `depotCurve`,
+Jede Zahl, die aus einer Messung stammt — `senderRatio`, `senderCurve`,
 `blockedRatio`, `composition`, die Parameterfenster in `tools/build-levels.js` —
 steht mit den Alternativen im Kommentar, gegen die sie gewonnen hat, samt
 Stichprobengröße. Siehe `ENDLESS_RUN.blockedRatio` in `src/run.js` als Vorbild:
@@ -78,15 +101,21 @@ Wer die Zahl später anfasst, muss sehen können, was sie ersetzt — und was es
 gekostet hat. Wird neu gemessen, kommt die neue Tabelle dazu, die alte bleibt
 mit dem Hinweis stehen, unter welchen Bedingungen sie galt.
 
+Eine solche Bedingung ist die Zählung: bis 2026-10-12 zählten die Werkzeuge das
+*erreichte* Level, seitdem das *geschaffte*, wie das Spiel. Die Mittel fallen
+dadurch um 1, die Bot-Verhältnisse steigen ungleichmäßig (2.24x erreicht sind
+2.54x geschafft). Alte Tabellen tragen das als Vermerk; Zahlen aus zwei
+Zählungen werden nicht miteinander verglichen.
+
 ## Messen vor Implementieren
 
-Design-Parameter werden nicht geschätzt. Depotgröße, Sendermischung,
-Blockadedichte, Etappenwachstum, Schwierigkeitsfenster — dafür gibt es die
+Design-Parameter werden nicht geschätzt. Senderzahl, Sendermischung,
+Blockadedichte, Levelwachstum, Schwierigkeitsfenster — dafür gibt es die
 Werkzeuge in `tools/`, und sie laufen *vor* der Entscheidung:
 
 ```sh
 node tools/endless.js --runs=1000        # Streak-Verteilung, beide Bots
-node tools/endless.js --curves           # Sweep über Depotkurven
+node tools/endless.js --curves           # Sweep über Senderkurven
 node tools/blocked.js --bots --runs=400  # Blockadedichte gegen beide Bots
 ```
 
@@ -96,7 +125,7 @@ gegen einen Bot kalibriert, der die Vorschau ignoriert, stellt die
 Schwierigkeit für einen Spieler ein, den es nicht gibt.
 
 Zwei Dinge sind dabei interessanter als der Mittelwert: die **Streuung** — ein
-Modus, in dem jeder Lauf an derselben Etappe stirbt, hat eine Wand, keine
+Modus, in dem jeder Lauf im selben Level stirbt, hat eine Wand, keine
 Schwierigkeit — und der **Abstand zwischen den Bots**, denn der ist es, was
 Vorausdenken belohnt.
 

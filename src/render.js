@@ -28,9 +28,9 @@ import { bfsWithin, bfsWithinBlocked, blockedNodes } from './graph.js';
 
 /**
  * Delay the signal picks up per edge travelled. Constant rather than stretched
- * to a fixed total, so the wave moves at the same speed on every level and the
+ * to a fixed total, so the wave moves at the same speed on every board and the
  * first ring always lights within a few frames of the tap — a fixed total would
- * mean a radius-1 level sits still for the whole budget before anything moves.
+ * mean a radius-1 board sits still for the whole budget before anything moves.
  * Together with the 140 ms node transition in the stylesheet, a radius-1 wave
  * is complete after about 200 ms and a radius-2 wave after about 260 ms.
  */
@@ -119,20 +119,25 @@ function distancesFrom(graph, id, k) {
 }
 
 /**
- * Builds the SVG for a level. Call once per level, then feed states to
+ * Builds the SVG for a board. Call once per board, then feed states to
  * {@link render}.
- * @param {{graph: import('./graph.js').Graph, k: number}} level
+ *
+ * `board` and not `level`: this layer draws for both halves of the game, and
+ * the word means two things there — a stored puzzle object in the puzzle modes,
+ * a plain number in the run. The renderer only needs the graph and its k.
+ * @param {{graph: import('./graph.js').Graph, k: number}} board a puzzle level
+ *        as stored, or `{graph, k: 1}` for a board of the run
  * @param {{document?: Document, padding?: number}} [options] `padding` is the
  *        margin around the graph in user units; less of it means the same board
  *        drawn larger in the same box. Clamped to RING_RADIUS from below.
  * @returns {{svg: SVGSVGElement, nodes: Map<*, object>, edges: Array<object>,
- *            level: object, viewBox: {width: number}}}
+ *            board: object, viewBox: {width: number}}}
  */
 export function createScene(
-  level,
+  board,
   { document: doc = globalThis.document, padding = PADDING } = {},
 ) {
-  const { nodes, edges } = level.graph;
+  const { nodes, edges } = board.graph;
   const margin = Math.max(padding, RING_RADIUS);
   const xs = nodes.map((node) => node.x);
   const ys = nodes.map((node) => node.y);
@@ -196,7 +201,7 @@ export function createScene(
     dot.setAttribute('class', 'dot');
     dot.setAttribute('r', DOT_RADIUS);
 
-    // The transmitter's own radius, written on it. With a depot of mixed radii
+    // The transmitter's own radius, written on it. With senders of mixed radii
     // the number is the only thing that tells two transmitters apart.
     const label = doc.createElementNS(SVG_NS, 'text');
     label.setAttribute('class', 'radius');
@@ -309,7 +314,7 @@ export function createScene(
     });
   });
 
-  return { svg, nodes: nodeElements, edges: edgeElements, level, viewBox: { width } };
+  return { svg, nodes: nodeElements, edges: edgeElements, board, viewBox: { width } };
 }
 
 /**
@@ -318,10 +323,10 @@ export function createScene(
  * @param {object} state from game.js
  */
 export function render(scene, state) {
-  const { graph } = scene.level;
-  const k = scene.level.k;
-  // In the depot mode every transmitter carries its own radius; elsewhere they
-  // all share the level's k.
+  const { graph } = scene.board;
+  const k = scene.board.k;
+  // In the run every transmitter carries its own radius; elsewhere they all
+  // share the board's k.
   const transmitters = state.transmitters ?? new Set(state.radii?.keys() ?? []);
   const radiusOf = (id) => state.radii?.get(id) ?? k;
 
@@ -384,12 +389,12 @@ export function render(scene, state) {
  * expansion rather than as a finished shape.
  * @param {object} scene
  * @param {*} id
- * @param {number} [radius] defaults to the level's k; the depot mode passes the
+ * @param {number} [radius] defaults to the board's k; the run passes the
  *   radius of the transmitter currently in hand
  */
-export function showRange(scene, id, radius = scene.level.k) {
+export function showRange(scene, id, radius = scene.board.k) {
   clearRange(scene);
-  const hops = distancesFrom(scene.level.graph, id, radius);
+  const hops = distancesFrom(scene.board.graph, id, radius);
   if (hops.size === 0) return;
 
   for (const [node, distance] of hops) {

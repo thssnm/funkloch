@@ -2,28 +2,35 @@
  * How far the bots get in the endless mode.
  *
  *   node tools/endless.js [--runs=1000] [--seed=1] [--blocked=0]
- *   node tools/endless.js --curves          sweep over depot curves
+ *   node tools/endless.js --curves          sweep over sender curves
  *
- * A run ends when a depot runs out on an unfinished board; the streak is the
- * number of stages survived before that, the score the sum of the transmitters
- * left over in the stages that were cleared. The question is whether the depot
- * curve produces a *distribution* — if every run dies at the same stage the
+ * A run ends when the senders run out on an unfinished board; the streak is the
+ * number of levels cleared before that, the score the sum of the transmitters
+ * left over in the levels that were cleared. The question is whether the sender
+ * curve produces a *distribution* — if every run dies at the same level the
  * mode has a wall, not a difficulty — and whether planning ahead still pays off
  * when the board grows.
+ *
+ * Until 2026-10-12 the streak was the level a run died *in*, i.e. one more than
+ * it counts now. Every table in MESSUNGEN.md before that date is on the old
+ * count; see the note under each of them.
  */
 
-import { advance, createRun, ENDLESS_RUN, place, stageSpec } from '../src/run.js';
+import {
+  advance, createRun, dailySeed, ENDLESS_RUN, levelSpec, place,
+} from '../src/run.js';
 import { greedyChoice, lookaheadChoice } from './bot64.js';
 
-/** Runs that survive this many stages are counted as capped, not as won.
+/** Runs that clear this many levels are counted as capped, not as won.
  *  Exported so a sweep can say how much of its table is standing on the cap. */
-export const STAGE_CAP = 200;
+export const LEVEL_CAP = 200;
 
 /**
  * Plays one endless run to its end.
  *
- * `streak` is the stage the run was on when it ended — the number the HUD
- * shows — so a run that dies on its first board has a streak of 1, not 0.
+ * `streak` is the number of levels cleared — what the end card and the shared
+ * result show — so a run that dies on its first board has a streak of 0.
+ * `diedIn` is the level it ended in, one more than that.
  * @param {number} seed
  * @param {object} config
  * @param {(state: object) => *} choose
@@ -31,9 +38,9 @@ export const STAGE_CAP = 200;
  */
 export function playEndless(seed, config, choose) {
   let state = createRun({ seed, config });
-  while (state.status === 'playing' || state.status === 'stageCleared') {
-    if (state.status === 'stageCleared') {
-      if (state.cleared.length >= STAGE_CAP) break;
+  while (state.status === 'playing' || state.status === 'levelCleared') {
+    if (state.status === 'levelCleared') {
+      if (state.cleared.length >= LEVEL_CAP) break;
       state = advance(state);
       continue;
     }
@@ -41,8 +48,20 @@ export function playEndless(seed, config, choose) {
     if (choice === null) break;
     state = place(state, choice);
   }
-  return { streak: state.stage, score: state.score, diedIn: state.stage };
+  return { streak: state.cleared.length, score: state.score, diedIn: state.level };
 }
+
+/** First day of the daily seeds `--daily` plays, UTC. */
+export const DAILY_FROM = Date.UTC(2026, 0, 1, 12);
+
+/**
+ * Seed of the `i`-th daily board from `DAILY_FROM` on. The daily mode is the
+ * same curve on hashed seeds; playing these checks the hash does not pick out
+ * boards that behave differently from consecutive ones.
+ * @param {number} i
+ * @returns {number}
+ */
+export const dailySeeds = (i) => dailySeed(DAILY_FROM + i * 86400000);
 
 /** @param {number[]} sorted @param {number} q @returns {number} */
 export function quantile(sorted, q) {
@@ -59,28 +78,31 @@ export function quantile(sorted, q) {
  * @param {(state: object) => *} choose
  * @param {number} runs
  * @param {number} firstSeed
+ * @param {(i: number) => number} [seedOf] the seed of run `i`; consecutive
+ *        seeds from `firstSeed` unless given, e.g. `dailySeeds` for the boards
+ *        the daily mode deals
  */
-export function measure(config, choose, runs, firstSeed) {
+export function measure(config, choose, runs, firstSeed, seedOf = (i) => firstSeed + i) {
   const streaks = [];
   const scores = [];
-  const reached = new Map(); // stage -> runs that at least started it
+  const reached = new Map(); // level -> runs that at least started it
+  const endedIn = new Map(); // level -> runs that ended in it
   for (let i = 0; i < runs; i++) {
-    const result = playEndless(firstSeed + i, config, choose);
+    const result = playEndless(seedOf(i), config, choose);
     streaks.push(result.streak);
     scores.push(result.score);
-    for (let stage = 1; stage <= result.diedIn; stage++) {
-      reached.set(stage, (reached.get(stage) ?? 0) + 1);
+    for (let level = 1; level <= result.diedIn; level++) {
+      reached.set(level, (reached.get(level) ?? 0) + 1);
     }
+    endedIn.set(result.diedIn, (endedIn.get(result.diedIn) ?? 0) + 1);
   }
   const sortedStreaks = [...streaks].sort((a, b) => a - b);
   const sortedScores = [...scores].sort((a, b) => a - b);
   const mean = streaks.reduce((a, b) => a + b, 0) / runs;
   const variance = streaks.reduce((sum, x) => sum + (x - mean) ** 2, 0) / runs;
-  // Share of runs that die in the single most common stage: 1.00 would be a
+  // Share of runs that die in the single most common level: 1.00 would be a
   // wall, low values mean the curve spreads the endings out.
-  const histogram = new Map();
-  for (const streak of streaks) histogram.set(streak, (histogram.get(streak) ?? 0) + 1);
-  const peak = Math.max(...histogram.values()) / runs;
+  const peak = Math.max(...endedIn.values()) / runs;
 
   return {
     streaks: sortedStreaks,
@@ -95,7 +117,7 @@ export function measure(config, choose, runs, firstSeed) {
     sd: Math.sqrt(variance),
     scoreMedian: quantile(sortedScores, 0.5),
     scoreP90: quantile(sortedScores, 0.9),
-    histogram,
+    endedIn,
     reached,
     peak,
   };
@@ -128,26 +150,30 @@ function main() {
   const firstSeed = Number.parseInt(args.seed ?? '1', 10);
   const blockedRatio = Number.parseFloat(args.blocked ?? String(ENDLESS_RUN.blockedRatio));
   const config = { ...ENDLESS_RUN, blockedRatio };
+  // --daily: the boards of consecutive days instead of consecutive seeds.
+  const daily = 'daily' in args;
+  const seedOf = daily ? dailySeeds : undefined;
 
   // What the curve actually deals out.
   const shape = [];
-  for (let stage = 1; stage <= 14; stage++) {
-    const { nodeCount, ratio } = stageSpec(config, stage - 1);
-    shape.push([stage, nodeCount, ratio.toFixed(3), Math.max(1, Math.round(nodeCount * ratio))]);
+  for (let level = 1; level <= 14; level++) {
+    const { nodeCount, ratio, senders } = levelSpec(config, level - 1);
+    shape.push([level, nodeCount, ratio.toFixed(3), senders]);
   }
-  console.log('Kurve der Etappen');
-  printTable(['Etappe', 'Knoten', 'Depotanteil', 'Depot'], shape);
+  console.log('Kurve der Level');
+  printTable(['Level', 'Knoten', 'Senderanteil', 'Sender'], shape);
   console.log();
 
   const bots = [['gierig', greedyChoice], ['vorausschauend', lookaheadChoice]];
   const results = [];
   for (const [label, choose] of bots) {
     const started = Date.now();
-    const result = measure(config, choose, runs, firstSeed);
+    const result = measure(config, choose, runs, firstSeed, seedOf);
     results.push([label, result, (Date.now() - started) / 1000]);
   }
 
-  console.log(`Streak (erreichte Etappe), ${runs} Partien je Bot, gleiche Seeds`
+  console.log(`Streak (geschaffte Level), ${runs} Partien je Bot, gleiche Seeds`
+    + `${daily ? `, Tagesbretter ab ${new Date(DAILY_FROM).toISOString().slice(0, 10)}` : ''}`
     + `, Blockadedichte ${blockedRatio}`);
   printTable(
     ['Bot', 'p10', 'p25', 'Median', 'p75', 'p90', 'p99', 'max', 'Mittel', 'SD',
@@ -160,21 +186,21 @@ function main() {
   );
   console.log();
 
-  // Survival: share of runs that still start stage s.
-  const maxStage = Math.max(...results.map(([, r]) => r.max));
-  const stages = [];
-  for (let stage = 1; stage <= Math.min(maxStage, 16); stage++) {
-    const { nodeCount, ratio } = stageSpec(config, stage - 1);
-    stages.push([
-      `${stage} (${nodeCount} Knoten, Depot ${Math.max(1, Math.round(nodeCount * ratio))})`,
-      ...results.map(([, r]) => `${((100 * (r.reached.get(stage) ?? 0)) / runs).toFixed(1)}%`),
-      ...results.map(([, r]) => `${((100 * (r.histogram.get(stage) ?? 0)) / runs).toFixed(1)}%`),
+  // Survival: share of runs that still start level s.
+  const maxLevel = Math.max(...results.map(([, r]) => r.max)) + 1;
+  const levels = [];
+  for (let level = 1; level <= Math.min(maxLevel, 16); level++) {
+    const { nodeCount, senders } = levelSpec(config, level - 1);
+    levels.push([
+      `${level} (${nodeCount} Knoten, ${senders} Sender)`,
+      ...results.map(([, r]) => `${((100 * (r.reached.get(level) ?? 0)) / runs).toFixed(1)}%`),
+      ...results.map(([, r]) => `${((100 * (r.endedIn.get(level) ?? 0)) / runs).toFixed(1)}%`),
     ]);
   }
-  console.log('Ueberleben je Etappe: Anteil der Partien, die diese Etappe noch beginnen / dort enden');
+  console.log('Ueberleben je Level: Anteil der Partien, die dieses Level noch beginnen / dort enden');
   printTable(
-    ['Etappe', 'gierig erreicht', 'voraus erreicht', 'gierig endet hier', 'voraus endet hier'],
-    stages,
+    ['Level', 'gierig erreicht', 'voraus erreicht', 'gierig endet hier', 'voraus endet hier'],
+    levels,
   );
 }
 

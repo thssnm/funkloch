@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Greedy bot for the depot mode, and the sweep that says where greedy breaks.
+ * Greedy bot for the sender mode, and the sweep that says where greedy breaks.
  *
  *   node tools/bot.js [--runs=1000] [--seed=1]
  *
  * The bot places every transmitter wherever it lights the most nodes that are
  * still dark, breaking ties by node order. That is the obvious strategy, and
- * the point of measuring it is to find the depot size where it stops being
+ * the point of measuring it is to find the sender count where it stops being
  * enough: below that the mode plays itself, above it there is nothing to think
  * about. A human who plans ahead has to beat greedy, or the choice is not a
  * choice.
@@ -75,7 +75,7 @@ function maskTable(graph) {
   return { ids, balls };
 }
 
-/** Cache, because the board is rebuilt only when the stage changes. */
+/** Cache, because the board is rebuilt only when the level changes. */
 const maskCache = new WeakMap();
 const tableFor = (graph) => {
   let table = maskCache.get(graph);
@@ -152,14 +152,14 @@ export function lookaheadChoice(state) {
  * @param {number} seed
  * @param {object} config
  * @param {(state: object) => *} [choose] which bot to play with
- * @returns {{won: boolean, score: number, stagesCleared: number, placements: number,
+ * @returns {{won: boolean, score: number, levelsCleared: number, placements: number,
  *            lostAt: number}}
  */
 export function playRun(seed, config, choose = greedyChoice) {
   let state = createRun({ seed, config });
   let placements = 0;
-  while (state.status === 'playing' || state.status === 'stageCleared') {
-    if (state.status === 'stageCleared') {
+  while (state.status === 'playing' || state.status === 'levelCleared') {
+    if (state.status === 'levelCleared') {
       state = advance(state);
       continue;
     }
@@ -171,9 +171,9 @@ export function playRun(seed, config, choose = greedyChoice) {
   return {
     won: state.status === 'won',
     score: state.score,
-    stagesCleared: state.cleared.length,
+    levelsCleared: state.cleared.length,
     placements,
-    lostAt: state.status === 'won' ? 0 : state.stage,
+    lostAt: state.status === 'won' ? 0 : state.level,
   };
 }
 
@@ -214,8 +214,8 @@ function compare(config, runs, firstSeed) {
     // How often the two even want different things, walked along the greedy line.
     let state = createRun({ seed, config });
     let first = true;
-    while (state.status === 'playing' || state.status === 'stageCleared') {
-      if (state.status === 'stageCleared') { state = advance(state); continue; }
+    while (state.status === 'playing' || state.status === 'levelCleared') {
+      if (state.status === 'levelCleared') { state = advance(state); continue; }
       const obvious = greedyChoice(state);
       const planned2 = lookaheadChoice(state);
       result.moves++;
@@ -254,14 +254,14 @@ function compareMain(runs, firstSeed) {
   ];
   const rows = [];
   const spread = [];
-  for (const [label, depotRatio] of configs) {
-    const config = { ...DEFAULT_RUN, depotRatio };
-    const depots = DEFAULT_RUN.stages.map((n, i) =>
-      Math.max(1, Math.round(n * (Array.isArray(depotRatio) ? depotRatio[i] : depotRatio))));
+  for (const [label, senderRatio] of configs) {
+    const config = { ...DEFAULT_RUN, senderRatio };
+    const senderCounts = DEFAULT_RUN.levelSizes.map((n, i) =>
+      Math.max(1, Math.round(n * (Array.isArray(senderRatio) ? senderRatio[i] : senderRatio))));
     const r = compare(config, runs, firstSeed);
     const pct = (x) => `${((100 * x) / runs).toFixed(1)}%`;
     rows.push([
-      label, depots.join('/'), pct(r.greedyWins), pct(r.planWins),
+      label, senderCounts.join('/'), pct(r.greedyWins), pct(r.planWins),
       `+${(((r.planWins - r.greedyWins) * 100) / runs).toFixed(1)}`,
       pct(r.firstMoveDiffers),
     ]);
@@ -269,12 +269,12 @@ function compareMain(runs, firstSeed) {
   }
 
   printTable(
-    ['Depot', 'Groessen', 'gierig', 'voraus', 'Abstand g->v', 'Zug 1 abweichend'],
+    ['Sender', 'Anzahl', 'gierig', 'voraus', 'Abstand g->v', 'Zug 1 abweichend'],
     rows,
   );
   console.log();
   printTable(
-    ['Depot', 'gierig verliert in 1/2/3', 'voraus verliert in 1/2/3'],
+    ['Sender', 'gierig verliert in 1/2/3', 'voraus verliert in 1/2/3'],
     spread,
   );
   console.log(`\n${runs} Partien je Konfiguration, beide Bots auf denselben Seeds`);
@@ -292,40 +292,40 @@ function main() {
     .split(',').map(Number);
 
   const rows = [];
-  for (const depotRatio of ratios) {
-    const config = { ...DEFAULT_RUN, depotRatio };
-    const depots = DEFAULT_RUN.stages.map((n) => Math.max(1, Math.round(n * depotRatio)));
+  for (const senderRatio of ratios) {
+    const config = { ...DEFAULT_RUN, senderRatio };
+    const senderCounts = DEFAULT_RUN.levelSizes.map((n) => Math.max(1, Math.round(n * senderRatio)));
     const started = Date.now();
     let won = 0;
     let scoreSum = 0;
-    const stageFails = [0, 0, 0];
+    const levelFails = [0, 0, 0];
     for (let i = 0; i < runs; i++) {
       const result = playGreedy(firstSeed + i, config);
       if (result.won) {
         won++;
         scoreSum += result.score;
       } else {
-        stageFails[result.stagesCleared] += 1;
+        levelFails[result.levelsCleared] += 1;
       }
     }
     rows.push([
-      depotRatio.toFixed(2),
-      depots.join('/'),
+      senderRatio.toFixed(2),
+      senderCounts.join('/'),
       `${((100 * won) / runs).toFixed(1)}%`,
       won ? (scoreSum / won).toFixed(2) : '-',
-      stageFails.join('/'),
+      levelFails.join('/'),
       `${((Date.now() - started) / 1000).toFixed(1)}s`,
     ]);
   }
 
-  const headers = ['depotRatio', 'depots 18/24/30', 'greedy wins', 'score when won', 'lost at stage 1/2/3', 'time'];
+  const headers = ['senderRatio', 'senderCounts 18/24/30', 'greedy wins', 'score when won', 'lost in level 1/2/3', 'time'];
   const cells = [headers, ...rows];
   const widths = headers.map((_, column) => Math.max(...cells.map((row) => row[column].length)));
   const line = (row) => row.map((cell, i) => (i === 0 ? cell.padEnd(widths[i]) : cell.padStart(widths[i]))).join('  ');
   console.log(line(headers));
   console.log(widths.map((w) => '-'.repeat(w)).join('  '));
   for (const row of rows) console.log(line(row));
-  console.log(`\n${runs} runs per ratio, greedy strategy, stages ${DEFAULT_RUN.stages.join('/')} nodes`);
+  console.log(`\n${runs} runs per ratio, greedy strategy, levels ${DEFAULT_RUN.levelSizes.join('/')} nodes`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

@@ -1,10 +1,10 @@
 /**
- * One run of the depot mode: three stages, a procedurally drawn board each
- * time, and a depot of transmitters of radius 1, 2 or 3 to clear it with.
+ * One run of the sender mode: three levels, a procedurally drawn board each
+ * time, and a hand of senders of radius 1, 2 or 3 to clear it with.
  *
- * The loop: draw the transmitter at the front of the depot, see the next two,
- * place it. Clear the board before the depot runs out and whatever is left over
- * counts as score, weighted by the stage it was saved on; run out with nodes
+ * The loop: draw the sender at the front of the pile, see the next two, place
+ * it. Clear the board before the senders run out and whatever is left over
+ * counts as score, weighted by the level it was saved on; run out with nodes
  * still dark and the run is over.
  *
  * A placement is final. Lifting a placed transmitter back off the board was
@@ -13,9 +13,13 @@
  * in 5.7% of runs and gained 0.5 percentage points of win rate for it, which
  * does not pay for blurring the one rule the whole mode rests on.
  *
- * Everything random is derived from `(seed, stage)`, so no rng state has to be
+ * Everything random is derived from `(seed, level)`, so no rng state has to be
  * carried around: the state stays pure, serializable and replayable, and a bot
  * can play thousands of runs without the board depending on how it played.
+ *
+ * `level` here is always a number, the board of the run being played. In the
+ * puzzle modes (`game.js`, `levels/*.json`) a level is a stored puzzle object;
+ * the two never meet in one state.
  */
 
 import {
@@ -48,15 +52,15 @@ import { generateCandidate, mulberry32, shuffled } from './generator.js';
  *
  * Density does not only add branchings, it also grows the ball, and a board
  * that is cheaper to clear is easier whatever its shape. Played with the
- * shipped depot the gap between the greedy and the planning bot therefore
+ * shipped senders the gap between the greedy and the planning bot therefore
  * explodes — 2.22x at 0.20 against 9.94x at 0.00 — but that is the planner
  * no longer dying, not the board rewarding thought: at 0.00 a quarter of its
- * runs stand on the 200-stage cap, which makes the row a floor and not a
+ * runs stand on the 200-level cap, which makes the row a floor and not a
  * reading.
  *
- * With the depot scaled by the change in ball size, so that every density costs
- * about the same transmitters per node, the gap is flat. Ratio of mean stage
- * reached, planning over greedy, 300 runs per bot and row, three starting
+ * With the senders scaled by the change in ball size, so that every density
+ * costs about the same transmitters per node, the gap is flat. Ratio of mean
+ * level reached, planning over greedy, 300 runs per bot and row, three starting
  * seeds (1, 1001, 2001):
  *
  *   0.00   2.09x / 1.93x / 1.97x
@@ -66,7 +70,12 @@ import { generateCandidate, mulberry32, shuffled } from './generator.js';
  *   0.20   2.22x / 2.24x / 2.20x   <- this one
  *   0.30   1.83x / 1.80x / 1.88x
  *
- * The median gap is +4 stages in every row and every seed, and the denser
+ * (Level *reached* — the level a run died in, i.e. levels cleared + 1 — which
+ * is what the tools counted then. They now count levels cleared; that lowers
+ * every mean by one but moves the ratios unevenly, so a repeat of this
+ * measurement reads higher without the game having changed. See MESSUNGEN.md.)
+ *
+ * The median gap is +4 levels in every row and every seed, and the denser
  * boards (0.00 to 0.10) sit *below* today's 0.20. Less deleting buys
  * branchings but not a reason to think ahead: what a chain costs is not the
  * choice of where to put a transmitter, it is which transmitter to spend on it
@@ -76,62 +85,121 @@ import { generateCandidate, mulberry32, shuffled } from './generator.js';
  * The bump at 0.15 reproduces across all three seeds, so it is not noise, but
  * it is one step between two lower neighbours rather than a trend, and it
  * carries the spread of a heavy tail (SD 8.5 to 8.9 against 3.2 to 6.6
- * elsewhere). Suspected cause: the depot is `round(nodeCount * ratio)`, and the
- * 0.944 adjustment moves it by a whole transmitter on individual stages. That
- * deserves its own measurement; it is not an argument for moving the default.
+ * elsewhere). Suspected cause: the sender count is `round(nodeCount * ratio)`,
+ * and the 0.944 adjustment moves it by a whole transmitter on individual
+ * levels. That deserves its own measurement; it is not an argument for moving
+ * the default.
  */
 const EDGE_DELETE_RATIO = 0.2;
 
 /** Default shape of a run: three boards, growing. */
 export const DEFAULT_RUN = {
-  stages: [18, 24, 30],
+  /** Node count of each level, in order. */
+  levelSizes: [18, 24, 30],
   /** Topologies to draw from. Rectangular lattices are left out: their uniform
    *  degree makes every placement worth about the same, which is dull. */
   lattices: ['delaunay', 'hex'],
   /**
-   * Depot size as a share of the node count — the setting everything hinges on.
-   * A single number applies to every stage; an array gives each stage its own.
+   * Sender count as a share of the node count — the setting everything hinges
+   * on. A single number applies to every level; an array gives each level its
+   * own.
    *
    * Calibrated against the *planning* bot, not the greedy one: a person can see
    * the next two transmitters and will use them, so tuning against a bot that
    * ignores the preview sets the difficulty for a player who does not exist.
    * Measured over 1000 runs per setting, greedy vs. planning, re-run after the
-   * `fillDepot` repair below (which made the depot of four carry a radius 3,
+   * `fillSenders` repair below (which made a hand of four carry a radius 3,
    * so all three settings came out easier than they first measured):
    *
    *   4/5/7 (flat 0.22)    86% / 99%   the planner is never troubled
-   *   5/6/6 (0.28/../0.20) 90% / 100%  likewise, and stage 1 becomes a formality
+   *   5/6/6 (0.28/../0.20) 90% / 100%  likewise, and level 1 becomes a formality
    *   4/5/5 (this one)     45% / 94%   the widest gap measured, +49 points
    *
    * The descending shape also moves failure late: only 18 of the 546 greedy
-   * losses happened in stage 1, against 418 in stage 3.
+   * losses happened in level 1, against 418 in level 3.
+   *
+   * (Win rates and the level a run was lost *in*; neither moves when the tools
+   * switch from levels reached to levels cleared.)
    */
-  depotRatio: [0.22, 0.19, 0.17],
+  senderRatio: [0.22, 0.19, 0.17],
   /** Transmitter mix as [radius, weight] pairs. */
   composition: [[1, 4], [2, 4], [3, 2]],
 };
 
 /**
- * The endless shape: no last stage, only the one you did not survive.
+ * The endless shape: no last level, only the one you did not survive.
  *
- * Two dials move together as the stages go by. The board grows, and the depot
- * shrinks relative to it — from 0.24 of the node count down towards 0.15 along
- * an exponential, never quite arriving. 0.15 is chosen to sit just under what a
- * board of this family actually costs to clear (a ball averages about six new
- * nodes under the 4/4/2 mix, so roughly n/6 transmitters are needed, i.e. 0.167
- * of the nodes). The curve therefore ends in a regime that is lost eventually —
- * the question a run asks is only how late.
+ * Two dials move together as the levels go by. The board grows, and the
+ * senders shrink relative to it — from 0.24 of the node count down towards 0.15
+ * along an exponential, never quite arriving. 0.15 is chosen to sit just under
+ * what a board of this family actually costs to clear (a ball averages about
+ * six new nodes under the 4/4/2 mix, so roughly n/6 transmitters are needed,
+ * i.e. 0.167 of the nodes). The curve therefore ends in a regime that is lost
+ * eventually — the question a run asks is only how late.
  *
  * `max` caps the board at 60 nodes: the bots' bitmask search holds a board in
  * two 32-bit words, so 64 is the hard ceiling and 60 keeps a margin. Past the
- * cap the difficulty rides on the depot ratio alone.
+ * cap the difficulty rides on the sender ratio alone.
  */
 export const ENDLESS_RUN = {
   endless: true,
-  /** nodeCount(stage) = min(max, start + growth * (stage - 1)) */
-  stageNodes: { start: 18, growth: 4, max: 60 },
-  /** ratio(stage) = floor + (start - floor) * exp(-(stage - 1) / tau) */
-  depotCurve: { start: 0.24, floor: 0.15, tau: 4 },
+  /**
+   * Level 1 is the onboarding board, taken out of the curve: small, and with
+   * far more senders than it needs, so that it teaches the rule by being won —
+   * tap places a sender, the signal spreads, every node has to be lit. Nothing
+   * explains the game before the first tap, and a hint under the board is not
+   * read; a level that can be lost there teaches only that it can be lost.
+   *
+   * The bar is the greedy bot: a person meeting the game for the first time
+   * plays worse than greedy, so greedy has to clear every board. Level 1 alone,
+   * 5000 seeds, the same seeds for every bot; "random" taps any free node and
+   * stands in for someone who has not yet looked (`tools/onboarding.js`):
+   *
+   *   nodes/senders  greedy fails  random fails  greedy needs (mean / max)
+   *    8 / 4          0.0 %         2.0 %         1.63 / 3
+   *    8 / 6          0.0 %         0.0 %         1.72 / 4
+   *    9 / 4          0.0 %         7.1 %         1.84 / 3
+   *    9 / 5          0.0 %         2.7 %         2.01 / 4
+   *    9 / 6          0.0 %         0.3 %         1.98 / 4   <- this one
+   *   10 / 5          0.0 %         9.6 %         2.15 / 4
+   *   10 / 6          0.0 %         2.7 %         2.14 / 4
+   *
+   * At 1000 seeds, 10 nodes with 3 senders already lets greedy fail (0.2 %),
+   * and 9 with 2 fails a third of the time. 9 / 6 leaves greedy two senders
+   * even on its worst board and four on an average one.
+   *
+   * It *replaces* level 1; from level 2 on every board is the one the curve
+   * dealt before, bit for bit, since level i is drawn from `seed + i * 7919`
+   * alone. Whole runs, levels cleared, 1000 runs per bot, seeds 1 / 1001, and
+   * 365 daily boards from 2026-01-01 (`tools/onboarding.js --full`):
+   *
+   *                    greedy mean   planner median / mean   gap    ratio
+   *   before           4.15 / 4.25   8 / 10.68 · 8 / 10.70   +4 +4  2.57 2.52
+   *   replaced         4.30 / 4.40   8 / 10.68 · 8 / 10.70   +4 +4  2.49 2.43  <- this
+   *   in front         5.23          9 / 11.92               +4     2.28
+   *   in front, tau 3  4.35          7 /  8.53               +3     1.96
+   *   daily, before    4.09          9 / 10.76               +5     2.63
+   *   daily, replaced  4.16          9 / 10.76               +5     2.58
+   *
+   * Replacing leaves the planner exactly where it was — it never died on the
+   * old level 1 — and gives greedy back the 3.1 % of runs that ended there. The
+   * curve needed no correction. Putting the board in front instead (yesterday's
+   * 18-node level 1 becomes level 2) makes a gentler second step but every run
+   * one level longer, and the curve cannot take that level back cleanly: the
+   * sender counts are whole, `tau` 3 and 2.5 deal identical counts on all 14
+   * levels, and the next step down overshoots to a median of 7 while the gap
+   * shrinks to +3. What replacing costs is the step from 9 nodes to 22 at
+   * level 2, where greedy ends 4.2 % of runs — about what the old first board
+   * (3.1 %) asked of a newcomer who had not yet been shown anything.
+   *
+   * No blocked node: 5 % of 9 rounds to none, which keeps the first board to
+   * the one rule it teaches.
+   */
+  firstLevel: { nodes: 9, senders: 6 },
+  /** nodeCount(level) = min(max, start + growth * (level - 1)), from level 2 on */
+  levelNodes: { start: 18, growth: 4, max: 60 },
+  /** ratio(level) = floor + (start - floor) * exp(-(level - 1) / tau) */
+  senderCurve: { start: 0.24, floor: 0.15, tau: 4 },
   lattices: ['delaunay', 'hex'],
   composition: [[1, 4], [2, 4], [3, 2]],
   /**
@@ -144,8 +212,15 @@ export const ENDLESS_RUN = {
    *
    * Kept as low as board variation allows, because it is not free: blocking
    * hits the planning bot harder than the greedy one, so the reward for
-   * thinking ahead shrinks with every node made opaque. Mean stage reached,
+   * thinking ahead shrinks with every node made opaque. Mean level reached,
    * greedy vs. planning, with the planner's spread; `tools/blocked.js --bots`.
+   *
+   * Every table in this comment counts the level a run died in — levels
+   * cleared + 1 — which is what the tools counted when it was measured. They
+   * now count levels cleared. The means drop by exactly one and the SD stays,
+   * but the ratio does not shift evenly: 5.23 / 11.73 = 2.24x reached is
+   * 4.23 / 10.73 = 2.54x cleared. A repeat run reads higher without anything
+   * in the game having changed.
    *
    * Re-measured on the shipped tree, 500 runs per density, same tool and the
    * same run count as the table it replaces: at 0.12 the ratio between the bots
@@ -172,8 +247,8 @@ export const ENDLESS_RUN = {
    *   0.20   4.4 /  7.9   1.80x   SD 2.91
    *   0.40   3.2 /  5.7   1.77x   SD 1.57
    *
-   * (Measured against the older, truncating fillDepot the relative distance
-   * looked constant at 2.5x across every density; it was the broken depot
+   * (Measured against the older, truncating fillSenders the relative distance
+   * looked constant at 2.5x across every density; it was the broken hand
    * holding it there, not the blocking. Re-measured over 1000 runs per density
    * on identical boards, the three that matter come out at 2.54x / 2.27x /
    * 1.93x for 0 / 0.05 / 0.15 — the same picture, a little sharper.)
@@ -182,10 +257,10 @@ export const ENDLESS_RUN = {
    * 1000 runs at 0.05 give 5.15 / 11.68, 2.27x, SD 7.06
    * (`tools/endless.js --runs=1000`).
    *
-   * An array instead of a number is drawn from uniformly, once per stage, so
+   * An array instead of a number is drawn from uniformly, once per level, so
    * the density can vary from board to board rather than being a constant of
    * the mode. It does not buy the spread back: `[0, 0.05, 0.15]` measures at a
-   * mean stage of 10.5 with SD 5.81 and 2.11x, against 11.7 / 7.06 / 2.27x for
+   * mean level of 10.5 with SD 5.81 and 2.11x, against 11.7 / 7.06 / 2.27x for
    * a flat 0.05 — worse than the average of its three parts, and worse than the
    * flat 0.067 it averages to. A run has to survive every board it is dealt, so
    * the hardest density in the mix weighs more than its third.
@@ -233,7 +308,7 @@ export function utcDay(at) {
 /**
  * Seed of the daily board for the UTC day `at` falls in.
  *
- * Hashed rather than used directly, because the stage seeds are `seed + stage *
+ * Hashed rather than used directly, because the level seeds are `seed + level *
  * 7919`: consecutive days would otherwise deal boards from neighbouring corners
  * of the same PRNG stream, and the first board of Tuesday would be a near miss
  * of the second board of Monday. The mix is the finaliser of murmur3, which
@@ -242,10 +317,43 @@ export function utcDay(at) {
  * @returns {number} integer in [0, 2^32), suitable as a `createRun` seed
  */
 export function dailySeed(at) {
-  const day = Math.floor(toTime(at) / DAY_MS);
-  let hash = Math.imul(day ^ (day >>> 16), 0x85ebca6b) >>> 0;
+  return mix32(Math.floor(toTime(at) / DAY_MS));
+}
+
+/**
+ * The finaliser of murmur3: scatters inputs one apart across the whole 32-bit
+ * range. A bijection on 32-bit integers, so distinct inputs below 2^32 never
+ * share an output.
+ * @param {number} value
+ * @returns {number} integer in [0, 2^32)
+ */
+function mix32(value) {
+  let hash = Math.imul(value ^ (value >>> 16), 0x85ebca6b) >>> 0;
   hash = Math.imul(hash ^ (hash >>> 13), 0xc2b2ae35) >>> 0;
   return (hash ^ (hash >>> 16)) >>> 0;
+}
+
+/**
+ * Seed of a free run started at the moment `at`.
+ *
+ * Taken from the clock rather than from `Math.random`, so that a free run has a
+ * seed like every other run: one the page can show on the end card and hand
+ * back through `?seed=`, which replays the run board for board. The clock is
+ * read by the caller — this half of the code reads none.
+ *
+ * Hashed, never the timestamp itself, for the reason `dailySeed` is: level `i`
+ * of a run is drawn from `seed + i * 7919`, so two runs started 7919 ms apart
+ * would deal the same boards one level out of step. The millisecond count is
+ * wider than 32 bits, so its high part is mixed in on its own first; within any
+ * span of 2^32 ms (about 50 days) two different moments always get two
+ * different seeds.
+ * @param {Date|number} at
+ * @returns {number} integer in [0, 2^32), suitable as a `createRun` seed
+ */
+export function freeSeed(at) {
+  const time = Math.floor(toTime(at));
+  const high = Math.floor(time / 2 ** 32);
+  return mix32((time >>> 0) ^ mix32(high));
 }
 
 /**
@@ -261,24 +369,31 @@ export function msUntilNextDay(at) {
 }
 
 /**
- * Node count and depot ratio for stage `index` (0-based), for either shape of
- * run. The fixed shape reads them off its arrays; the endless one computes them
- * from its two curves.
+ * Node count, sender ratio and sender count for level `index` (0-based), for
+ * either shape of run. The fixed shape reads them off its arrays; the endless
+ * one computes them from its two curves, except for a `firstLevel` it is given
+ * outright.
  * @param {object} config
  * @param {number} index
- * @returns {{nodeCount: number, ratio: number}}
+ * @returns {{nodeCount: number, ratio: number, senders: number}}
  */
-export function stageSpec(config, index) {
-  if (config.endless) {
-    const { start, growth, max } = config.stageNodes;
-    const curve = config.depotCurve;
-    return {
-      nodeCount: Math.min(max, start + growth * index),
-      ratio: curve.floor + (curve.start - curve.floor) * Math.exp(-index / curve.tau),
-    };
+export function levelSpec(config, index) {
+  let nodeCount;
+  let ratio;
+  if (config.endless && index === 0 && config.firstLevel) {
+    const { nodes, senders } = config.firstLevel;
+    return { nodeCount: nodes, ratio: senders / nodes, senders };
   }
-  const ratio = Array.isArray(config.depotRatio) ? config.depotRatio[index] : config.depotRatio;
-  return { nodeCount: config.stages[index], ratio };
+  if (config.endless) {
+    const { start, growth, max } = config.levelNodes;
+    const curve = config.senderCurve;
+    nodeCount = Math.min(max, start + growth * index);
+    ratio = curve.floor + (curve.start - curve.floor) * Math.exp(-index / curve.tau);
+  } else {
+    ratio = Array.isArray(config.senderRatio) ? config.senderRatio[index] : config.senderRatio;
+    nodeCount = config.levelSizes[index];
+  }
+  return { nodeCount, ratio, senders: Math.max(1, Math.round(nodeCount * ratio)) };
 }
 
 /**
@@ -304,8 +419,8 @@ function drawBoard(
     //
     // A mode that deals them at all draws the order even at density zero, so
     // that two densities played on the same seed differ in what is blocked and
-    // in nothing else — same board, same depot. A mode that has never heard of
-    // them (`blockedRatio` absent) keeps its random stream untouched.
+    // in nothing else — same board, same senders. A mode that has never heard
+    // of them (`blockedRatio` absent) keeps its random stream untouched.
     if (blockedRatio !== null) {
       const order = shuffled(rng, graph.nodes.map((node) => node.id));
       const chosen = new Set(order.slice(0, Math.round(nodeCount * blockedRatio)));
@@ -327,8 +442,8 @@ function drawBoard(
 
 /**
  * The density of a sprinkled node flag — impermeable or amplifier — for one
- * stage. A number applies to every board; an array is drawn from uniformly,
- * once per stage, which makes the density itself part of what a board can
+ * level. A number applies to every board; an array is drawn from uniformly,
+ * once per level, which makes the density itself part of what a board can
  * surprise you with.
  *
  * The draw happens either way, so a fixed density and a drawn one walk through
@@ -344,25 +459,25 @@ function drawDensity(rng, configured) {
 }
 
 /**
- * Fills a depot of the given size, holding the composition as closely as the
- * rounding allows, then shuffles it.
+ * Deals the senders of one level, holding the composition as closely as the
+ * rounding allows, then shuffles them.
  *
  * Largest remainder, not rounding-and-truncating. Rounding each share on its
  * own overshoots or undershoots the size, and cutting the overshoot off the end
  * of the list always took from the *last* entry of the composition — the rarest
- * and longest-reaching radius. A depot of nine came out as 4x r1, 4x r2, 1x r3
- * and carried less total reach than a depot of eight at 3/3/2, so a stage that
+ * and longest-reaching radius. A hand of nine came out as 4x r1, 4x r2, 1x r3
+ * and carried less total reach than a hand of eight at 3/3/2, so a level that
  * dealt one more transmitter could be harder than the one before it.
  *
  * Every share is therefore floored first, and the slots left over go to the
  * largest fractions, ties to the longer radius. That keeps each radius within
- * one of its exact share and keeps a bigger depot from ever carrying less.
+ * one of its exact share and keeps a bigger hand from ever carrying less.
  * @param {() => number} rng
  * @param {number} size
  * @param {Array<[number, number]>} composition
  * @returns {number[]} radii, in draw order
  */
-function fillDepot(rng, size, composition) {
+function fillSenders(rng, size, composition) {
   const total = composition.reduce((sum, [, weight]) => sum + weight, 0);
   const shares = composition.map(([radius, weight]) => {
     const exact = (size * weight) / total;
@@ -375,40 +490,39 @@ function fillDepot(rng, size, composition) {
     left--;
   }
 
-  const depot = [];
-  for (const { radius, count } of shares) for (let i = 0; i < count; i++) depot.push(radius);
-  return shuffled(rng, depot);
+  const senders = [];
+  for (const { radius, count } of shares) for (let i = 0; i < count; i++) senders.push(radius);
+  return shuffled(rng, senders);
 }
 
 /**
- * Builds stage `index` (0-based) from the run seed alone.
+ * Builds level `index` (0-based) from the run seed alone.
  * @param {number} seed
  * @param {number} index
  * @param {object} config
- * @returns {{graph: Graph, lattice: string, depot: number[]}}
+ * @returns {{graph: Graph, lattice: string, senders: number[]}}
  */
-function buildStage(seed, index, config) {
+function buildLevel(seed, index, config) {
   const rng = mulberry32(seed + index * 7919);
-  const { nodeCount, ratio } = stageSpec(config, index);
+  const { nodeCount, ratio, senders } = levelSpec(config, index);
   const lattice = config.lattices[Math.floor(rng() * config.lattices.length)];
   const blockedRatio = drawDensity(rng, config.blockedRatio);
   const amplifierRatio = drawDensity(rng, config.amplifierRatio);
   const graph = drawBoard(rng, {
     nodeCount, lattice, blockedRatio, amplifierRatio, edgeDeleteRatio: config.edgeDeleteRatio,
   });
-  if (!Number.isFinite(ratio)) throw new RangeError(`no depotRatio for stage ${index + 1}`);
-  const depotSize = Math.max(1, Math.round(nodeCount * ratio));
-  return { graph, lattice, depot: fillDepot(rng, depotSize, config.composition) };
+  if (!Number.isFinite(ratio)) throw new RangeError(`no senderRatio for level ${index + 1}`);
+  return { graph, lattice, senders: fillSenders(rng, senders, config.composition) };
 }
 
 /**
  * Recomputes everything derived from the placements.
  * @param {object} base fields that survive a placement unchanged
  * @param {Array<{id: *, radius: number}>} placed
- * @param {number[]} depot
+ * @param {number[]} senders
  * @returns {object} frozen state
  */
-function build(base, placed, depot) {
+function build(base, placed, senders) {
   // The three walks agree node for node on a board that carries neither flag;
   // the checks only keep the ordinary board off the slower paths.
   let ball = bfsWithin;
@@ -423,45 +537,45 @@ function build(base, placed, depot) {
   const uncovered = base.graph.nodes.filter((node) => !covered.has(node.id)).map((node) => node.id);
 
   const cleared = uncovered.length === 0;
-  // An endless run has no last stage: clearing one always leads to the next.
-  const lastStage = !base.config.endless && base.stage === base.config.stages.length;
+  // An endless run has no last level: clearing one always leads to the next.
+  const lastLevel = !base.config.endless && base.level === base.config.levelSizes.length;
   const status = cleared
-    ? (lastStage ? 'won' : 'stageCleared')
-    : (depot.length === 0 ? 'lost' : 'playing');
+    ? (lastLevel ? 'won' : 'levelCleared')
+    : (senders.length === 0 ? 'lost' : 'playing');
   // Leftovers only score once the board is actually clear, and they count for
-  // the stage they were saved on: a transmitter spared on stage 12 is worth
-  // twelve, one spared on stage 1 is worth one. The run's score is the sum over
-  // its cleared stages of leftovers times stage number.
+  // the level they were saved on: a transmitter spared on level 12 is worth
+  // twelve, one spared on level 1 is worth one. The run's score is the sum over
+  // its cleared levels of leftovers times level number.
   //
-  // The obvious alternative — keep the plain sum and multiply by the stage
+  // The obvious alternative — keep the plain sum and multiply by the level
   // reached at the very end — is wrong twice over. It counts endurance twice,
-  // because the points already grow with the stage: a run that lasts twice as
+  // because the points already grow with the level: a run that lasts twice as
   // long clears twice as many boards and banks the leftovers of all of them, so
   // multiplying on top squares exactly what it means to reward. And it hangs
   // the whole run on a single factor, which makes zero points annul everything:
-  // a player who reached stage 30 sparing nothing would score the same as one
-  // who never left stage 1. Weighting inside the run avoids both — every stage
-  // contributes what it was worth where it stood, and a stage that contributed
+  // a player who reached level 30 sparing nothing would score the same as one
+  // who never left level 1. Weighting inside the run avoids both — every level
+  // contributes what it was worth where it stood, and a level that contributed
   // nothing costs nothing.
   //
-  // It does not change how the mode is best played. Inside stage s every
+  // It does not change how the mode is best played. Inside level s every
   // leftover is worth s, the same positive constant for every decision on that
-  // board, and leftovers do not carry into the next stage, so no weighting can
+  // board, and leftovers do not carry into the next level, so no weighting can
   // reorder a move. Measured rather than assumed; see `MESSUNGEN.md`.
-  const score = base.score + (cleared ? depot.length * base.stage : 0);
+  const score = base.score + (cleared ? senders.length * base.level : 0);
 
   const state = {
     ...base,
     placed,
-    depot,
+    senders,
     covered,
     uncovered,
     radii,
     score,
     status,
     /** The transmitter in hand, and the two the player is allowed to see. */
-    current: status === 'playing' ? depot[0] : null,
-    preview: status === 'playing' ? depot.slice(1, 3) : [],
+    current: status === 'playing' ? senders[0] : null,
+    preview: status === 'playing' ? senders.slice(1, 3) : [],
   };
   Object.defineProperty(state, 'toJSON', { value: () => snapshot(state) });
   return Object.freeze(state);
@@ -474,17 +588,17 @@ function build(base, placed, depot) {
  */
 export function createRun({ seed = 1, config = DEFAULT_RUN } = {}) {
   if (!Number.isInteger(seed)) throw new RangeError(`seed must be an integer, got ${seed}`);
-  if (!config.endless && (!Array.isArray(config.stages) || config.stages.length === 0)) {
-    throw new RangeError('config.stages must be a non-empty array of node counts');
+  if (!config.endless && (!Array.isArray(config.levelSizes) || config.levelSizes.length === 0)) {
+    throw new RangeError('config.levelSizes must be a non-empty array of node counts');
   }
-  if (config.endless && !(config.stageNodes?.start >= 2 && config.depotCurve?.start > 0)) {
-    throw new RangeError('an endless config needs stageNodes and depotCurve');
+  if (config.endless && !(config.levelNodes?.start >= 2 && config.senderCurve?.start > 0)) {
+    throw new RangeError('an endless config needs levelNodes and senderCurve');
   }
-  const { graph, lattice, depot } = buildStage(seed, 0, config);
+  const { graph, lattice, senders } = buildLevel(seed, 0, config);
   return build(
-    { seed, config, stage: 1, graph, lattice, score: 0, cleared: [] },
+    { seed, config, level: 1, graph, lattice, score: 0, cleared: [] },
     [],
-    depot,
+    senders,
   );
 }
 
@@ -501,28 +615,40 @@ export function place(state, id) {
   if (!state.graph.nodes.some((node) => node.id === id)) return state;
   if (state.radii.has(id)) return state;
 
-  const [radius, ...rest] = state.depot;
+  const [radius, ...rest] = state.senders;
   const placed = [...state.placed, { id, radius }];
   const next = build(state, placed, rest);
   return next.status === 'playing' || next.status === 'lost'
     ? next
-    : { ...next, cleared: [...state.cleared, { stage: state.stage, left: rest.length }] };
+    : { ...next, cleared: [...state.cleared, { level: state.level, left: rest.length }] };
 }
 
 /**
- * Moves on to the next stage once the current one is clear.
+ * Moves on to the next level once the current one is clear.
  * @param {object} state
  * @returns {object}
  */
 export function advance(state) {
-  if (state.status !== 'stageCleared') return state;
-  const index = state.stage;
-  const { graph, lattice, depot } = buildStage(state.seed, index, state.config);
+  if (state.status !== 'levelCleared') return state;
+  const index = state.level;
+  const { graph, lattice, senders } = buildLevel(state.seed, index, state.config);
   return build(
-    { ...state, stage: state.stage + 1, graph, lattice },
+    { ...state, level: state.level + 1, graph, lattice },
     [],
-    depot,
+    senders,
   );
+}
+
+/**
+ * Levels a run has cleared — the number a run is counted by once it is over.
+ * Whoever fails in level 10 has cleared 9. The level being played is
+ * `state.level`; this is the one before it, unless the last board was cleared
+ * too, which only a fixed-length run can end on.
+ * @param {object} state
+ * @returns {number}
+ */
+export function levelsCleared(state) {
+  return state.cleared.length;
 }
 
 /**
@@ -533,17 +659,18 @@ export function advance(state) {
 export function snapshot(state) {
   return {
     seed: state.seed,
-    stage: state.stage,
-    stages: state.config.endless ? null : state.config.stages.length,
-    /** The stage currently being played — the streak the player is on. */
-    streak: state.stage,
+    /** The level currently being played. */
+    level: state.level,
+    levels: state.config.endless ? null : state.config.levelSizes.length,
+    /** Levels cleared so far — what a finished run is counted by. */
+    levelsCleared: levelsCleared(state),
     nodeCount: state.graph.nodes.length,
     lattice: state.lattice,
     status: state.status,
     score: state.score,
     current: state.current,
     preview: [...state.preview],
-    depotLeft: state.depot.length,
+    sendersLeft: state.senders.length,
     placed: state.placed.map(({ id, radius }) => ({ id: String(id), radius })),
     uncovered: state.uncovered.length,
     cleared: state.cleared.map((entry) => ({ ...entry })),

@@ -6,7 +6,7 @@
  * Everything measured in endless mode is played by `tools/bot64.js`, so the
  * numbers only mean something if that module plays the same game as the 32-bit
  * original on the boards where both apply. Three claims are tested, move by
- * move along a greedily played line over the standard three-stage run:
+ * move along a greedily played line over the standard three-level run:
  *
  *   1. greedy agrees, node for node;
  *   2. the wide search with an unbounded beam agrees with the exact one;
@@ -28,8 +28,8 @@ let beamWorse = 0;
 
 for (let seed = 1; seed <= runs; seed++) {
   let state = createRun({ seed, config: DEFAULT_RUN });
-  while (state.status === 'playing' || state.status === 'stageCleared') {
-    if (state.status === 'stageCleared') { state = advance(state); continue; }
+  while (state.status === 'playing' || state.status === 'levelCleared') {
+    if (state.status === 'levelCleared') { state = advance(state); continue; }
     moves++;
     if (narrow.greedyChoice(state) !== wide.greedyChoice(state)) greedyDiffers++;
     const exact = narrow.lookaheadChoice(state);

@@ -30,7 +30,7 @@
  *      ball they actually buy is bigger than the board's mean. Anchor B tilts
  *      the same mix further, until the unplanned player ends up exactly where
  *      it ends up today, and only then asks what planning is worth.
- *   C. the greedy bot's mean streak again, but held with the depot size while
+ *   C. the greedy bot's mean streak again, but held with the sender count while
  *      the mix stays the shipped 4/4/2. Anchor B pays for its honesty by
  *      flattening the mix towards radius 1, and choosing which radius to spend
  *      where is part of what planning is for — so a gap that shrinks under B
@@ -48,9 +48,9 @@
 
 import { bfsWithinAmplified } from '../src/graph.js';
 import { generateCandidate, mulberry32, shuffled } from '../src/generator.js';
-import { advance, createRun, ENDLESS_RUN, place, stageSpec } from '../src/run.js';
+import { advance, createRun, ENDLESS_RUN, place, levelSpec } from '../src/run.js';
 import { greedyChoice, lookaheadChoice } from './bot64.js';
-import { printTable, quantile, STAGE_CAP } from './endless.js';
+import { printTable, quantile, LEVEL_CAP } from './endless.js';
 
 /** Densities swept: nothing, up to roughly one node in seven. */
 const DENSITIES = [0, 0.03, 0.06, 0.09, 0.12, 0.15];
@@ -113,9 +113,9 @@ function ballsByRadius(density, boards, firstSeed) {
   let nodes = 0;
   for (let i = 0; i < boards; i++) {
     const rng = mulberry32(firstSeed + i * 7919);
-    // Walks the same stage shapes a run does, so the sample is the mode's own
+    // Walks the same level shapes a run does, so the sample is the mode's own
     // spread of board sizes and not one arbitrary size.
-    const { nodeCount } = stageSpec(ENDLESS_RUN, i % 14);
+    const { nodeCount } = levelSpec(ENDLESS_RUN, i % 14);
     const lattice = ENDLESS_RUN.lattices[Math.floor(rng() * ENDLESS_RUN.lattices.length)];
     const graph = board(rng, nodeCount, lattice, density);
     for (const node of graph.nodes) {
@@ -163,7 +163,7 @@ function ballOf(composition, balls) {
  * Bisects a knob until `value(knob)` has fallen to `target`. `low` is the end
  * where the value is too high and `high` the end where it is too low, which is
  * a matter of the knob's direction and not of which number is bigger: a tilt
- * runs 0 -> 2 and a depot factor runs 1.3 -> 0.5.
+ * runs 0 -> 2 and a sender factor runs 1.3 -> 0.5.
  * @param {(knob: number) => number} value
  * @param {number} target
  * @param {number} low
@@ -189,18 +189,18 @@ const mixLabel = (composition) => composition
   .join('/');
 
 /**
- * The config one row of a table is played on. `depotFactor` scales both ends of
- * the depot curve, which is how a row can be made to cost the same number of
+ * The config one row of a table is played on. `senderFactor` scales both ends of
+ * the sender curve, which is how a row can be made to cost the same number of
  * transmitters per node as another one — the knob `tools/density.js` uses.
  */
-const configFor = (density, mix, depotFactor = 1) => ({
+const configFor = (density, mix, senderFactor = 1) => ({
   ...ENDLESS_RUN,
   amplifierRatio: density,
   composition: mix,
-  depotCurve: {
-    ...ENDLESS_RUN.depotCurve,
-    start: ENDLESS_RUN.depotCurve.start * depotFactor,
-    floor: ENDLESS_RUN.depotCurve.floor * depotFactor,
+  senderCurve: {
+    ...ENDLESS_RUN.senderCurve,
+    start: ENDLESS_RUN.senderCurve.start * senderFactor,
+    floor: ENDLESS_RUN.senderCurve.floor * senderFactor,
   },
 });
 
@@ -213,7 +213,7 @@ const configFor = (density, mix, depotFactor = 1) => ({
  * transmitters: how many went onto an amplifier, how many would have if it had
  * placed blindly, and how big the balls it bought actually were.
  *
- * The blind share is not the density — nodes fill up as a stage goes on, so the
+ * The blind share is not the density — nodes fill up as a level goes on, so the
  * share of *free* nodes that amplify drifts — and without it a usage rate says
  * nothing. The ball actually bought is the number that decides whether
  * equalising the board's mean ball size equalises anything a player feels.
@@ -227,9 +227,9 @@ function play(seed, config, choose) {
   let onAmplifier = 0;
   let blindly = 0;
   let ballSum = 0;
-  while (state.status === 'playing' || state.status === 'stageCleared') {
-    if (state.status === 'stageCleared') {
-      if (state.cleared.length >= STAGE_CAP) break;
+  while (state.status === 'playing' || state.status === 'levelCleared') {
+    if (state.status === 'levelCleared') {
+      if (state.cleared.length >= LEVEL_CAP) break;
       state = advance(state);
       continue;
     }
@@ -244,7 +244,8 @@ function play(seed, config, choose) {
     }
     state = place(state, choice);
   }
-  return { streak: state.stage, placements, onAmplifier, blindly, ballSum };
+  // Levels cleared, as the game counts a run; see `playEndless`.
+  return { streak: state.cleared.length, placements, onAmplifier, blindly, ballSum };
 }
 
 /**
@@ -277,7 +278,7 @@ function measure(config, choose, runs, firstSeed) {
     p90: quantile(sorted, 0.9),
     mean,
     sd: Math.sqrt(variance),
-    capped: streaks.filter((streak) => streak >= STAGE_CAP).length / runs,
+    capped: streaks.filter((streak) => streak >= LEVEL_CAP).length / runs,
     usage: per(onAmplifier),
     blind: per(blindly),
     effective: per(ballSum),
@@ -289,7 +290,7 @@ function measure(config, choose, runs, firstSeed) {
  *
  * Walked along the *planning* bot's line, not the greedy one: that is the line
  * the mode is calibrated against, and it is the only one that reaches the later
- * stages where the boards are large. A position the greedy bot never survives
+ * levels where the boards are large. A position the greedy bot never survives
  * to see cannot say anything about planning there.
  * @param {object} config
  * @param {number} runs
@@ -301,9 +302,9 @@ function divergence(config, runs, firstSeed) {
   let differ = 0;
   for (let i = 0; i < runs; i++) {
     let state = createRun({ seed: firstSeed + i, config });
-    while (state.status === 'playing' || state.status === 'stageCleared') {
-      if (state.status === 'stageCleared') {
-        if (state.cleared.length >= STAGE_CAP) break;
+    while (state.status === 'playing' || state.status === 'levelCleared') {
+      if (state.status === 'levelCleared') {
+        if (state.cleared.length >= LEVEL_CAP) break;
         state = advance(state);
         continue;
       }
@@ -333,8 +334,8 @@ const DUEL_HEADERS = [
  * plus how often they disagree.
  * @returns {{row: Array<string>, greedy: object, plan: object}}
  */
-function duel(density, mix, ball, runs, diffRuns, firstSeed, depotFactor = 1) {
-  const config = configFor(density, mix, depotFactor);
+function duel(density, mix, ball, runs, diffRuns, firstSeed, senderFactor = 1) {
+  const config = configFor(density, mix, senderFactor);
   const started = Date.now();
   const greedy = measure(config, greedyChoice, runs, firstSeed);
   const plan = measure(config, lookaheadChoice, runs, firstSeed);
@@ -437,7 +438,7 @@ function main() {
   //    still what the unplanned player actually gets out of the mode.
   if (tables.has(4)) {
     console.log('4. Dasselbe, aber die Mischung so weit gekippt, dass der gierige Bot bei'
-      + ` ${target.toFixed(2)} Etappen bleibt (${pinRuns} Partien je Bisektionsschritt)`);
+      + ` ${target.toFixed(2)} Level bleibt (${pinRuns} Partien je Bisektionsschritt)`);
     printTable([DUEL_HEADERS[0], 'Tilt t', ...DUEL_HEADERS.slice(1)], densities.map((density) => {
       const t = bisect(
         (tilt) => measure(configFor(density, tilted(tilt)), greedyChoice, pinRuns, firstSeed).mean,
@@ -450,20 +451,20 @@ function main() {
     console.log();
   }
 
-  // 5. The same pin, but held with the depot instead of the mix.
+  // 5. The same pin, but held with the senders instead of the mix.
   //
   // Table 4 answers the question at an honest difficulty, but it answers it
   // with a mix that has been flattened towards radius 1 — and part of what
   // planning is *for* is deciding which radius to spend where, so a shrinking
   // gap there could be the mix and not the amplifier. Here the mix stays the
-  // shipped 4/4/2 and the depot is scaled instead, which leaves the choice of
+  // shipped 4/4/2 and the sender count is scaled instead, which leaves the choice of
   // radius intact. If the gap shrinks in both tables, it is the amplifier.
   if (tables.has(5)) {
-    console.log('5. Gegenprobe: Mischung bleibt 4/4/2, stattdessen wird das Depot skaliert,'
-      + ` bis der gierige Bot wieder bei ${target.toFixed(2)} Etappen steht`);
-    printTable([DUEL_HEADERS[0], 'Depotfaktor', ...DUEL_HEADERS.slice(1)], densities.map((density) => {
+    console.log('5. Gegenprobe: Mischung bleibt 4/4/2, stattdessen wird die Senderzahl skaliert,'
+      + ` bis der gierige Bot wieder bei ${target.toFixed(2)} Level steht`);
+    printTable([DUEL_HEADERS[0], 'Senderfaktor', ...DUEL_HEADERS.slice(1)], densities.map((density) => {
       // Nothing to compensate without amplifiers, and the row is the reference
-      // the others are read against: it keeps the depot the mode ships.
+      // the others are read against: it keeps the senders the mode ships.
       const factor = density === 0 ? 1 : bisect(
         (f) => measure(configFor(density, ENDLESS_RUN.composition, f), greedyChoice, pinRuns, firstSeed).mean,
         target, 1.3, 0.4, 9,
@@ -476,9 +477,9 @@ function main() {
   }
 
   // 6. The yardstick: a board with no amplifiers at all, made easier by handing
-  //    out a bigger depot.
+  //    out more senders.
   //
-  // Both pins land near the target rather than on it, because the depot holds
+  // Both pins land near the target rather than on it, because the sender count holds
   // four to nine transmitters and neither knob moves it in less than whole
   // ones — so a row can end up easier than the baseline and its ratio is
   // flattered by that alone. This table says how much flattery a given amount
@@ -486,11 +487,11 @@ function main() {
   // tables 2, 4 and 5 has to beat before it counts as a reward for planning.
   if (tables.has(6)) {
     // Read off table 2 and handed in: the difficulty each amplifier row
-    // actually ended up at, in greedy mean stages.
+    // actually ended up at, in greedy mean levels.
     const targets = (args.targets ?? String(target)).split(',').map(Number);
-    console.log('6. Massstab: keine Verstaerker, nur ein groesseres Depot —'
+    console.log('6. Massstab: keine Verstaerker, nur mehr Sender —'
       + ' wieviel Verhaeltnis kauft blosse Leichtigkeit?');
-    printTable(['Zielschwierigkeit', 'Depotfaktor', ...DUEL_HEADERS.slice(1)], targets.map((wanted) => {
+    printTable(['Zielschwierigkeit', 'Senderfaktor', ...DUEL_HEADERS.slice(1)], targets.map((wanted) => {
       const factor = bisect(
         (f) => -measure(configFor(0, ENDLESS_RUN.composition, f), greedyChoice, pinRuns, firstSeed).mean,
         -wanted, 0.4, 1.4, 9,

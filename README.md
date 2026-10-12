@@ -22,34 +22,59 @@ eine Partition — ein Knoten mit zwei Signalen ist ein Konflikt, kein Bonus.
 Levels sind nach der höchsten Schlussregel sortiert, die sie erzwingen
 (`src/tiers.js`), nicht nach Brettgröße.
 
-**Depot-Lauf** (`DEFAULT_RUN` in `src/run.js`) — drei wachsende Etappen (18,
-24, 30 Knoten) und ein Depot voller Sender mit Radius 1, 2 oder 3. Man zieht den
-vordersten, sieht die nächsten zwei, setzt ihn. Wer ein Brett räumt, bevor das
-Depot leer ist, behält den Rest als Punkte. Gesetzt ist gesetzt: ein Sender
+**Sender-Lauf** (`DEFAULT_RUN` in `src/run.js`) — drei wachsende Level (18,
+24, 30 Knoten) und je Level ein Stapel Sender mit Radius 1, 2 oder 3. Man zieht
+den vordersten, sieht die nächsten zwei, setzt ihn. Wer ein Brett räumt, bevor
+die Sender ausgehen, behält den Rest als Punkte. Gesetzt ist gesetzt: ein Sender
 lässt sich nicht wieder abnehmen. Das Abnehmen gab es einmal — es kostete die
 Karte und gab nur den Knoten zurück —, und es ist gemessen wieder verschwunden:
 der planende Bot griff in 5,7 % der Partien danach und gewann 0,5 Prozentpunkte
 damit, zu wenig für die klarste Regel des Spiels.
 
-**Endlos** (`ENDLESS_RUN` in `src/run.js`) — dasselbe ohne letzte Etappe. Das
-Brett wächst (18 → 60 Knoten), das Depot schrumpft relativ dazu (0,24 → 0,15
-des Knotenzählers entlang einer Exponentialkurve). Das ist der Modus, den
-`index.html` spielt.
+**Endlos** (`ENDLESS_RUN` in `src/run.js`) — dasselbe ohne letztes Level. Das
+Brett wächst (22 → 60 Knoten ab Level 2), die Senderzahl schrumpft relativ dazu
+(0,22 → 0,15 des Knotenzählers entlang einer Exponentialkurve). Das ist der
+Modus, den `index.html` spielt.
 
-Bestwert sind die **Punkte**, und nur sie. Die Etappe ist Standanzeige ohne
+Level 1 ist das Einstiegsbrett und gehört nicht zur Kurve: 9 Knoten, 6 Sender,
+keine Achtecke. Es erklärt die Regel, indem man es gewinnt — Antippen setzt,
+das Signal breitet sich aus, alles muss versorgt sein —, und es ist so
+ausgelegt, dass auch der gierige Bot es nie verliert.
+
+Bestwert sind die **Punkte**, und nur sie. Das Level ist Standanzeige ohne
 eigenen Rekord: zwei Bestwerte ließen offen, welcher zählt, und von den beiden
-misst der Punktestand mehr. Er steigt mit der Etappe ohnehin, und zwischen zwei
+misst der Punktestand mehr. Er steigt mit dem Level ohnehin, und zwischen zwei
 Läufen, die auf demselben Brett gestorben sind, unterscheidet er noch den, der
-seine Etappen mit Sendern übrig geräumt hat, von dem, der sich durchgequält hat.
+seine Level mit Sendern übrig geräumt hat, von dem, der sich durchgequält hat.
+
+Während der Partie zeigt die Kopfzeile das Level, das gerade gespielt wird.
+Abgerechnet wird das letzte **geschaffte**: wer in Level 10 scheitert, hat 9
+geschafft, und so steht es auf der Endkarte und in der Ergebniszeile.
 
 ## Tagesbrett
 
 Derselbe Endlosmodus, nur steht der Startseed fest: er wird aus dem Datum
 abgeleitet, alle spielen am selben Tag dasselbe Brett, und es gibt einen Versuch
 pro Tag. Danach zeigt das Spiel das Ergebnis und die Zeit bis zum nächsten
-Brett, statt eine neue Partie anzubieten. Ein Knopf legt eine Ergebniszeile in
-die Zwischenablage — `funkloch 24.09. — Etappe 11, 7 Punkte` —, die das Brett
-nicht verrät. Umgeschaltet wird in der Kopfzeile.
+Brett, statt eine neue Partie anzubieten. Umgeschaltet wird in der Kopfzeile.
+
+„Ergebnis teilen" öffnet auf dem Handy die native Teilen-Auswahl (Web Share
+API), sonst kopiert es in die Zwischenablage und sagt „Kopiert."; klappt auch
+das nicht, steht der Text zum Markieren da. Geteilt wird das Ergebnis und ein
+Bild des Verlaufs, gebaut in `src/share.js`:
+
+```
+funkloch 06.10. — 15 Level geschafft, 78 Punkte
+■ ■■ ■■ ■ · · ■ ■ · ■
+■ · ■ ■ · ×
+funkloch.vercel.app
+```
+
+Ein Zeichen je gespieltem Level, der Reihe nach: ein `■` je übrig gebliebenem
+Sender, `·` für ein Level ohne Rest, `×` für das, an dem die Partie scheiterte.
+Zehn Level je Zeile, damit auch ein langer Lauf in eine Chatnachricht passt.
+Die letzte Zeile ist die Adresse des Spiels (`GAME_URL` in `src/share.js`).
+Nichts davon verrät das Brett.
 
 Der Tag wird **in UTC** gerechnet (`utcDay` in `src/run.js`), nicht in der
 lokalen Zone. Das ist der ganze Punkt: mit einer lokalen Datumsgrenze hätte
@@ -78,7 +103,9 @@ Seite ohne sichtbaren Fehler.
 ES-Module brauchen `http://`.
 
 Mit `?seed=7` wird ein bestimmter Lauf gespielt; derselbe Seed gibt immer
-dieselben Bretter und dasselbe Depot.
+dieselben Bretter und dieselben Sender. Jede freie Partie hat einen: ohne
+`?seed=` wird er aus der Uhrzeit abgeleitet (`freeSeed` in `src/run.js`), und
+die Endkarte nennt ihn als Link, der die Partie noch einmal austeilt.
 
 ## Tests
 

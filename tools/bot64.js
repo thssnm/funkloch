@@ -77,7 +77,7 @@ export function maskTable(graph) {
   };
 }
 
-/** One table per board object; a stage keeps its graph for its whole life. */
+/** One table per board object; a level keeps its graph for its whole life. */
 const cache = new WeakMap();
 export function tableFor(graph) {
   let table = cache.get(graph);
@@ -135,17 +135,17 @@ export function greedyChoice(state) {
  * final count go to the opening that lights more right away.
  *
  * `frugal` swaps in the other objective a run can be played for. Coverage is
- * what keeps a run alive; what it scores is the transmitters still in the depot
+ * what keeps a run alive; what it scores is the senders still in hand
  * when the board goes clear, so a player after points wants the board cleared in
  * as few placements as possible. Both leaves are judged on coverage first — a
  * board that is not clear scores nothing at all — and the frugal one then
  * prefers the line that got there in fewer plies, where the plain one only asks
  * which opening lit more right away.
  *
- * There is no third objective hiding behind the stage weighting. A stage's
- * leftovers are multiplied by that stage's number, which is the same constant
- * for every decision inside the stage, and leftovers do not carry into the next
- * stage — so weighting cannot reorder any move. See `MESSUNGEN.md`.
+ * There is no third objective hiding behind the level weighting. A level's
+ * leftovers are multiplied by that level's number, which is the same constant
+ * for every decision inside the level, and leftovers do not carry into the next
+ * level — so weighting cannot reorder any move. See `MESSUNGEN.md`.
  * @param {object} state
  * @param {{beam?: number, frugal?: boolean}} [options]
  * @returns {*} node id

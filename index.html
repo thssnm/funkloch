@@ -18,6 +18,19 @@
         --muted: #8a94a8;
         --signal: #5ad1c0;
         --signal-dim: #2f6d66;
+        /* The board's edges, unlit and lit. Their own pair rather than --line
+           and --signal-dim, which also draw borders and rules and must stay
+           quiet. Contrast against --bg, by WCAG relative luminance:
+             edge      #262d3b  1.3:1  (before; barely there)
+             edge      #4f5a70  2.7:1  <- this one
+             edge lit  #2f6d66  3.1:1  (before; would now barely beat unlit)
+             edge lit  #3f9488  5.0:1  <- this one
+             node ring #8a94a8  6.1:1  (--muted, the unlit node)
+             node lit  #5ad1c0  9.9:1  (--signal)
+           Each edge stays under the node it leads to, unlit and lit: the
+           nodes are what is touched, so they stay the brightest thing. */
+        --edge: #4f5a70;
+        --edge-lit: #3f9488;
         --sender: #f4c257;
         --over: #f08a62;
         --preview: #9b8cf0;
@@ -99,11 +112,22 @@
       .race-value { display: flex; align-items: baseline; gap: 6px; }
       /* Number before label in both, so the eye finds the digits in one place
          instead of learning two orders. */
-      .race-value b { font-size: 30px; font-weight: 700; line-height: 1; color: var(--text); }
+      /* 42px, up from 30, and the header does not grow for it. The line box
+         is held at 20px, smaller than the glyphs: the row is baseline-aligned
+         with the 13px label, and a taller box pushes that baseline — and with
+         it the label's descent — further down. Measured in Chromium, 390px at
+         DPR 3: line-height 31 / 28 / 26 / 24 / 22px gives a row of
+         36.5 / 34.5 / 33.5 / 32.5 / 31.5px, and 31.5 is what the 30px digits
+         at line-height 1 had. 22 and 21 still round up to 32.5 at 560px and
+         DPR 1; 20 stays at or under the old header (123px) at 360, 390 and
+         560px, DPR 1 to 3. The digits reach past the box into the row gap
+         above, which is air; they have no descenders to reach below. The
+         smoke test compares the header against the same header at 30px. */
+      .race-value b { font-size: 42px; font-weight: 700; line-height: 20px; color: var(--text); }
       .race-value span { font-size: 13px; color: var(--muted); }
       .race-rule { flex: 1 1 auto; min-width: 16px; height: 1px; background: var(--line); }
 
-      /* The mark, small, ahead of the stage count. It must not set the height
+      /* The mark, small, ahead of the level count. It must not set the height
          of the row: 13px text gives the line box about 20px, and centring a
          16px box inside it cannot add to that. Baseline alignment would, which
          is why this one item opts out of it. */
@@ -113,7 +137,7 @@
         flex: none;
         align-self: center;
         /* The flex gap is meant for the space between readings; the mark
-           belongs to the stage count, so it sits closer than that. */
+           belongs to the level count, so it sits closer than that. */
         margin-right: -6px;
       }
       /* Prefixed on purpose: `.node` and `.edge` belong to the board, and a
@@ -135,18 +159,20 @@
       .board:focus { outline: none; }
 
       /* ---- edges ---------------------------------------------------------- */
+      /* Width is the second dial next to brightness: 3 against the node
+         ring's 2.5 carries the line without making it the heavier stroke. */
       .edge {
-        stroke: var(--line);
-        stroke-width: 2.5;
+        stroke: var(--edge);
+        stroke-width: 3;
         stroke-linecap: round;
         transition: stroke 140ms ease-out, stroke-width 140ms ease-out;
         transition-delay: var(--delay, 0ms);
       }
-      .edge.is-lit { stroke: var(--signal-dim); stroke-width: 3.5; }
+      .edge.is-lit { stroke: var(--edge-lit); stroke-width: 4; }
       /* Preview rides on top of whatever the edge already shows. */
       .edge.in-range {
         stroke: var(--preview);
-        stroke-width: 4;
+        stroke-width: 4.5;
         transition-delay: var(--preview-delay, 0ms);
       }
 
@@ -361,6 +387,11 @@
       .over dt { color: var(--muted); text-align: right; }
       .over dd { margin: 0; text-align: left; font-weight: 600; }
       .over .record { margin: 10px 0 0; color: var(--signal); font-size: 14px; }
+      /* The run's seed, as a link that deals it again. Quiet: it is there for
+         whoever wants to replay or compare a run, not part of the result. */
+      .over .seed { margin: 10px 0 0; color: var(--muted); font-size: 13px; }
+      .over .seed a { color: inherit; font-variant-numeric: tabular-nums; }
+      .over .seed[hidden] { display: none; }
       /* The one place a new game can be started from. Sized here rather than
          stretched by the .controls flex row it no longer lives in. */
       .over .again { margin: 16px auto 0; flex: 0 0 auto; min-width: 160px; }
@@ -369,8 +400,11 @@
          a result to take away and the wait for the next board. */
       .over .daily { margin: 14px 0 0; }
       .over .share { margin: 0 auto; flex: 0 0 auto; min-width: 180px; }
-      /* Only shown when the copy did not go through, so the line can still be
-         selected by hand. `user-select: all` makes that one gesture. */
+      /* Only shown when neither sharing nor copying went through, so the text
+         can still be selected by hand. `user-select: all` makes that one
+         gesture. A <pre> because the result is several lines; set in the
+         page's own face and left-aligned, so it looks the way it will once
+         pasted into a chat rather than like code. */
       /* Same trap as `.over[hidden]` above: an author `display` beats the UA
          rule behind the hidden attribute, so this needs saying twice. */
       .over .share-line[hidden] { display: none; }
@@ -385,7 +419,12 @@
         border-radius: 6px;
         background: var(--panel);
         color: var(--text);
+        font: inherit;
         font-size: 13px;
+        line-height: 1.4;
+        text-align: left;
+        white-space: pre;
+        overflow-x: auto;
         user-select: all;
       }
       .over .countdown { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
@@ -396,7 +435,7 @@
       }
 
       /* ---- chrome --------------------------------------------------------- */
-      /* No reserved line. It speaks on a cleared stage and at no other time,
+      /* No reserved line. It speaks on a cleared level and at no other time,
          which is the same moment the button row below appears, so the height
          it used to hold open all run long is the board's instead. */
       #status { margin: 0; color: var(--muted); }
@@ -461,7 +500,7 @@
         background: #1c2430;
       }
 
-      /* Empty for most of a run — `Weiter` only shows up on a cleared stage,
+      /* Empty for most of a run — `Weiter` only shows up on a cleared level,
          and `Neue Partie` has moved onto the end card. Hidden outright then,
          so the row does not spend the board's height on nothing. */
       .controls { display: flex; gap: 10px; }
@@ -528,7 +567,7 @@
               <circle cx="4.5" cy="19.5" r="2.6" /><circle cx="19.5" cy="19.5" r="2.6" />
             </g>
           </svg>
-          <span>Etappe <b id="hud-stage">–</b></span>
+          <span>Level <b id="hud-level">–</b></span>
           <div class="modes" id="modes" role="group" aria-label="Spielart">
             <button type="button" id="mode-frei" aria-pressed="true">Frei</button>
             <button type="button" id="mode-taeglich" aria-pressed="false">Täglich</button>
@@ -542,7 +581,7 @@
           </span>
           <span class="race-rule" aria-hidden="true"></span>
           <span class="race-value">
-            <b id="hud-left">–</b> <span>Depot</span>
+            <b id="hud-left">–</b> <span>Sender</span>
           </span>
         </div>
 
@@ -561,16 +600,17 @@
             <circle class="mark-hole" cx="114" cy="27" r="14" />
             <text x="134" y="40">ch</text>
           </svg>
-          <h2>Depot leer.</h2>
+          <h2>Keine Sender mehr.</h2>
           <dl>
-            <dt>Etappe</dt><dd id="over-stage">–</dd>
+            <dt>Level geschafft</dt><dd id="over-level">–</dd>
             <dt>Punkte</dt><dd id="over-score">–</dd>
             <dt id="over-best-label">Bestwert</dt><dd id="over-best">–</dd>
           </dl>
           <p class="record" id="over-record" hidden>Neuer Bestwert.</p>
+          <p class="seed" id="over-seed">Partie <a id="over-seed-link" href="?seed=">–</a></p>
           <div class="daily" id="over-daily" hidden>
-            <button class="share" id="share" type="button">Ergebnis kopieren</button>
-            <code class="share-line" id="share-line" hidden></code>
+            <button class="share" id="share" type="button">Ergebnis teilen</button>
+            <pre class="share-line" id="share-line" hidden></pre>
             <p class="countdown">Nächstes Brett in <b id="countdown">–</b></p>
           </div>
           <button class="again" id="restart" type="button">Neue Partie</button>
@@ -591,9 +631,11 @@
 
     <script type="module">
       import {
-        advance, createRun, dailySeed, ENDLESS_RUN, msUntilNextDay, place, utcDay,
+        advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelsCleared, msUntilNextDay, place,
+        utcDay,
       } from './src/run.js';
       import { createScene, fitHitAreas, render } from './src/render.js';
+      import { points, shareText } from './src/share.js';
       import { attachInput } from './src/input.js';
 
       const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -603,7 +645,7 @@
       const goButton = document.getElementById('go');
       const controls = document.getElementById('controls');
       const hud = {
-        stage: document.getElementById('hud-stage'),
+        level: document.getElementById('hud-level'),
         open: document.getElementById('hud-open'),
         openLabel: document.getElementById('hud-open-label'),
         left: document.getElementById('hud-left'),
@@ -614,11 +656,13 @@
       };
       const over = {
         card: document.getElementById('over'),
-        stage: document.getElementById('over-stage'),
+        level: document.getElementById('over-level'),
         score: document.getElementById('over-score'),
         bestLabel: document.getElementById('over-best-label'),
         best: document.getElementById('over-best'),
         record: document.getElementById('over-record'),
+        seed: document.getElementById('over-seed'),
+        seedLink: document.getElementById('over-seed-link'),
         daily: document.getElementById('over-daily'),
         share: document.getElementById('share'),
         shareLine: document.getElementById('share-line'),
@@ -642,6 +686,34 @@
       const MODE_KEY = 'funkloch.modus';
 
       /**
+       * Which deal a stored daily attempt was played on. The attempt is kept as
+       * moves, and moves only mean something on the boards they were made on:
+       * replayed onto a different board they name nodes that may not exist, and
+       * the run they rebuild is not the one that was played.
+       *
+       *   (field absent)  level 1 was the curve's 18-node board
+       *   2               level 1 is the 9-node onboarding board
+       *
+       * A mismatch drops the attempt rather than replaying it. On the day a
+       * change ships, whoever already played gets a second go — on a board
+       * that differs in level 1 — which is the lesser harm next to a stored
+       * result that silently turns into a different one.
+       */
+      const DAILY_RULES = 2;
+
+      /** The share button at rest, and what it says once it has tried. Every
+       *  outcome gets its own words, so a tap is never answered by silence —
+       *  "Kopiert." in particular, because a clipboard gives no sign of its
+       *  own. A closed share sheet puts the button back as it was. */
+      const SHARE_LABEL = 'Ergebnis teilen';
+      const SHARE_VERDICT = {
+        shared: 'Geteilt.',
+        cancelled: SHARE_LABEL,
+        copied: 'Kopiert.',
+        failed: 'Kopieren ging nicht — Text unten markieren',
+      };
+
+      /**
        * The game used to be called Sendernetz and kept its records under that
        * prefix. They are not carried over — a record belongs to the mode it was
        * set in, and the mode has moved on — so the old keys are simply dropped.
@@ -658,7 +730,7 @@
 
       /**
        * Which scale a stored score is on. The score is shown exactly as it is
-       * counted — leftover transmitters times the stage they were saved on,
+       * counted — leftover transmitters times the level they were saved on,
        * summed — and 1 says so. What each value has meant stays listed here:
        *
        *   (field absent)  the flat sum of leftovers, before the weighting
@@ -666,9 +738,9 @@
        *   1               the weighted sum, shown as it is counted
        *
        * The halving is gone. It was meant to tame a number that grows as
-       * `rest · n(n+1)/2` over n stages, and it did — but it cost the thing the
-       * weighting was for. A transmitter saved on stage 3 is worth 3, and has
-       * to appear as 3, or the tie between stage and value is invisible.
+       * `rest · n(n+1)/2` over n levels, and it did — but it cost the thing the
+       * weighting was for. A transmitter saved on level 3 is worth 3, and has
+       * to appear as 3, or the tie between level and value is invisible.
        * Halved, the same saved transmitter showed up as +1 or +2 depending on
        * whether the running total happened to be even: the same act, a
        * different visible reward. Large numbers are the smaller problem.
@@ -680,21 +752,26 @@
        * player who left that build looking at "best 3" would come back to
        * "best 6" for the same run, and a record that changes on its own is
        * worse than one that has to be played again. There is no way back from a
-       * total to the stages it came from, so nothing here is ever converted.
+       * total to the levels it came from, so nothing here is ever converted.
        */
       const SCORE_SCALE = 1;
 
       /**
-       * Points are the only record kept. The stage a run reached is still shown
-       * while it runs, but it is no longer something to beat: two records left
-       * it unclear which one a run was *for*, and of the two, points are the
-       * better measure. They rise with the stage anyway, and between two runs
-       * that died on the same board they still tell apart the one that cleared
-       * its stages with transmitters to spare from the one that scraped
-       * through. Endurance is in there; efficiency is only in the points.
+       * Points are the only record kept. The level is still shown while a run
+       * is on, and the levels cleared on its end card, but neither is something
+       * to beat: two records left it unclear which one a run was *for*, and of
+       * the two, points are the better measure. They rise with the level anyway,
+       * and between two runs that died on the same board they still tell apart
+       * the one that cleared its levels with transmitters to spare from the one
+       * that scraped through. Endurance is in there; efficiency is only in the
+       * points.
+       *
+       * That is also why counting levels cleared rather than the level reached
+       * needed no migration: no level number was ever stored here to be off by
+       * one.
        *
        * Older builds stored `{stage, score}` here, on the flat scale and with
-       * no marker. Both fields are dropped: the stage record because there is
+       * no marker. Both fields are dropped: the level record because there is
        * nothing left for it to be, the score because it is not comparable with
        * what is counted now.
        */
@@ -718,7 +795,7 @@
       /**
        * Today's daily attempt as it stands: the day it belongs to and every
        * move made in it, a node id for a placement and `null` for the step onto
-       * the next stage.
+       * the next level.
        *
        * The moves and not merely the result, because that settles both halves
        * of "one attempt a day" at once. A reload replays the attempt to exactly
@@ -731,6 +808,7 @@
         try {
           const stored = JSON.parse(localStorage.getItem(DAILY_KEY) ?? 'null');
           if (typeof stored?.day !== 'string' || !Array.isArray(stored?.moves)) return null;
+          if (stored.rules !== DAILY_RULES) return null;
           return stored;
         } catch {
           return null;
@@ -838,9 +916,13 @@
 
       /** Rebuilds the SVG only when the board actually changed. */
       function mount() {
-        const key = `${state.seed}:${state.stage}`;
+        const key = `${state.seed}:${state.level}`;
         if (key === boardKey) return;
         boardKey = key;
+        // Written as soon as the run exists rather than when it ends, so the
+        // card never shows the seed of the run before.
+        over.seedLink.textContent = String(state.seed);
+        over.seedLink.href = `?seed=${state.seed}`;
         detach?.();
         // A tighter margin than the default: this board is the whole screen,
         // not one item on a page, and 36 units of air around it cost about a
@@ -894,10 +976,13 @@
         trackRecord();
         syncModes();
 
-        hud.stage.textContent = String(state.stage);
+        // The level being played. Only the end card and the shared result count
+        // the levels cleared instead: while a run is on, the number to read is
+        // where you are, not what is behind you.
+        hud.level.textContent = String(state.level);
         hud.open.textContent = String(state.uncovered.length);
         hud.openLabel.textContent = state.uncovered.length === 1 ? 'Funkloch' : 'Funklöcher';
-        hud.left.textContent = String(state.depot.length);
+        hud.left.textContent = String(state.senders.length);
         hud.score.textContent = String(state.score);
         // Lower case, and the separator comes from CSS: an empty record has to
         // stay empty, or the dot in front of it shows up on its own. Silent on
@@ -909,28 +994,33 @@
         drawChip(hud.now, state.current ?? null);
         hud.next.forEach((chip, index) => drawChip(chip, state.preview[index] ?? null));
 
-        statusLine.classList.toggle('is-won', state.status === 'stageCleared');
-        goButton.hidden = state.status !== 'stageCleared';
+        statusLine.classList.toggle('is-won', state.status === 'levelCleared');
+        goButton.hidden = state.status !== 'levelCleared';
         // Nothing to show means no row: the height belongs to the board.
         controls.hidden = goButton.hidden;
         // On a lost run the card below says everything; a second sentence under
         // the board would only repeat it louder.
         statusLine.textContent =
-          state.status === 'stageCleared'
-            ? `Etappe ${state.stage} geschafft. ${state.depot.length} Sender übrig.`
+          state.status === 'levelCleared'
+            ? `Level ${state.level} geschafft. ${state.senders.length} Sender übrig.`
             : '';
 
         over.card.hidden = state.status !== 'lost';
         if (state.status === 'lost') {
           const daily = mode === 'taeglich';
-          over.stage.textContent = String(state.stage);
+          // Levels cleared, not the level the run died in: whoever fails in
+          // level 10 has cleared 9.
+          over.level.textContent = String(levelsCleared(state));
           over.score.textContent = String(state.score);
-          over.best.textContent = `${best} Punkte`;
+          over.best.textContent = points(best);
           // A daily board ends on a result and a wait, not on an offer of
           // another game: there is no other game until midnight.
           over.bestLabel.hidden = daily;
           over.best.hidden = daily;
           over.record.hidden = daily || !record;
+          // Not on the daily card: that run is named by its date, and a seed
+          // link there would be a way to play today's board a second time.
+          over.seed.hidden = daily;
           over.daily.hidden = !daily;
           over.restart.hidden = daily;
           if (daily) openDailyEnd(); else stopTicker();
@@ -957,8 +1047,9 @@
         if (mode !== 'taeglich') return;
         writeDaily({
           day: today,
+          rules: DAILY_RULES,
           moves,
-          stage: state.stage,
+          levelsCleared: levelsCleared(state),
           score: state.score,
           done: state.status === 'lost',
         });
@@ -987,14 +1078,32 @@
         apply(next);
       }
 
-      /** The line the share button hands over. The result and nothing else: no
-       *  board, no moves, nothing that would spoil the day for whoever reads
-       *  it, and no link to make it travel further than it was meant to. */
-      function shareLine() {
-        const [, month, day] = today.split('-');
-        // The same number the card shows, so a shared result and the screen it
-        // came from cannot disagree.
-        return `funkloch ${day}.${month}. — Etappe ${state.stage}, ${state.score} Punkte`;
+      /**
+       * Hands the result on: the native share sheet where there is one, the
+       * clipboard where there is not, and a verdict either way so the button
+       * can say what happened.
+       *
+       * Web Share first because on a phone that is what "share" means — the
+       * sheet lists the chats the result is meant for, and copying would only
+       * be the first of three steps to the same place. A closed sheet is an
+       * answer, not a failure: the player decided not to share, and quietly
+       * copying behind their back would overrule that. Any other refusal — no
+       * share target, a desktop that exposes the API but cannot honour it —
+       * falls back to copying.
+       * @param {string} text
+       * @returns {Promise<'shared'|'cancelled'|'copied'|'failed'>}
+       */
+      async function shareResult(text) {
+        if (typeof navigator.share === 'function' && navigator.canShare?.({ text }) !== false) {
+          try {
+            await navigator.share({ text });
+            return 'shared';
+          } catch (error) {
+            if (error?.name === 'AbortError') return 'cancelled';
+            /* not allowed or no target: copy instead */
+          }
+        }
+        return (await copyText(text)) ? 'copied' : 'failed';
       }
 
       /**
@@ -1054,7 +1163,7 @@
       }
 
       function openDailyEnd() {
-        over.share.textContent = 'Ergebnis kopieren';
+        over.share.textContent = SHARE_LABEL;
         over.shareLine.hidden = true;
         tick();
         if (ticker === null) ticker = setInterval(tick, 1000);
@@ -1071,7 +1180,10 @@
         draw();
       }
 
-      function newRun(seed = Math.floor(Math.random() * 1e9)) {
+      /** Starts a free run. Without a seed it takes one from the clock — the
+       *  page reads the time, run.js turns it into a seed — so every free run
+       *  has a number the end card can show and `?seed=` can deal again. */
+      function newRun(seed = freeSeed(Date.now())) {
         record = false;
         parked = null;
         showFree(createRun({ seed, config: ENDLESS_RUN }));
@@ -1097,18 +1209,27 @@
       modeButtons.frei.addEventListener('click', () => setMode('frei'));
       modeButtons.taeglich.addEventListener('click', () => setMode('taeglich'));
       over.share.addEventListener('click', async () => {
-        const line = shareLine();
-        const copied = await copyText(line);
-        over.share.textContent = copied ? 'Kopiert.' : 'Kopieren ging nicht';
-        over.shareLine.textContent = line;
-        over.shareLine.hidden = copied;
+        // The result and where to play: no board, no moves, nothing that would
+        // spoil the day for whoever reads it. The address is the game's and not
+        // this run's — no seed in it — so it leads to today's board, not to a
+        // replay of this one. Built from the same state the card shows, so a
+        // shared result and its screen cannot disagree.
+        const text = shareText(state, today);
+        const outcome = await shareResult(text);
+        over.share.textContent = SHARE_VERDICT[outcome];
+        over.shareLine.textContent = text;
+        // Shown for selecting by hand only when nothing else got it out.
+        over.shareLine.hidden = outcome !== 'failed';
+        if (outcome === 'failed') getSelection()?.selectAllChildren(over.shareLine);
       });
       window.addEventListener('resize', () => scene && fitHitAreas(scene));
 
       // Every visit gets its own free run. A fixed opening seed would mean the
       // same first boards every time, and a record could be walked up by
-      // reloading until a kind draw turned up. `?seed=` still pins a run down
-      // for development and for comparing notes about one — and because that is
+      // reloading until a kind draw turned up. The seed comes from the clock
+      // through `freeSeed`, never from Math.random, and the end card links it
+      // as `?seed=`, which pins a run down for replaying it, for development
+      // and for comparing notes about one — and because that is
       // an explicit request for one particular board, it wins over the mode the
       // page was last left in.
       const asked = Number.parseInt(new URLSearchParams(location.search).get('seed') ?? '', 10);

@@ -158,9 +158,9 @@ function botMain(runs, firstSeed) {
 }
 
 /**
- * A fixed density against one drawn per stage. Same seeds, and — because the
+ * A fixed density against one drawn per level. Same seeds, and — because the
  * order of the blocked nodes is drawn even at density zero — the same boards
- * and the same depots, so the only difference is which nodes are opaque.
+ * and the same senders, so the only difference is which nodes are opaque.
  *
  * The question is whether varying the density keeps the spread that a low fixed
  * density has, or whether the hard boards simply end runs early and the mix

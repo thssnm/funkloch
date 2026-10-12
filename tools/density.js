@@ -24,8 +24,8 @@
  * planner has stopped losing is not a gap that rewards planning. So:
  *
  *   1. what the boards look like — degree, chains, ball size
- *   2. both bots at each density, with the depot the mode ships
- *   3. both bots again with the depot scaled by the change in ball size, so
+ *   2. both bots at each density, with the senders the mode ships
+ *   3. both bots again with the senders scaled by the change in ball size, so
  *      every density costs about the same number of transmitters per node
  *
  * Table 2 answers the question as asked. Table 3 is the one that says whether
@@ -34,9 +34,9 @@
 
 import { bfsWithin, neighbors } from '../src/graph.js';
 import { generateCandidate, mulberry32 } from '../src/generator.js';
-import { ENDLESS_RUN, stageSpec } from '../src/run.js';
+import { ENDLESS_RUN, levelSpec } from '../src/run.js';
 import { greedyChoice, lookaheadChoice } from './bot64.js';
-import { measure, printTable, STAGE_CAP } from './endless.js';
+import { measure, printTable, LEVEL_CAP } from './endless.js';
 
 /** The setting the mode ships, and the reference every other one is read
  *  against. */
@@ -99,9 +99,9 @@ function shape(edgeDeleteRatio, boards, firstSeed) {
 
   for (let i = 0; i < boards; i++) {
     const rng = mulberry32(firstSeed + i * 7919);
-    // Walks the same stage shapes a run does, so the sample is the mode's own
+    // Walks the same level shapes a run does, so the sample is the mode's own
     // spread of board sizes and not one arbitrary size.
-    const { nodeCount } = stageSpec(ENDLESS_RUN, i % 14);
+    const { nodeCount } = levelSpec(ENDLESS_RUN, i % 14);
     const lattice = ENDLESS_RUN.lattices[Math.floor(rng() * ENDLESS_RUN.lattices.length)];
     const graph = board(rng, nodeCount, lattice, edgeDeleteRatio);
 
@@ -144,7 +144,7 @@ function duel(config, runs, firstSeed, label) {
   // How much of the planner's column is standing on the cap rather than on a
   // run that actually ended. Anything above a few per cent makes the mean, the
   // p90 and the ratio floors rather than readings.
-  const capped = plan.streaks.filter((streak) => streak >= STAGE_CAP).length / runs;
+  const capped = plan.streaks.filter((streak) => streak >= LEVEL_CAP).length / runs;
   return [
     label,
     greedy.median.toFixed(1), greedy.p90.toFixed(1), greedy.mean.toFixed(2), greedy.sd.toFixed(2),
@@ -178,7 +178,7 @@ function main() {
     + ' Knotenzahlen wie im Endlosmodus');
   printTable(
     ['Loeschanteil', 'Kanten je Brett', 'Durchschnittsgrad', 'Anteil Grad 2',
-     'davon in Ketten', 'Ballgroesse', 'Depotfaktor'],
+     'davon in Ketten', 'Ballgroesse', 'Senderfaktor'],
     ratios.map((ratio) => {
       const s = shapes.get(ratio);
       return [
@@ -194,24 +194,24 @@ function main() {
   );
   console.log();
 
-  console.log(`2. Endlosmodus je Kantenloeschanteil mit dem ausgelieferten Depot,`
+  console.log(`2. Endlosmodus je Kantenloeschanteil mit den ausgelieferten Sendern,`
     + ` ${runs} Partien je Bot und Stufe, gleiche Seeds`);
   printTable(DUEL_HEADERS, ratios.map((ratio) =>
     duel({ ...ENDLESS_RUN, edgeDeleteRatio: ratio }, runs, firstSeed, ratio.toFixed(2))));
   console.log();
 
-  // Same boards, but the depot scaled by the change in ball size, so every
+  // Same boards, but the senders scaled by the change in ball size, so every
   // density needs about the same number of transmitters per node. What is left
   // of the gap here is what the shape of the board is worth.
-  console.log(`3. Dasselbe mit nach Ballgroesse angeglichenem Depot,`
+  console.log(`3. Dasselbe mit nach Ballgroesse angeglichener Senderzahl,`
     + ` ${runs} Partien je Bot und Stufe`);
   printTable(DUEL_HEADERS, ratios.map((ratio) => {
     const factor = reference / shapes.get(ratio).ball;
-    const curve = ENDLESS_RUN.depotCurve;
+    const curve = ENDLESS_RUN.senderCurve;
     return duel({
       ...ENDLESS_RUN,
       edgeDeleteRatio: ratio,
-      depotCurve: { ...curve, start: curve.start * factor, floor: curve.floor * factor },
+      senderCurve: { ...curve, start: curve.start * factor, floor: curve.floor * factor },
     }, runs, firstSeed, ratio.toFixed(2));
   }));
 

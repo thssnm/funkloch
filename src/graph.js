@@ -338,7 +338,7 @@ export function amplifierNodes(graph) {
  *
  * A third walk rather than a flag on the second, for the same reason the second
  * is not a flag on the first: the solver, the generator, the reduction and the
- * fixed-stage mode all rest on the plain walks, and none of them should have to
+ * fixed-length run all rest on the plain walks, and none of them should have to
  * grow an opinion about amplifiers.
  *
  * On a board without amplifiers this returns exactly what `bfsWithinBlocked`

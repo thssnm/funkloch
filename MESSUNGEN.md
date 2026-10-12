@@ -6,6 +6,11 @@ Eintrag hält fest, was gefragt war, wie gemessen wurde, was herauskam und was
 daraufhin geschah. Auch dann, wenn nichts geschah: eine verworfene Änderung ist
 ein Befund, und ohne Protokoll wird sie in einem halben Jahr erneut vorgeschlagen.
 
+**Zur Zählung:** Bis 2026-10-12 zählten die Werkzeuge das *erreichte* Level —
+das, in dem eine Partie endete. Seitdem zählen sie, wie das Spiel, das letzte
+*geschaffte*. Jede Tabelle, die davon betroffen ist, trägt den Vermerk direkt
+darunter, siehe den letzten Eintrag.
+
 ---
 
 ## 2026-09-24 — Kantenlöschanteil: helfen dichtere Bretter?
@@ -37,10 +42,10 @@ der Vorausdenken belohnt.
 
 1. **Brettform** — Grad, Ketten, Ballgröße. 300 Bretter je Stufe, Knotenzahlen
    und Gitter wie im Endlosmodus.
-2. **Beide Bots mit dem ausgelieferten Depot.** 300 Partien je Bot und Stufe,
+2. **Beide Bots mit den ausgelieferten Sendern.** 300 Partien je Bot und Stufe,
    gleiche Seeds für beide Bots.
-3. **Beide Bots mit nach Ballgröße angeglichenem Depot**, so dass jede Dichte
-   etwa gleich viele Sender pro Knoten kostet.
+3. **Beide Bots mit nach Ballgröße angeglichener Senderzahl**, so dass jede
+   Dichte etwa gleich viele Sender pro Knoten kostet.
 
 Tabelle 2 beantwortet die Frage wie gestellt. Tabelle 3 sagt, ob die Antwort von
 der Form kommt oder nur von der Schwierigkeit.
@@ -54,7 +59,7 @@ Grad 2 haben — die sitzen in einer Kette und nicht bloß neben einer Verzweigu
 „Ball" ist die mittlere Ballgröße unter der Sendermischung des Modus, also wie
 viele Knoten ein Sender kauft.
 
-| Löschanteil | Kanten/Brett | Ø-Grad | Grad 2 | in Ketten | Ball | Depotfaktor |
+| Löschanteil | Kanten/Brett | Ø-Grad | Grad 2 | in Ketten | Ball | Senderfaktor |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.00 | 74.8 | 3.53 | 23.0 % | 2.1 % | 8.45 | 0.824 |
 | 0.05 | 71.5 | 3.37 | 27.1 % | 2.9 % | 8.14 | 0.855 |
@@ -70,7 +75,7 @@ weg — bei 0.10 halbiert sich der Kettenanteil, bei 0 ist er praktisch weg.
 Die Ballgröße steigt dabei von 6.96 auf 8.45. Das ist der Störfaktor, den
 Tabelle 3 herausrechnet.
 
-### 2. Mit dem ausgelieferten Depot
+### 2. Mit den ausgelieferten Sendern
 
 300 Partien je Bot und Zeile, gleiche Seeds.
 
@@ -83,16 +88,24 @@ Tabelle 3 herausrechnet.
 | **0.20** | 5.0 | 7.0 | 5.16 | 2.08 | 9.0 | 21.0 | 11.45 | 7.14 | +4.0 | **2.22x** | 0 % |
 | 0.30 | 3.0 | 6.0 | 3.72 | 1.50 | 6.0 | 8.0 | 6.22 | 1.82 | +3.0 | 1.67x | 0 % |
 
+*Gezählt: erreichtes Level (= geschaffte + 1), wie die Werkzeuge bis
+2026-10-12 zählten. Heute zählen sie geschaffte Level: Mediane, Mittel und
+Quantile liegen dann genau 1 tiefer, SD und Abstand bleiben — aber die
+Verhältnisse verschieben sich ungleichmäßig, weil 1 von beiden Mitteln abgeht
+und nicht von ihrem Quotienten. Beispiel aus `blockedRatio`: 5.23 / 11.73 =
+2.24x erreicht sind 4.23 / 10.73 = 2.54x geschafft. Eine wiederholte Messung
+liefert also andere Zahlen, ohne dass sich am Spiel etwas geändert hat.*
+
 Das sieht spektakulär aus und ist eine Falle. Der Abstand explodiert, weil das
 Brett billiger zu decken wird und der Planer schlicht aufhört zu sterben. Die
 Spalte „am Deckel" sagt es: bei 0.00 stehen 26 % seiner Partien auf dem
-200-Etappen-Deckel, die Zeile ist eine Untergrenze und keine Messung.
+200-Level-Deckel, die Zeile ist eine Untergrenze und keine Messung.
 
-### 3. Mit nach Ballgröße angeglichenem Depot
+### 3. Mit nach Ballgröße angeglichener Senderzahl
 
-Depotkurve mit dem Depotfaktor aus Tabelle 1 skaliert (`start` und `floor`), so
-dass jede Dichte gleich viele Sender pro Knoten kostet. Keine Zeile steht mehr
-am Deckel.
+Senderkurve mit dem Senderfaktor aus Tabelle 1 skaliert (`start` und `floor`),
+so dass jede Dichte gleich viele Sender pro Knoten kostet. Keine Zeile steht
+mehr am Deckel.
 
 | Löschanteil | gierig Median | Mittel | voraus Median | Mittel | SD | Abstand | Verhältnis |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -102,6 +115,12 @@ am Deckel.
 | 0.15 | 5.0 | 5.07 | 9.0 | 12.98 | 8.61 | +4.0 | 2.56x |
 | **0.20** | 5.0 | 5.16 | 9.0 | 11.45 | 7.14 | +4.0 | **2.22x** |
 | 0.30 | 6.0 | 6.06 | 10.0 | 11.10 | 5.15 | +4.0 | 1.83x |
+
+*Gezählt: erreichtes Level (= geschaffte + 1), Stand vor 2026-10-12. Geschafft
+gezählt liegen Mediane und Mittel genau 1 tiefer, SD und Abstand bleiben, die
+Verhältnisse steigen ungleichmäßig — 5.23 / 11.73 = 2.24x erreicht sind
+4.23 / 10.73 = 2.54x geschafft. Eine Wiederholung liefert andere Zahlen, ohne
+dass sich am Spiel etwas geändert hat.*
 
 Nachgemessen mit zwei weiteren Startseeds, je 300 Partien je Bot und Zeile, weil
 die 0.15-Zeile aus der Reihe fällt:
@@ -115,10 +134,16 @@ die 0.15-Zeile aus der Reihe fällt:
 | **0.20** | 2.22x | 2.24x | 2.20x | **2.22** |
 | 0.30 | 1.83x | 1.80x | 1.88x | 1.84 |
 
+*Verhältnisse erreichter Level (= geschaffte + 1), Stand vor 2026-10-12. Auf
+geschaffte Level umgezählt verschieben sie sich ungleichmäßig nach oben — wie
+2.24x erreicht zu 2.54x geschafft wird (5.23 / 11.73 gegen 4.23 / 10.73). Eine
+Wiederholung liefert andere Zahlen, ohne dass sich am Spiel etwas geändert hat;
+verglichen werden darf nur innerhalb derselben Zählung.*
+
 ### Befund
 
 **Der Abstand wächst nicht mit der Dichte.** Der Medianabstand ist über alle
-Dichten und alle drei Seeds hinweg konstant +4 Etappen. Die dichteren Bretter
+Dichten und alle drei Seeds hinweg konstant +4 Level. Die dichteren Bretter
 (0.00 bis 0.10) liegen im Verhältnis mit ~1.95x sogar *unter* dem heutigen 0.20
 mit 2.22x. Weniger löschen kauft Verzweigungen, aber es kauft kein Vorausdenken.
 
@@ -137,12 +162,11 @@ zwei niedrigeren Nachbarn. Auffällig ist die Streuung dort: SD 8.5–8.9 gegen
 3.2–6.6 in allen anderen Zeilen, also ein schwerer Schwanz und keine breite
 Verbesserung.
 
-Verdacht: das Depot ist `Math.max(1, Math.round(nodeCount * ratio))`, und der
-Angleichfaktor 0.944 schiebt die gerundete Depotgröße auf einzelnen Etappen um
-genau einen Sender. Das wäre ein Artefakt der Angleichung und keine Eigenschaft
-von 0.15.
+Verdacht: die Senderzahl ist `Math.max(1, Math.round(nodeCount * ratio))`, und
+der Angleichfaktor 0.944 schiebt sie auf einzelnen Leveln um genau einen Sender.
+Das wäre ein Artefakt der Angleichung und keine Eigenschaft von 0.15.
 
-Das verdient eine eigene Messung — sinnvoll wäre, die Depotgröße direkt statt
+Das verdient eine eigene Messung — sinnvoll wäre, die Senderzahl direkt statt
 über die Kurve zu setzen und über ganze Sender zu sweepen. Als Argument für eine
 Umstellung des Standards taugt es nicht.
 
@@ -154,7 +178,7 @@ node tools/density.js --ratios=0,0.1,0.2 --runs=100   # schnellere Stichprobe
 ```
 
 Tabelle 2 ist bei kleinen Löschanteilen teuer, weil der Planer dort hunderte
-Etappen überlebt: die 0.00-Zeile allein braucht rund neun Minuten bei 300
+Level überlebt: die 0.00-Zeile allein braucht rund neun Minuten bei 300
 Partien. Tabelle 1 und 3 laufen in Sekunden.
 
 ### Was blieb
@@ -163,8 +187,8 @@ Partien. Tabelle 1 und 3 laufen in Sekunden.
   unverändert 0.2. `edgeDeleteRatio` ist jetzt über die Config überschreibbar,
   damit ein Sweep ihn setzen kann; die Vorgabe ist dieselbe wie vorher, die
   Level-Sets bleiben byte-identisch.
-- `tools/endless.js` — `STAGE_CAP` exportiert, damit ein Sweep ausweisen kann,
-  wie viel seiner Tabelle auf dem Deckel steht.
+- `tools/endless.js` — `LEVEL_CAP` (damals `STAGE_CAP`) exportiert, damit ein
+  Sweep ausweisen kann, wie viel seiner Tabelle auf dem Deckel steht.
 - `tools/density.js` — neu.
 
 ---
@@ -211,13 +235,13 @@ Drei Anker, weil der naheliegende nicht hält:
 - **A — mittlere Ballgröße 6.96**, der Anker aus der Vorgabe (Tabelle 2).
 - **B — Mittelwert des gierigen Bots**, gehalten über dieselbe Mischung
   (Tabelle 4). Nötig, weil A die Schwierigkeit nicht stillhält.
-- **C — Mittelwert des gierigen Bots**, gehalten über die Depotgröße bei
+- **C — Mittelwert des gierigen Bots**, gehalten über die Senderzahl bei
   unveränderter 4/4/2 (Tabelle 5). Nötig, weil B die Mischung platt walzt und
   *welchen* Sender man wofür aufhebt selbst ein Teil des Vorausdenkens ist.
 
-Dazu ein Maßstab (Tabelle 6): dasselbe Brett ohne Verstärker, nur mit größerem
-Depot. Er sagt, wieviel Verhältnis bloße Leichtigkeit kauft — was jede Zeile der
-anderen Tabellen erst schlagen muss.
+Dazu ein Maßstab (Tabelle 6): dasselbe Brett ohne Verstärker, nur mit mehr
+Sendern. Er sagt, wieviel Verhältnis bloße Leichtigkeit kauft — was jede Zeile
+der anderen Tabellen erst schlagen muss.
 
 ### 0. Ohne jede Angleichung
 
@@ -228,8 +252,14 @@ anderen Tabellen erst schlagen muss.
 | 0.00 | 5.36 | 11.60 | 2.16x |
 | 0.15 | 16.75 | 132.28 | 7.90x |
 
+*Gezählt: erreichtes Level (= geschaffte + 1), Stand vor 2026-10-12. Geschafft
+gezählt liegen die Mittel genau 1 tiefer, die Verhältnisse steigen
+ungleichmäßig — 5.23 / 11.73 = 2.24x erreicht sind 4.23 / 10.73 = 2.54x
+geschafft. Eine Wiederholung liefert andere Zahlen, ohne dass sich am Spiel
+etwas geändert hat.*
+
 Das ist die Falle aus der Messung oben und keine Antwort: bei einem Mittel von
-132 gegen einen 200-Etappen-Deckel hat der Planer aufgehört zu sterben, die
+132 gegen einen 200-Level-Deckel hat der Planer aufgehört zu sterben, die
 Zeile ist eine Untergrenze. Deshalb die Angleichung.
 
 ### 1. Der Preis eines Knotens, und was ihn zurückholt
@@ -265,11 +295,17 @@ keiner Zeile am Deckel. „Genutzter Ball" ist die mittlere Ballgröße der
 | 0.12 | 47/38/15 | 8.7 / 9.6 | 7.0 / 8.11 | 16.0 / 21.50 | 15.67 | 2.65x | 23.1 % |
 | 0.15 | 49/37/14 | 8.8 / 9.5 | 8.0 / 8.28 | 15.0 / 19.14 | 12.13 | 2.31x | 22.7 % |
 
+*Gezählt: erreichtes Level (= geschaffte + 1), Stand vor 2026-10-12. Geschafft
+gezählt liegen Mediane und Mittel genau 1 tiefer, SD und Zuganteil bleiben, die
+Verhältnisse steigen ungleichmäßig — 5.23 / 11.73 = 2.24x erreicht sind
+4.23 / 10.73 = 2.54x geschafft. Eine Wiederholung liefert andere Zahlen, ohne
+dass sich am Spiel etwas geändert hat.*
+
 **Der Anker hält nicht.** Die Ballgröße steht auf 6.96, aber der gierige Bot
-klettert von 5.36 auf 8.28 Etappen: der Modus ist am oberen Ende gut die Hälfte
-leichter geworden. Die Spalte „genutzter Ball" sagt warum — kein Bot setzt auf
-einen durchschnittlichen Knoten. Was er tatsächlich kauft, steigt von 7.7/8.5 auf
-8.8/9.5, obwohl das Brettmittel stillsteht.
+klettert von 5.36 auf 8.28 erreichte Level: der Modus ist am oberen Ende gut die
+Hälfte leichter geworden. Die Spalte „genutzter Ball" sagt warum — kein Bot setzt
+auf einen durchschnittlichen Knoten. Was er tatsächlich kauft, steigt von 7.7/8.5
+auf 8.8/9.5, obwohl das Brettmittel stillsteht.
 
 Das ist ein Befund über die Methode, nicht nur über den Verstärker: die
 Angleichung über die mittlere Ballgröße setzt voraus, dass die Knoten
@@ -285,7 +321,7 @@ ihre Bezugszeile, mit SD 30.7 — ein schwerer Schwanz, kein Lohn fürs Denken.
 
 Anteil der gesetzten Sender, die auf einem Verstärker landen, gegen den Anteil
 der Verstärker unter den *freien* Knoten im selben Moment (nicht gegen die
-Dichte: das Brett füllt sich im Lauf einer Etappe).
+Dichte: das Brett füllt sich im Lauf eines Levels).
 
 | Dichte | gierig setzt darauf | blind erwartet | Faktor | voraus setzt darauf | blind erwartet | Faktor |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -305,8 +341,8 @@ das sieht man ohne vorauszuschauen.
 
 ### 4. Schwierigkeit ehrlich festgehalten, über die Mischung (Anker B)
 
-Die Mischung wird gekippt, bis der gierige Bot wieder bei 5.23 Etappen steht.
-500 Partien je Bot, 300 je Bisektionsschritt.
+Die Mischung wird gekippt, bis der gierige Bot wieder bei 5.23 erreichten
+Leveln steht. 500 Partien je Bot, 300 je Bisektionsschritt.
 
 | Dichte | Tilt t | Mischung | Ballgröße | gierig Mittel | voraus Mittel | Verhältnis | Züge abweichend |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -317,8 +353,15 @@ Die Mischung wird gekippt, bis der gierige Bot wieder bei 5.23 Etappen steht.
 | 0.12 | 0.600 | 59/32/9 | 6.26 | 5.65 | 13.45 | 2.38x | 22.3 % |
 | 0.15 | 0.600 | 59/32/9 | 6.39 | 6.47 | 17.49 | 2.70x | 22.8 % |
 
-Der Pin ist grob: das Depot hält vier bis neun Sender, und keine Mischung
-verschiebt es in weniger als ganzen Sendern. Die Zeilen landen bei 5.5 bis 6.5
+*Gezählt: erreichtes Level (= geschaffte + 1), Stand vor 2026-10-12 — auch das
+Ziel 5.23, auf das gepinnt wurde. Geschafft gezählt liegen die Mittel genau 1
+tiefer, die Verhältnisse steigen ungleichmäßig — 5.23 / 11.73 = 2.24x erreicht
+sind 4.23 / 10.73 = 2.54x geschafft. Eine Wiederholung mit dem heutigen
+Werkzeug pinnt auf ein anderes Ziel und liefert andere Zahlen, ohne dass sich
+am Spiel etwas geändert hat.*
+
+Der Pin ist grob: ein Level teilt vier bis neun Sender aus, und keine Mischung
+verschiebt das in weniger als ganzen Sendern. Die Zeilen landen bei 5.5 bis 6.5
 statt bei 5.23, also eher zu leicht.
 
 Auffällig ist, wonach sich das Verhältnis hier richtet — nicht nach der Dichte,
@@ -331,13 +374,14 @@ Mischung. Der zweite Seed reproduziert die 0.15-Zeile auf 1 % genau (6.52 /
 Anker B beantwortet die Frage also bei ehrlicher Schwierigkeit, aber mit einem
 Störfaktor, den er selbst einführt. Dafür ist Tabelle 5 da.
 
-### 5. Gegenprobe über das Depot (Anker C)
+### 5. Gegenprobe über die Senderzahl (Anker C)
 
-Mischung bleibt die ausgelieferte 4/4/2, stattdessen wird das Depot skaliert,
-bis der gierige Bot wieder auf seinem Bezugswert steht. Damit ist der Verstärker
-das einzige, was sich zwischen den Zeilen ändert. Seed 1, 500 Partien je Bot:
+Mischung bleibt die ausgelieferte 4/4/2, stattdessen wird die Senderzahl
+skaliert, bis der gierige Bot wieder auf seinem Bezugswert steht. Damit ist der
+Verstärker das einzige, was sich zwischen den Zeilen ändert. Seed 1, 500 Partien
+je Bot:
 
-| Dichte | Depotfaktor | Ballgröße | genutzter Ball g/v | gierig Mittel | voraus Mittel | voraus SD | Verhältnis | Züge abweichend |
+| Dichte | Senderfaktor | Ballgröße | genutzter Ball g/v | gierig Mittel | voraus Mittel | voraus SD | Verhältnis | Züge abweichend |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0.00 | 1.000 | 6.96 | 7.7 / 8.5 | 5.36 | 11.60 | 6.25 | 2.16x | 25.2 % |
 | 0.03 | 0.953 | 7.10 | 8.1 / 9.4 | 5.77 | 15.88 | 16.70 | 2.75x | 24.1 % |
@@ -346,9 +390,15 @@ das einzige, was sich zwischen den Zeilen ändert. Seed 1, 500 Partien je Bot:
 | 0.12 | 0.846 | 7.46 | 9.1 / 10.1 | 5.16 | 11.59 | 10.13 | 2.25x | 23.2 % |
 | 0.15 | 0.823 | 7.60 | 9.3 / 10.0 | 5.09 | 9.68 | 4.38 | 1.90x | 22.1 % |
 
-Hier hält der Pin: der gierige Bot bleibt zwischen 4.81 und 5.77 Etappen. Vier
-Seeds, Verhältnis und Zuganteil nebeneinander (Seed 1001 mit 250 Partien je Bot,
-die übrigen mit 500):
+*Gezählt: erreichtes Level (= geschaffte + 1), Stand vor 2026-10-12. Geschafft
+gezählt liegen die Mittel genau 1 tiefer, SD und Zuganteil bleiben, die
+Verhältnisse steigen ungleichmäßig — 5.23 / 11.73 = 2.24x erreicht sind
+4.23 / 10.73 = 2.54x geschafft. Eine Wiederholung liefert andere Zahlen, ohne
+dass sich am Spiel etwas geändert hat.*
+
+Hier hält der Pin: der gierige Bot bleibt zwischen 4.81 und 5.77 erreichten
+Leveln. Vier Seeds, Verhältnis und Zuganteil nebeneinander (Seed 1001 mit 250
+Partien je Bot, die übrigen mit 500):
 
 | Dichte | Seed 1 | Seed 1001 | Seed 2001 | Seed 3001 | **Mittel** | Züge abweichend (Mittel) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -359,15 +409,21 @@ die übrigen mit 500):
 | 0.12 | 2.25x | 1.82x | 2.43x | 2.38x | **2.22** | 23.3 % |
 | 0.15 | 1.90x | 1.79x | 1.92x | 1.88x | **1.87** | 22.2 % |
 
+*Verhältnisse erreichter Level (= geschaffte + 1), Stand vor 2026-10-12. Auf
+geschaffte Level umgezählt verschieben sie sich ungleichmäßig nach oben — wie
+2.24x erreicht zu 2.54x geschafft wird (5.23 / 11.73 gegen 4.23 / 10.73). Der
+Zuganteil bleibt. Eine Wiederholung liefert andere Verhältnisse, ohne dass sich
+am Spiel etwas geändert hat.*
+
 Das Verhältnis wächst nicht. Es steht bei 2.20 ohne Verstärker und bei 1.87 bei
 der höchsten Dichte, und keine Zeile liegt belastbar über der Bezugszeile. Der
-Medianabstand fällt von +4 auf +3 bis +4 Etappen.
+Medianabstand fällt von +4 auf +3 bis +4 Level.
 
 Die beiden Zeilen, die aus der Reihe fallen (0.03 und 0.12), tragen in jedem
 Seed dieselbe Signatur: eine SD von 10 bis 17 gegen 4 bis 7 in den übrigen, also
 ein schwerer Schwanz aus wenigen sehr langen Partien. Das ist der bereits
 protokollierte Rundungseffekt — `Math.round(nodeCount · ratio)` schiebt die
-Depotgröße auf einzelnen Etappen um einen ganzen Sender — und kein Dichtetrend:
+Senderzahl auf einzelnen Leveln um einen ganzen Sender — und kein Dichtetrend:
 die Nachbarn links und rechts liegen beide niedriger.
 
 Der Zuganteil ist die stabilste Zahl der ganzen Messung und fällt monoton von
@@ -376,14 +432,20 @@ ohne.**
 
 ### 6. Maßstab: nur leichter, ohne Verstärker
 
-Dasselbe Brett ohne Verstärker, Depot vergrößert, bis der gierige Bot die
+Dasselbe Brett ohne Verstärker, mehr Sender, bis der gierige Bot die
 angegebene Schwierigkeit erreicht. 500 Partien je Bot.
 
-| Zielschwierigkeit | Depotfaktor | gierig Mittel | voraus Mittel | Verhältnis | Züge abweichend |
+| Zielschwierigkeit | Senderfaktor | gierig Mittel | voraus Mittel | Verhältnis | Züge abweichend |
 | --- | --- | --- | --- | --- | --- |
 | 5.50 | 1.034 | 5.36 | 12.49 | 2.33x | 25.4 % |
 | 5.90 | 1.042 | 5.93 | 13.27 | 2.24x | 25.3 % |
 | 6.50 | 1.049 | 6.48 | 14.91 | 2.30x | 25.6 % |
+
+*Gezählt: erreichtes Level (= geschaffte + 1), Stand vor 2026-10-12, auch die
+Zielschwierigkeit. Geschafft gezählt liegen Ziele und Mittel genau 1 tiefer, die
+Verhältnisse steigen ungleichmäßig — 5.23 / 11.73 = 2.24x erreicht sind
+4.23 / 10.73 = 2.54x geschafft. Eine Wiederholung liefert andere Zahlen, ohne
+dass sich am Spiel etwas geändert hat.*
 
 Bloße Leichtigkeit kauft in diesem Bereich **kein** Verhältnis: es bleibt flach
 bei 2.24–2.33x, der Zuganteil bei 25.4 %. Damit gibt es auch keinen Bonus, den
@@ -440,7 +502,7 @@ Tabelle 2 ist die teuerste: bei angeglichener Mischung überlebt der Planer dort
 lange, die 0.09-Zeile allein braucht rund sieben Minuten. Die Tabellen 4 und 5
 laufen bei ehrlicher Schwierigkeit in ein bis zwei Minuten je Zeile, Tabelle 1 in
 Sekunden. `--plain` ist bei hoher Dichte sehr teuer, weil der Planer dann
-hunderte Etappen überlebt.
+hunderte Level überlebt.
 
 ### Was blieb
 
@@ -464,10 +526,10 @@ Liegengeblieben ist nur, was die Messung reproduzierbar hält:
 
 ---
 
-## 2026-09-24 — Punkte mal Etappe: ändert die Gewichtung das optimale Spiel?
+## 2026-09-24 — Punkte mal Level: ändert die Gewichtung das optimale Spiel?
 
-**Regel:** Übrige Sender zählen mit der Etappennummer gewichtet. Score ist die
-Summe über alle geräumten Etappen von `Rest × Etappennummer` statt der reinen
+**Regel:** Übrige Sender zählen mit der Levelnummer gewichtet. Score ist die
+Summe über alle geräumten Level von `Rest × Levelnummer` statt der reinen
 Summe der Reste.
 **Werkzeug:** `tools/score.js`
 **Ergebnis: umgesetzt.** Das optimale Spiel bleibt unverändert; die Zahlen
@@ -482,11 +544,11 @@ Anzeige. Zweitens, in welche Größenordnung die neuen Zahlen fallen.
 ### Warum die Gewichtung keine Zugfolge ändern kann
 
 Das steht vor jeder Messung fest und ist der Grund, warum die Messung überhaupt
-so ausfallen musste: innerhalb der Etappe *s* ist jeder übrige Sender *s* wert —
+so ausfallen musste: innerhalb von Level *s* ist jeder übrige Sender *s* wert —
 derselbe positive Faktor für jede Entscheidung auf diesem Brett. Ein konstanter
-Faktor ordnet keine Linien um. Und über Etappengrenzen hinweg lässt sich nichts
-verschieben: `advance` teilt ein frisches Depot aus, übrige Sender wandern nicht
-mit. Es gibt also keinen Zug, der einen Sender aus Etappe 3 nach Etappe 12 trägt,
+Faktor ordnet keine Linien um. Und über Levelgrenzen hinweg lässt sich nichts
+verschieben: `advance` teilt frische Sender aus, übrige Sender wandern nicht
+mit. Es gibt also keinen Zug, der einen Sender aus Level 3 nach Level 12 trägt,
 wo er zwölfmal zählen würde.
 
 Was sich unterscheiden *kann*, ist etwas, das es vorher schon gab: auf Punkte zu
@@ -504,25 +566,32 @@ Zwei Bots über dieselben Seeds, beide mit derselben Suchtiefe:
   genau der Score. Das Brett muss trotzdem zuerst geräumt sein, ein nicht
   geräumtes zählt null.
 
-Beide Scores werden aus `state.cleared` gelesen, das ohnehin `{stage, left}` je
-geräumter Etappe führt — damit ist die neue Zählung messbar, bevor `run.js` sie
-trägt, und die alte danach.
+Beide Scores werden aus `state.cleared` gelesen, das ohnehin `{level, left}` je
+geräumtem Level führt (damals `{stage, left}`) — damit ist die neue Zählung
+messbar, bevor `run.js` sie trägt, und die alte danach.
 
 ### 1. Beide Ziele über dieselben Seeds
 
 500 Partien je Bot und Seed.
 
-| Seed | Bot | Etappe Median / Mittel / SD | Punkte Median | p90 | p99 | max | Mittel | Rest je geräumter Etappe |
+| Seed | Bot | Level Median / Mittel / SD | Punkte Median | p90 | p99 | max | Mittel | Rest je geräumtem Level |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Überleben | 9.0 / 11.73 / 7.18 | 32.5 | 188.3 | 595.3 | 887 | 75.2 | 0.90 |
 | 1 | Punkte | 9.0 / 11.73 / 7.18 | 39.0 | 206.5 | 650.7 | 1011 | 87.3 | 1.09 |
 | 1001 | Überleben | 9.0 / 11.44 / 6.34 | 32.0 | 156.1 | 412.1 | 699 | 65.1 | 0.87 |
 | 1001 | Punkte | 9.0 / 11.44 / 6.34 | 39.5 | 173.2 | 460.4 | 817 | 75.7 | 1.06 |
 
-Die Etappenspalten sind nicht ähnlich, sie sind **identisch** — Median, Mittel
+*Die Levelspalte zählt das erreichte Level (= geschaffte + 1), Stand vor
+2026-10-12; geschafft gezählt liegen Median und Mittel genau 1 tiefer, die SD
+bleibt. Punkte und Rest hängen nicht an der Zählung. Wo Verhältnisse zweier
+Bots gebildet werden, verschieben sie sich ungleichmäßig — 5.23 / 11.73 = 2.24x
+erreicht sind 4.23 / 10.73 = 2.54x geschafft. Eine Wiederholung liefert andere
+Zahlen, ohne dass sich am Spiel etwas geändert hat.*
+
+Die Levelspalten sind nicht ähnlich, sie sind **identisch** — Median, Mittel
 und Streuung auf jede Stelle. Paarweise nachgesehen, Seed für Seed:
 
-| Vergleich | Punkte-Bot kommt weniger weit | kommt weiter | hat weniger Punkte | mittlerer Etappenunterschied |
+| Vergleich | Punkte-Bot kommt weniger weit | kommt weiter | hat weniger Punkte | mittlerer Levelunterschied |
 | --- | --- | --- | --- | --- |
 | 1000 Seeds | **0 %** | 0 % | 0 % | **0.000** |
 
@@ -532,7 +601,7 @@ hat nie weniger Punkte.
 
 ### 2. Dieselben Partien, aber nicht dieselben Züge
 
-| Seed | Züge | davon abweichend | Partien ohne jede Abweichung | erste Abweichung in Etappe |
+| Seed | Züge | davon abweichend | Partien ohne jede Abweichung | erste Abweichung in Level |
 | --- | --- | --- | --- | --- |
 | 1 | 36 115 | 2.92 % | 11.6 % | 2.7 |
 | 1001 | 35 078 | 2.82 % | 11.2 % | 2.8 |
@@ -541,30 +610,30 @@ Die beiden sind nicht derselbe Spieler: auf knapp 3 % der Züge wollen sie
 Verschiedenes, und nur jede neunte Partie vergeht ohne eine einzige Abweichung.
 Sie landen nur immer am selben Ende.
 
-Der Grund ist die Bauart des Modus: jedes Brett und jedes Depot hängt allein an
-`(seed, stage)`. Was innerhalb einer Etappe anders gespielt wird, kann die
+Der Grund ist die Bauart des Modus: jedes Brett und jede Senderhand hängt allein
+an `(seed, level)`. Was innerhalb eines Levels anders gespielt wird, kann das
 nächste nicht erreichen. Ein Unterschied kann sich also nur auswirken, wenn er
-kostet, dass eine Etappe überhaupt geräumt wird — und Sparsamkeit kostet das
+kostet, dass ein Level überhaupt geräumt wird — und Sparsamkeit kostet das
 nie, weil sie unter den räumenden Linien wählt. Geräumt ist geräumt.
 
 ### 3. Wo die Sender liegen bleiben
 
-Rest je geräumter Etappe, nach Etappenblock. Die Frage war, ob der Punkte-Bot
+Rest je geräumtem Level, nach Levelblock. Die Frage war, ob der Punkte-Bot
 seine Sender dort spart, wo sie am meisten wert sind, also spät.
 
-| Seed | Bot | Etappe 1-3 | 4-6 | 7-10 | ab 11 |
+| Seed | Bot | Level 1-3 | 4-6 | 7-10 | ab 11 |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Überleben | 0.99 | 0.87 | 0.88 | 0.84 |
 | 1 | Punkte | 1.32 | 1.06 | 1.01 | 0.95 |
 | 1001 | Überleben | 0.94 | 0.87 | 0.88 | 0.77 |
 | 1001 | Punkte | 1.27 | 1.05 | 1.00 | 0.87 |
 
-**Nein, umgekehrt.** Der Punkte-Bot spart am meisten in den frühen Etappen
+**Nein, umgekehrt.** Der Punkte-Bot spart am meisten in den frühen Leveln
 (+0.33 Sender je Brett) und am wenigsten in den späten (+0.10). Das ist keine
-Eigenheit des Bots, sondern der Depotkurve: der Depotanteil startet bei 0.24 und
-fällt gegen 0.15, also ist auf den frühen Brettern Luft und auf den späten
+Eigenheit des Bots, sondern der Senderkurve: der Senderanteil startet bei 0.24
+und fällt gegen 0.15, also ist auf den frühen Brettern Luft und auf den späten
 keine. Die Gewichtung belohnt damit ausgerechnet die Sender am höchsten, die am
-schwersten zu sparen sind — was den Score in den späten Etappen weniger
+schwersten zu sparen sind — was den Score in den späten Leveln weniger
 beeinflussbar macht, nicht mehr.
 
 ### 4. Die Größenordnung
@@ -586,7 +655,7 @@ die besten Partien erreichen 700 bis 1011. Die Streuung ist größer als der
 Mittelwert (SD 84–128 gegen Mittel 65–87). Die alte Zählung blieb überall
 zweistellig, mit einem Maximum von 42.
 
-Der Grund ist die Form der Summe. Bei ungefähr konstantem Rest *r* je Etappe ist
+Der Grund ist die Form der Summe. Bei ungefähr konstantem Rest *r* je Level ist
 der neue Score
 
 ```
@@ -598,29 +667,34 @@ n = 11.73 ergibt 81 — gemessen wurden 87. Doppelt so weit zu kommen vervierfac
 damit die Punkte, und der lange Schwanz der Streak-Verteilung (SD 7.18 bei Mittel
 11.73) wird beim Quadrieren zu einem sehr langen Schwanz der Punkteverteilung.
 
+*n = 11.73 ist hier das mittlere erreichte Level (= geschaffte + 1), Stand vor
+2026-10-12; summiert werden eigentlich nur die geschafften Level. Die Rechnung
+ist als Größenordnung gemeint und nicht nachgerechnet; die gemessenen Punkte
+hängen nicht an der Zählung.*
+
 Das ist ehrlich zu benennen, weil es die Begründung berührt: die Gewichtung
 während der Partie **entfernt das quadratische Wachstum nicht, sie halbiert es.**
 Am Ende zu multiplizieren gäbe `n · r · n = r · n²`, die Gewichtung während der
 Partie gibt `r · n²/2` — dieselbe Ordnung, der halbe Betrag. Was die Gewichtung
 tatsächlich repariert, ist zweierlei, und beides bleibt richtig:
 
-- **Keine Annullierung.** `Etappe × Punkte` macht aus null Punkten null, egal wie
-  weit jemand kam. Bei der Gewichtung während der Partie kostet eine Etappe ohne
-  Rest nur ihren eigenen Beitrag.
+- **Keine Annullierung.** `Level × Punkte` macht aus null Punkten null, egal wie
+  weit jemand kam. Bei der Gewichtung während der Partie kostet ein Level ohne
+  Rest nur seinen eigenen Beitrag.
 - **Keine rückwirkende Aufwertung.** Am Ende zu multiplizieren würde einen in
-  Etappe 1 gesparten Sender mit der zuletzt erreichten Etappe bezahlen. Jetzt
-  zählt jede Etappe mit dem, was sie war, als sie gespielt wurde.
+  Level 1 gesparten Sender mit dem zuletzt erreichten Level bezahlen. Jetzt
+  zählt jedes Level mit dem, was es war, als es gespielt wurde.
 
 ### Befund
 
 **Die Umstellung ändert das optimale Spiel nicht.** Über 1000 Partien erreicht
-ein Bot, der auf den neuen Score optimiert, exakt dieselbe Etappe wie einer, der
+ein Bot, der auf den neuen Score optimiert, exakt dasselbe Level wie einer, der
 aufs Überleben optimiert — in jedem einzelnen Seed. Er tut es mit anderen Zügen
 (2.9 % Abweichung) und mit mehr Punkten (+16 % im Mittel, +20 % im Median), aber
 ohne jedes Risiko: Sparsamkeit
 wählt unter den Linien, die das Brett ohnehin räumen, und ein Unterschied
-innerhalb einer Etappe kann die nächste nicht erreichen, weil die aus
-`(seed, stage)` gezogen wird.
+innerhalb eines Levels kann das nächste nicht erreichen, weil das aus
+`(seed, level)` gezogen wird.
 
 Der Unterschied zwischen „auf Überleben spielen" und „auf Punkte spielen" ist
 damit real, aber er ist nicht neu: er bestand unter der alten Zählung genauso,
@@ -629,7 +703,7 @@ vergrößert nur die Zahl, die er erzeugt.
 
 Offen bleibt die Lesbarkeit. Ein p99 von 600 und ein Maximum von 1011 sind keine
 Zahl mehr, die man im Kopf vergleicht, und der quadratische Zusammenhang macht
-Bestwerte zwischen zwei Spielern schwerer einzuordnen als die Etappe selbst.
+Bestwerte zwischen zwei Spielern schwerer einzuordnen als das Level selbst.
 Das ist eine Anzeigefrage und keine Regelfrage — sie wurde hier nicht
 entschieden.
 
@@ -646,11 +720,12 @@ Abweichung auf der Linie des überlebenden Bots zählt.
 
 ### Was blieb
 
-- `src/run.js` — `build()` addiert `depot.length * base.stage` statt
-  `depot.length`; die Begründung steht am Ort der Rechnung, samt dem Nachweis,
-  dass die Gewichtung keine Zugfolge ändern kann.
-- `test/run.test.js` — zwei neue Prüfungen: Etappe 2 trägt ihre Reste doppelt
-  bei, und der Endstand ist über mehrere Seeds die Summe `Rest × Etappe` aus dem
+- `src/run.js` — `build()` addiert `senders.length * base.level` statt
+  `senders.length` (damals `depot.length * base.stage`); die Begründung steht am
+  Ort der Rechnung, samt dem Nachweis, dass die Gewichtung keine Zugfolge ändern
+  kann.
+- `test/run.test.js` — zwei neue Prüfungen: Level 2 trägt seine Reste doppelt
+  bei, und der Endstand ist über mehrere Seeds die Summe `Rest × Level` aus dem
   `cleared`-Protokoll.
 - `tools/bot64.js` — `lookaheadChoice` nimmt `frugal`, den zweiten Zielbegriff.
 - `tools/score.js` — neu.
@@ -796,13 +871,13 @@ Umgesetzt, wie gefordert:
   verworfen statt angezeigt.
 - Neue Einträge schreiben `{ score, scale: 2 }`. `SCORE_SCALE` steht in
   `index.html` mit einer Liste dessen, was jeder Wert bedeutet hat: kein Feld
-  war die flache Summe, 2 ist die nach Etappe gewichtete.
+  war die flache Summe, 2 ist die nach Level gewichtete.
 - Angezeigt wird nur, was **exakt** passt. Ein älteres, ein unmarkiertes und
   auch ein *neueres* Kennzeichen — ein Browser, der auf einen alten Stand
   zurückgesetzt wurde — führen alle zum Verwurf.
 
 Verworfen und nicht umgerechnet, und das ist die eigentliche Entscheidung: aus
-der Gesamtsumme lässt sich nicht zurückrechnen, aus welchen Etappen sie kam, und
+der Gesamtsumme lässt sich nicht zurückrechnen, aus welchen Leveln sie kam, und
 ohne das gibt es keinen Umrechnungsfaktor. Dieselbe Ziffernfolge bedeutet auf
 der gewichteten Skala eine deutlich kürzere Partie als auf der flachen. Ein
 Bestwert kostet eine Partie, um ihn neu zu setzen; ein still falsch angezeigter
@@ -841,14 +916,14 @@ npm run smoke                                      # prüft den Verwurf mit
 
 **Werkzeug:** keins; das Argument steht am Bildschirm, nicht in der Verteilung.
 **Ergebnis: Teiler entfernt.** Angezeigt wird der Rohwert — übrige Sender mal
-Etappennummer, aufsummiert. `SCORE_SCALE` steht auf 1, Bestwerte mit `scale: 2`
+Levelnummer, aufsummiert. `SCORE_SCALE` steht auf 1, Bestwerte mit `scale: 2`
 werden verworfen.
 
 ### Der Grund
 
-Die Halbierung macht kleine Zuwächse unlesbar. Ein in Etappe 3 gesparter Sender
+Die Halbierung macht kleine Zuwächse unlesbar. Ein in Level 3 gesparter Sender
 bringt 3 Punkte und muss auch als 3 erscheinen, sonst ist der Zusammenhang
-zwischen Etappe und Wert nicht erkennbar — und dieser Zusammenhang ist genau
+zwischen Level und Wert nicht erkennbar — und dieser Zusammenhang ist genau
 das, wofür die Gewichtung überhaupt eingeführt wurde. Große Zahlen sind das
 kleinere Problem.
 
@@ -861,20 +936,20 @@ Spielers, und dieser Moment ist es, an dem die Regel erklärt wird oder nicht.
 ### Was die Halbierung am Zuwachs anrichtet
 
 Nicht nur, dass der Zuwachs halb so groß erscheint — er ist bei ungeraden
-Etappennummern **nicht einmal konstant**. Angezeigt wird `round(S/2)`, also
+Levelnummern **nicht einmal konstant**. Angezeigt wird `round(S/2)`, also
 hängt der sichtbare Sprung davon ab, ob die laufende Summe gerade ist:
 
-| laufende Summe S | +1 Sender in Etappe 3 | angezeigt vorher → nachher | sichtbarer Zuwachs |
+| laufende Summe S | +1 Sender in Level 3 | angezeigt vorher → nachher | sichtbarer Zuwachs |
 | --- | --- | --- | --- |
 | 10 | 13 | 5 → 7 | **+2** |
 | 11 | 14 | 6 → 7 | **+1** |
 
 Derselbe Handgriff auf demselben Brett, zwei verschiedene Belohnungen. In
-Etappe 1 ist es am schärfsten: ein gesparter Sender zeigt dort abwechselnd +1
+Level 1 ist es am schärfsten: ein gesparter Sender zeigt dort abwechselnd +1
 und **+0**, ist also in der Hälfte der Fälle unsichtbar.
 
 Das ist kein Rundungsdetail, sondern der Zusammenbruch der Aussage, die die
-Gewichtung machen soll: „ein Sender hier ist so viel wert wie die Etappennummer".
+Gewichtung machen soll: „ein Sender hier ist so viel wert wie die Levelnummer".
 
 ### Was es kostet
 
@@ -882,7 +957,7 @@ Die Zahlen aus dem vorigen Eintrag gelten unverändert und werden bewusst in Kau
 genommen: p99 bei 412 bis 651, Maximum bei 1011, Streuung größer als der
 Mittelwert. Der Score bleibt quadratisch in der Streak. Wer zwei Läufe
 vergleichen will, vergleicht große Zahlen — wer einen Lauf *versteht*, sieht
-jetzt jeden Sender mit seinem Etappenwert eintreffen.
+jetzt jeden Sender mit seinem Levelwert eintreffen.
 
 ### Was blieb
 
@@ -901,3 +976,253 @@ jetzt jeden Sender mit seinem Etappenwert eintreffen.
 - **Nicht angefasst:** `src/run.js` und die Werkzeuge. Sie haben nie geteilt —
   deshalb hat dieses Zurücknehmen nichts gekostet außer der Anzeige. Das ist der
   Teil der vorigen Entscheidung, der sich bewährt hat.
+
+---
+
+## 2026-10-12 — Level statt Etappe, gezählt wird das geschaffte
+
+**Werkzeug:** keins; eine Umbenennung und eine Zählweise, kein Parameter.
+**Ergebnis:** Die Werkzeuge zählen jetzt wie das Spiel. **Keine Tabelle in
+dieser Datei wurde neu gerechnet** — betroffene tragen stattdessen einen Vermerk
+direkt darunter.
+
+### Was sich geändert hat
+
+- **Etappe heißt Level, Depot heißt Sender** — auf der Seite, im Code
+  (`state.level`, `levelSpec`, `senderRatio`, `senderCurve`, `fillSenders`,
+  `LEVEL_CAP`, Status `levelCleared`) und hier. Im Rätselmodus (`game.js`,
+  `levels/*.json`) war „level" schon belegt: dort ist es ein gespeichertes
+  Rätsel, im Lauf eine Zahl. `render.js` sagt deshalb `board`. Die Level-Dateien
+  sind nach `npm run levels` byte-identisch.
+- **Gezählt wird das letzte geschaffte Level.** Wer in Level 10 scheitert, hat 9
+  geschafft. Das gilt für die Endkarte und die Ergebniszeile des Tagesbretts;
+  die laufende Anzeige zeigt weiter das Level, das gerade gespielt wird. Einen
+  gespeicherten Level-Bestwert gibt es nicht — der Bestwert ist seit der
+  Punktegewichtung nur `{score, scale}` —, also musste nichts verworfen werden.
+- **Die Werkzeuge zählen mit.** `playEndless` in `tools/endless.js` gibt als
+  `streak` jetzt `state.cleared.length` zurück statt `state.stage`; ebenso
+  `tools/score.js` und `tools/amplifier.js`. `tools/bot.js` war schon richtig:
+  seine Tabellen nennen Siegquoten und das Level, *in dem* verloren wurde, und
+  beides hängt nicht an der Zählung.
+
+### Was das für die Tabellen heißt
+
+Mittelwerte, Mediane und Quantile fallen um genau 1, die SD und alle Abstände
+bleiben. **Die Verhältnisse zwischen den Bots verschieben sich aber
+ungleichmäßig**, weil die 1 von beiden Mitteln abgeht und nicht vom Quotienten:
+`blockedRatio` 0.05 misst 5.23 / 11.73 = **2.24x** erreicht und
+4.23 / 10.73 = **2.54x** geschafft — dieselben Partien. Je kleiner der gierige
+Mittelwert, desto stärker der Sprung.
+
+Eine wiederholte Messung liefert also andere Zahlen, ohne dass sich am Spiel
+etwas geändert hat. Verglichen werden darf nur innerhalb derselben Zählung.
+Wer eine alte Tabelle neu misst, setzt die neue darunter und lässt die alte mit
+ihrem Vermerk stehen.
+
+---
+
+## 2026-10-12 — Level 1 als Einstiegsbrett
+
+**Konstante:** `ENDLESS_RUN.firstLevel` in `src/run.js` (neu)
+**Werkzeug:** `tools/onboarding.js` (neu), `tools/endless.js --daily` (neu)
+**Ergebnis: 9 Knoten, 6 Sender, ersetzt das bisherige Level 1.** Die Kurve ab
+Level 2 bleibt unverändert, Bit für Bit.
+
+Alle Zahlen dieses Eintrags zählen **geschaffte** Level.
+
+### Die Frage
+
+Das Spiel erklärt sich nicht: beim ersten Start ein Graph, drei Kacheln, zwei
+Zahlen, und nichts sagt, dass Antippen etwas tut oder dass der Vorrat endlich
+ist. Der Hilfetext unter dem Brett wird nicht gelesen. Statt eines Tutorials
+soll Level 1 die Regel vermitteln, indem man es gewinnt — und dafür darf es
+praktisch nicht zu verlieren sein.
+
+Die Latte ist der gierige Bot: ein Mensch beim ersten Kontakt spielt schlechter
+als gierig. Scheitert gierig auf dem Einstiegsbrett überhaupt, ist es zu eng.
+Ziel: Scheiterquote null. Danach darf sich der Rest nicht verschieben — der
+Planer soll weiter bei einem geschafften Median um 8 landen, der Bot-Abstand
+bei rund +4 bleiben, und das Tagesbrett darf nicht auseinanderlaufen.
+
+### Ausgangslage
+
+`tools/endless.js --runs=1000` und `--runs=365 --daily`, die Kurve vor der
+Änderung (Level 1: 18 Knoten, 4 Sender):
+
+| Seeds | gierig Median / Mittel | voraus Median / Mittel / SD | Abstand | Verhältnis | gierig endet in Level 1 |
+| --- | --- | --- | --- | --- | --- |
+| 1–1000 | 4 / 4.15 | 8 / 10.68 / 7.06 | +4 | 2.57x | 3.1 % |
+| 1001–2000 | 4 / 4.25 | 8 / 10.70 / 6.65 | +4 | 2.52x | 3.5 % |
+| 365 Tagesbretter ab 2026-01-01 | 4 / 4.09 | 9 / 10.76 / 6.55 | +5 | 2.63x | 2.2 % |
+
+Heute verliert also gut jede dreißigste gierige Partie schon auf dem ersten
+Brett. Die Tagesbretter liegen im Median eins höher und im Abstand bei +5, im
+Mittel aber gleichauf (10.76 gegen 10.68) — der Median sitzt dort auf einer
+Stufe, das ist kein Auseinanderlaufen.
+
+### 1. Das Einstiegsbrett allein
+
+Level 1 allein gespielt, dieselben Seeds für alle Bots. „Zufällig" tippt einen
+beliebigen freien Knoten an (eigener `mulberry32`-Strom) — kein Maßstab, aber
+ein Stellvertreter für jemanden, der noch nicht hinsieht, und damit ein Maß für
+den Spielraum. „Nötig" ist, wie viele Sender gierig verbraucht hat.
+
+Erste Runde, 1000 Seeds:
+
+| Knoten | Sender | gierig scheitert | voraus scheitert | zufällig scheitert | gierig nötig Mittel / max |
+| --- | --- | --- | --- | --- | --- |
+| 8 | 2 | 8.0 % | 0.0 % | 69.1 % | 1.79 / 2 |
+| 8 | 3 | 0.0 % | 0.0 % | 8.8 % | 1.63 / 3 |
+| 9 | 2 | 34.3 % | 27.0 % | 85.4 % | 1.79 / 2 |
+| 9 | 3 | 0.0 % | 0.0 % | 21.9 % | 1.82 / 3 |
+| 10 | 2 | 41.3 % | 22.1 % | 92.1 % | 1.88 / 2 |
+| 10 | 3 | 0.2 % | 0.0 % | 41.6 % | 1.98 / 3 |
+
+Ab 4 Sendern scheitert gierig auf keiner Größe. Weil null bei 1000 Seeds nur
+„unter etwa 0.3 %" heißt, die engere Auswahl mit 5000:
+
+| Knoten | Sender | gierig scheitert | voraus scheitert | zufällig scheitert | gierig nötig Mittel / max | gierig übrig Mittel |
+| --- | --- | --- | --- | --- | --- | --- |
+| 8 | 4 | 0.0 % | 0.0 % | 2.0 % | 1.63 / 3 | 2.37 |
+| 8 | 5 | 0.0 % | 0.0 % | 0.5 % | 1.78 / 4 | 3.22 |
+| 8 | 6 | 0.0 % | 0.0 % | 0.0 % | 1.72 / 4 | 4.28 |
+| 9 | 4 | 0.0 % | 0.0 % | 7.1 % | 1.84 / 3 | 2.16 |
+| 9 | 5 | 0.0 % | 0.0 % | 2.7 % | 2.01 / 4 | 2.99 |
+| **9** | **6** | **0.0 %** | **0.0 %** | **0.3 %** | **1.98 / 4** | **4.02** |
+| 10 | 4 | 0.0 % | 0.0 % | 17.9 % | 1.99 / 4 | 2.01 |
+| 10 | 5 | 0.0 % | 0.0 % | 9.6 % | 2.15 / 4 | 2.85 |
+| 10 | 6 | 0.0 % | 0.0 % | 2.7 % | 2.14 / 4 | 3.86 |
+
+**9 Knoten, 6 Sender.** Gierig scheitert in 5000 Seeds nie, braucht im Mittel
+2 Sender und höchstens 4 — behält also auch auf seinem schlechtesten Brett zwei
+übrig. Selbst blindes Antippen verliert nur in 0.3 % der Partien. Mit 5 Sendern
+wären es 2.7 %, mit 10 Knoten ebenfalls. 8 Knoten wären noch sicherer, aber
+kaum noch ein Graph; 9 lässt dem Brett eine Form.
+
+Bei 5 % Blockadedichte rundet ein Brett mit 9 Knoten auf null Achtecke. Das
+Einstiegsbrett erklärt damit genau eine Regel.
+
+### 2. Was es mit der Kurve dahinter macht
+
+Ganze Partien, beide Bots, `tools/onboarding.js --full`. Zwei Arten, das Brett
+einzubauen:
+
+- **ersetzt** — das Einstiegsbrett tritt an die Stelle von Level 1. Ab Level 2
+  ist jedes Brett das, was die Kurve vorher ausgeteilt hat, Bit für Bit, weil
+  Level *i* allein aus `seed + i · 7919` gezogen wird.
+- **vorn** — das Einstiegsbrett wird vorangestellt, das bisherige Level 1
+  (18/4) wird Level 2, die ganze Kurve rückt um eins nach hinten. Sanfterer
+  zweiter Schritt, aber jede Partie ein Level länger; `tau` und `floor` sind
+  die Stellschrauben, um das ab Level 3 zurückzunehmen.
+
+Knoten/Sender je Level:
+
+| Variante | L1 | L2 | L3 | L4 | L5 | L6 | L7 | L8 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| heute | 18/4 | 22/5 | 26/5 | 30/6 | 34/6 | 38/7 | 42/7 | 46/8 |
+| ersetzt | 9/6 | 22/5 | 26/5 | 30/6 | 34/6 | 38/7 | 42/7 | 46/8 |
+| vorn | 9/6 | 18/4 | 22/5 | 26/5 | 30/6 | 34/6 | 38/7 | 42/7 |
+| vorn, tau 3 | 9/6 | 18/4 | 22/5 | 26/5 | 30/5 | 34/6 | 38/6 | 42/7 |
+| vorn, floor 0.14 | 9/6 | 18/4 | 22/5 | 26/5 | 30/6 | 34/6 | 38/6 | 42/7 |
+
+1000 Partien je Bot und Variante, Seeds 1–1000:
+
+| Variante | gierig Median / Mittel / SD | gierig endet in L1 | voraus p10 / Median / p90 | voraus Mittel / SD | Abstand | Verhältnis | voraus häufigstes Ende |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| heute | 4 / 4.15 / 2.04 | 3.1 % | 5 / 8 / 20 | 10.68 / 7.06 | +4 | 2.57x | 29 % |
+| **ersetzt** | **4 / 4.30 / 1.92** | **0.0 %** | **5 / 8 / 20** | **10.68 / 7.06** | **+4** | **2.49x** | **29 %** |
+| vorn | 5 / 5.23 / 2.22 | 0.0 % | 6 / 9 / 22 | 11.92 / 6.97 | +4 | 2.28x | 28 % |
+| vorn, tau 3 | 4 / 4.35 / 1.48 | 0.0 % | 4 / 7 / 13 | 8.53 / 5.11 | +3 | 1.96x | 22 % |
+| vorn, tau 2.5 | 4 / 4.35 / 1.48 | 0.0 % | 4 / 7 / 13 | 8.53 / 5.11 | +3 | 1.96x | 22 % |
+| vorn, floor 0.14 | 5 / 4.94 / 1.72 | 0.0 % | 6 / 7 / 14 | 8.62 / 3.68 | +2 | 1.74x | 24 % |
+
+Gegenprobe auf zweitem Seed-Bereich und auf dem Tagesbrett:
+
+| Seeds | Variante | gierig Mittel | voraus Median / Mittel / SD | Abstand | Verhältnis | gierig endet in L1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1001–2000 | heute | 4.25 | 8 / 10.70 / 6.65 | +4 | 2.52x | 3.5 % |
+| 1001–2000 | **ersetzt** | 4.40 | 8 / 10.70 / 6.65 | +4 | 2.43x | 0.0 % |
+| 365 Tage | heute | 4.09 | 9 / 10.76 / 6.55 | +5 | 2.63x | 2.2 % |
+| 365 Tage | **ersetzt** | 4.16 | 9 / 10.76 / 6.55 | +5 | 2.58x | 0.0 % |
+
+### Befund
+
+**„Ersetzt" trifft alle Vorgaben, ohne dass die Kurve angefasst werden muss.**
+Der Planer ist auf beiden Seed-Bereichen und auf den Tagesbrettern *identisch*
+mit vorher — Median, Mittel, SD, p10, p90 —, weil er auf dem alten Level 1
+nie gescheitert ist und ab Level 2 dieselben Bretter kommen. Der gierige Bot
+gewinnt die 2 bis 3.5 % Partien zurück, die bisher auf dem ersten Brett
+endeten, sonst nichts. Abstand +4 (Tagesbrett +5, wie vorher), Verhältnis
+2.49x statt 2.57x — es sinkt nur, weil der gierige Mittelwert um diese
+geretteten Partien steigt. Die ersten Level werden nicht zu großzügig, also
+gibt es nichts nachzuziehen.
+
+Ein Nebeneffekt, der bleibt: **alle bisherigen Kalibrierungen gelten weiter.**
+`blockedRatio`, `EDGE_DELETE_RATIO` und die Senderkurve wurden auf Brettern ab
+18 Knoten gemessen; die Bretter ab Level 2 sind dieselben.
+
+**„Vorn" ist der sanftere Einstieg und lässt sich nicht sauber zurücknehmen.**
+Ohne Korrektur wird jede Partie ein Level länger (Median 9, Mittel 11.92) —
+genau der zu großzügige Einstieg, vor dem die Fragestellung warnt. Die
+Korrektur ab Level 3 scheitert an der Rundung: die Senderzahl ist ganzzahlig,
+`tau` 3 und 2.5 teilen auf allen 14 Leveln dieselben Zahlen aus, und schon die
+erste Stufe, die überhaupt etwas ändert, schießt über — Median 7, Abstand +3,
+Verhältnis 1.96x. Der Abstand ist das, was Vorausdenken belohnt; ihn für einen
+sanfteren zweiten Schritt herzugeben, wäre der falsche Tausch. Ein `floor` von
+0.14 ist noch schlechter (+2, 1.74x).
+
+**Was „ersetzt" kostet:** den Schritt von 9 auf 22 Knoten. In Level 2 endet
+gierig in 4.2 % der Partien, das alte erste Brett verlangte 3.1 % — von einem
+Neuling, dem bis dahin nichts gezeigt worden war. Wer Level 2 erreicht, hat die
+Regel jetzt bereits einmal gewonnen.
+
+### Punkte
+
+Die Länge der Partien ändert sich nicht, die Punkte schon: Level 1 lässt im
+Mittel rund vier Sender übrig, jeder einen Punkt wert. `tools/endless.js
+--runs=1000`, Punkte-Median gierig 6 → 10, voraus 32 → 36, p90 voraus 185 →
+186. Alte Bestwerte sind damit um etwa vier Punkte leichter zu schlagen. Das
+ist keine Skalenänderung wie beim Teiler — dieselbe Zahl bedeutet fast
+dasselbe —, und `SCORE_SCALE` bleibt deshalb auf 1. Hier nicht entschieden;
+wer alte Rekorde verwerfen will, hebt `SCORE_SCALE`.
+
+### Reproduktion
+
+```sh
+node tools/endless.js --runs=1000                     # Kurve wie ausgeliefert
+node tools/endless.js --runs=365 --daily              # dieselbe auf Tagesbrettern
+node tools/onboarding.js --runs=5000 --nodes=8,9,10 --senders=4,5,6
+node tools/onboarding.js --runs=1000 --full='heute;ersetzt;vorn'
+node tools/onboarding.js --runs=1000 --full='vorn,tau=3;vorn,floor=0.14'
+node tools/onboarding.js --runs=365 --daily --full='heute;ersetzt'
+```
+
+`--full` braucht rund 100 Sekunden je Variante und 1000 Partien, fast alles für
+den Planer. Die Brettgrößen-Tabelle läuft in Sekunden.
+
+### Was blieb
+
+- `src/run.js` — `ENDLESS_RUN.firstLevel = { nodes: 9, senders: 6 }` mit dieser
+  Messung im Kommentar. `levelSpec` liefert jetzt auch `senders`, und ein
+  `firstLevel` wird dort für Level 1 eingesetzt; ohne das Feld ist alles wie
+  vorher. Der Mischer von `dailySeed` ist unverändert.
+- `index.html` — der gespeicherte Tagesversuch trägt `rules: 2`. Ein Versuch
+  ohne Kennzeichen wurde auf dem alten Level 1 gespielt; seine Züge würden auf
+  dem neuen Brett Knoten nennen, die es nicht gibt, und wird deshalb verworfen
+  statt nachgespielt. Am Tag der Auslieferung bekommt dadurch, wer schon
+  gespielt hat, einen zweiten Versuch.
+- `tools/onboarding.js` — neu. `tools/endless.js` — `--daily` und ein
+  `seedOf`-Parameter an `measure`. Gefunden beim Messen: die übliche
+  Argumentzerlegung `split('=')` schneidet `--full=vorn,tau=3` am zweiten `=`
+  ab; `onboarding.js` trennt deshalb am ersten.
+- `test/run.test.js` — das Einstiegsbrett ist 9/6 ohne Achteck, Level 2 ist mit
+  und ohne es dasselbe Brett, und gierig verliert es auf 300 Seeds nie. Die
+  Kurventests laufen gegen die Kurve ohne Einstiegsbrett.
+- `tools/ui-smoke.js` — das erste Brett hat 9 Knoten, 6 Sender und kein
+  Achteck; die Achteckprüfungen laufen jetzt auf dem Brett, auf dem die
+  gespielte Partie endet; ein Tagesversuch ohne Regelkennzeichen wird nicht
+  nachgespielt.
+
+Nicht betroffen und ohne Vermerk: Ballgrößen, Siegquoten, Zuganteile, Punkte,
+Teiler, und Tabellen, deren Levelspalte eine Levelnummer ist (Levelblöcke,
+„erste Abweichung in Level").

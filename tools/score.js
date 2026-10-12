@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * Does weighting the leftovers by stage number change how the mode is best
+ * Does weighting the leftovers by level number change how the mode is best
  * played, or is it a different number on the same game?
  *
  *   node tools/score.js [--runs=500] [--seed=1]
  *
- * The change under test: a cleared stage used to add the transmitters left in
- * its depot, and now adds them multiplied by the stage's own number, summed
+ * The change under test: a cleared level used to add the transmitters left in
+ * its hand, and now adds them multiplied by the level's own number, summed
  * over the run.
  *
  * The weighting itself cannot reorder a single move, and that is worth stating
- * before any measurement: inside stage s every leftover is worth s, the same
+ * before any measurement: inside level s every leftover is worth s, the same
  * positive constant for every decision on that board, and leftovers do not
- * carry into the next stage. A constant factor does not change which line is
+ * carry into the next level. A constant factor does not change which line is
  * best. So the only thing that could tell the two scorings apart is something
  * that was already there — that playing for leftovers is not the same as
  * playing to survive.
@@ -33,7 +33,7 @@
 
 import { advance, createRun, ENDLESS_RUN, place } from '../src/run.js';
 import { greedyChoice, lookaheadChoice } from './bot64.js';
-import { printTable, quantile, STAGE_CAP } from './endless.js';
+import { printTable, quantile, LEVEL_CAP } from './endless.js';
 
 /** The two objectives, as the tool plays them. */
 const BOTS = [
@@ -41,14 +41,14 @@ const BOTS = [
   ['Punkte', (state) => lookaheadChoice(state, { frugal: true })],
 ];
 
-/** Stage buckets for the "does it save late transmitters" table. */
+/** Level buckets for the "does it save late transmitters" table. */
 const BUCKETS = [[1, 3], [4, 6], [7, 10], [11, Infinity]];
 
 /**
  * Plays one endless run and reports what both scorings make of it.
  *
- * Both scores are read off `state.cleared`, which already records `{stage,
- * left}` per cleared stage — so the new rule can be measured before `run.js`
+ * Both scores are read off `state.cleared`, which already records `{level,
+ * left}` per cleared level — so the new rule can be measured before `run.js`
  * carries it, and the old one after.
  * @param {number} seed
  * @param {object} config
@@ -57,15 +57,15 @@ const BUCKETS = [[1, 3], [4, 6], [7, 10], [11, Infinity]];
 function play(seed, config, choose) {
   let state = createRun({ seed, config });
   // Only transmitters spent on boards that actually went clear count towards
-  // "per cleared stage"; the ones sunk into the board the run died on are not
+  // "per cleared level"; the ones sunk into the board the run died on are not
   // part of any average that is compared with a leftover count.
   let spentHere = 0;
   let spentOnCleared = 0;
-  while (state.status === 'playing' || state.status === 'stageCleared') {
-    if (state.status === 'stageCleared') {
+  while (state.status === 'playing' || state.status === 'levelCleared') {
+    if (state.status === 'levelCleared') {
       spentOnCleared += spentHere;
       spentHere = 0;
-      if (state.cleared.length >= STAGE_CAP) break;
+      if (state.cleared.length >= LEVEL_CAP) break;
       state = advance(state);
       continue;
     }
@@ -76,10 +76,11 @@ function play(seed, config, choose) {
   }
   const cleared = state.cleared;
   return {
-    streak: state.stage,
+    // Levels cleared, as the game counts a run; see `playEndless`.
+    streak: cleared.length,
     cleared,
     spentOnCleared,
-    weighted: cleared.reduce((sum, { stage, left }) => sum + left * stage, 0),
+    weighted: cleared.reduce((sum, { level, left }) => sum + left * level, 0),
     flat: cleared.reduce((sum, { left }) => sum + left, 0),
   };
 }
@@ -110,11 +111,11 @@ function measure(config, choose, runs, firstSeed) {
   const streaks = [];
   const weighted = [];
   const flat = [];
-  let clearedStages = 0;
+  let clearedLevels = 0;
   let leftSum = 0;
   let placements = 0;
-  // Leftovers per stage, so the late stages can be looked at on their own.
-  const byBucket = BUCKETS.map(() => ({ stages: 0, left: 0 }));
+  // Leftovers per level, so the late levels can be looked at on their own.
+  const byBucket = BUCKETS.map(() => ({ levels: 0, left: 0 }));
 
   for (let i = 0; i < runs; i++) {
     const result = play(firstSeed + i, config, choose);
@@ -122,11 +123,11 @@ function measure(config, choose, runs, firstSeed) {
     weighted.push(result.weighted);
     flat.push(result.flat);
     placements += result.spentOnCleared;
-    for (const { stage, left } of result.cleared) {
-      clearedStages++;
+    for (const { level, left } of result.cleared) {
+      clearedLevels++;
       leftSum += left;
-      const bucket = byBucket[BUCKETS.findIndex(([from, to]) => stage >= from && stage <= to)];
-      bucket.stages++;
+      const bucket = byBucket[BUCKETS.findIndex(([from, to]) => level >= from && level <= to)];
+      bucket.levels++;
       bucket.left += left;
     }
   }
@@ -137,10 +138,10 @@ function measure(config, choose, runs, firstSeed) {
     streak: stats(streaks),
     weighted: stats(weighted),
     flat: stats(flat),
-    /** Transmitters left per cleared stage — the score, per board. */
-    leftPerStage: clearedStages === 0 ? 0 : leftSum / clearedStages,
-    placementsPerStage: clearedStages === 0 ? 0 : placements / clearedStages,
-    byBucket: byBucket.map(({ stages, left }) => (stages === 0 ? null : left / stages)),
+    /** Transmitters left per cleared level — the score, per board. */
+    leftPerLevel: clearedLevels === 0 ? 0 : leftSum / clearedLevels,
+    placementsPerLevel: clearedLevels === 0 ? 0 : placements / clearedLevels,
+    byBucket: byBucket.map(({ levels, left }) => (levels === 0 ? null : left / levels)),
   };
 }
 
@@ -159,15 +160,15 @@ function divergence(config, runs, firstSeed) {
   let moves = 0;
   let differ = 0;
   let identicalRuns = 0;
-  let firstDiffStage = 0;
+  let firstDiffLevel = 0;
   let runsWithDiff = 0;
 
   for (let i = 0; i < runs; i++) {
     let state = createRun({ seed: firstSeed + i, config });
     let clean = true;
-    while (state.status === 'playing' || state.status === 'stageCleared') {
-      if (state.status === 'stageCleared') {
-        if (state.cleared.length >= STAGE_CAP) break;
+    while (state.status === 'playing' || state.status === 'levelCleared') {
+      if (state.status === 'levelCleared') {
+        if (state.cleared.length >= LEVEL_CAP) break;
         state = advance(state);
         continue;
       }
@@ -178,7 +179,7 @@ function divergence(config, runs, firstSeed) {
         if (clean) {
           clean = false;
           runsWithDiff++;
-          firstDiffStage += state.stage;
+          firstDiffLevel += state.level;
         }
       }
       if (surviving === null) break;
@@ -191,7 +192,7 @@ function divergence(config, runs, firstSeed) {
     share: moves === 0 ? 0 : differ / moves,
     moves,
     identicalRuns: identicalRuns / runs,
-    firstDiffStage: runsWithDiff === 0 ? null : firstDiffStage / runsWithDiff,
+    firstDiffLevel: runsWithDiff === 0 ? null : firstDiffLevel / runsWithDiff,
   };
 }
 
@@ -241,16 +242,16 @@ function main() {
 
   console.log(`1. Beide Ziele ueber dieselben Seeds, ${runs} Partien je Bot`);
   printTable(
-    ['Bot', 'Etappe Median', 'p90', 'Mittel', 'SD',
+    ['Bot', 'Level geschafft Median', 'p90', 'Mittel', 'SD',
      'Punkte neu Median', 'p90', 'p99', 'max', 'Mittel',
-     'Rest je geraeumter Etappe', 'Sender je geraeumter Etappe', 'Zeit'],
+     'Rest je geraeumtem Level', 'Sender je geraeumtem Level', 'Zeit'],
     results.map(([label, r, seconds]) => [
       label,
       r.streak.median.toFixed(1), r.streak.p90.toFixed(1), r.streak.mean.toFixed(2),
       r.streak.sd.toFixed(2),
       r.weighted.median.toFixed(1), r.weighted.p90.toFixed(1), r.weighted.p99.toFixed(1),
       String(r.weighted.max), r.weighted.mean.toFixed(1),
-      r.leftPerStage.toFixed(2), r.placementsPerStage.toFixed(2),
+      r.leftPerLevel.toFixed(2), r.placementsPerLevel.toFixed(2),
       `${seconds.toFixed(0)}s`,
     ]),
   );
@@ -262,14 +263,14 @@ function main() {
     results.flatMap(([label, r]) => [
       [label, 'alt (Summe Reste)', r.flat.median.toFixed(1), r.flat.p90.toFixed(1),
        r.flat.p99.toFixed(1), String(r.flat.max), r.flat.mean.toFixed(1), r.flat.sd.toFixed(1)],
-      [label, 'neu (mal Etappe)', r.weighted.median.toFixed(1), r.weighted.p90.toFixed(1),
+      [label, 'neu (mal Level)', r.weighted.median.toFixed(1), r.weighted.p90.toFixed(1),
        r.weighted.p99.toFixed(1), String(r.weighted.max), r.weighted.mean.toFixed(1),
        r.weighted.sd.toFixed(1)],
     ]),
   );
   console.log();
 
-  console.log('3. Wo die Sender liegen bleiben: Rest je geraeumter Etappe nach Etappenblock');
+  console.log('3. Wo die Sender liegen bleiben: Rest je geraeumtem Level nach Levelblock');
   printTable(
     ['Bot', ...BUCKETS.map(([from, to]) => (to === Infinity ? `ab ${from}` : `${from}-${to}`))],
     results.map(([label, r]) => [
@@ -292,7 +293,7 @@ function main() {
   console.log('4. Paarweise, Seed fuer Seed');
   printTable(
     ['Vergleich', 'Punkte-Bot kommt weniger weit', 'kommt weiter',
-     'Punkte-Bot hat weniger Punkte', 'mittlerer Etappenunterschied'],
+     'Punkte-Bot hat weniger Punkte', 'mittlerer Levelunterschied'],
     [[
       `${runs} Seeds`,
       `${(100 * worse) / runs}%`,
@@ -307,12 +308,12 @@ function main() {
   console.log(`5. Wie oft die beiden Ziele auseinandergehen, ${runs} Partien auf der Linie`
     + ' des ueberlebenden Bots');
   printTable(
-    ['Zuege', 'davon abweichend', 'Partien ohne jede Abweichung', 'erste Abweichung in Etappe'],
+    ['Zuege', 'davon abweichend', 'Partien ohne jede Abweichung', 'erste Abweichung in Level'],
     [[
       String(diff.moves),
       `${(100 * diff.share).toFixed(2)}%`,
       `${(100 * diff.identicalRuns).toFixed(1)}%`,
-      diff.firstDiffStage === null ? '-' : diff.firstDiffStage.toFixed(1),
+      diff.firstDiffLevel === null ? '-' : diff.firstDiffLevel.toFixed(1),
     ]],
   );
 
