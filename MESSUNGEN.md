@@ -1630,3 +1630,95 @@ weiter zu dem Brett seines Datums.
   bekommt am selben Berliner Tag dasselbe Brett; um 23:59:59 Berliner Zeit
   noch das Brett vom 24., um 00:00:01 schon das vom 25., um 23:30 UTC ebenfalls;
   der Countdown zählt auf Berliner Mitternacht.
+
+---
+
+## 2026-10-12 — Die Rest-Grafik fliegt raus
+
+**Konstante:** keine mehr; `RAMP`, `FAILED`, `TEN_OR_MORE`, `GROUP` und
+`levelMarks` sind aus `src/share.js` entfernt
+**Ergebnis:** Die Zeile mit einem Zeichen pro Level für die übrigen Sender
+(Ziffern B, Kreisrampe C, davor die Blöcke aus 0.2.0) wird aus dem geteilten
+Ergebnis entfernt. **Ausgeliefert wird die Kopfzeile allein**, ohne Grafik,
+gefolgt von der Adresse des Spiels.
+
+### Warum sie gescheitert ist
+
+Die Grafik ist nicht deutbar. Übrige Sender sind ab Level 2 in **38.5 %** der
+Level null (Tabelle „Wie viel übrig bleibt" oben), die Zeile besteht also
+überwiegend aus Punkten, und ohne Kenntnis der Regeln bedeutet sie dem
+Betrachter nichts: wer nicht weiß, dass ein Brett mit einer Handvoll Sender
+gespielt wird und Reste etwas über das Spiel sagen, sieht in `·○●··` ein
+Muster ohne Inhalt.
+
+Die Abwechslungsmessung der beiden vorigen Einträge hat das nicht erfasst. Sie
+belegte **statistische Unterscheidbarkeit, nicht Lesbarkeit**: 275 von 365
+kurzen Partien sehen verschieden aus, aber verschieden aussehen heißt nicht,
+etwas zu sagen. Ebenso prüfte der Rendertest nur, ob die Zeichen zählbar
+bleiben, nicht, ob jemand weiß, was er da zählt.
+
+**Regel für künftige Kandidaten:** Eine Grafik im geteilten Ergebnis muss ohne
+Kenntnis der Spielregeln deutbar sein, sonst ist sie Dekoration. Abwechslung
+und Rendertest bleiben notwendige Kriterien, sind aber nicht hinreichend.
+
+### Zwei Fassungen an denselben Partien
+
+Dieselben drei Tagesbretter wie im Eintrag zur Kreisrampe, vom Planer gespielt.
+Die Levelleiste setzt ein gleiches Zeichen pro geschafftem Level, Level 1
+eingeschlossen, damit sie mit der Zahl in der Kopfzeile übereinstimmt, und `×`
+für das gescheiterte, in Fünfergruppen:
+
+```
+Nur Kopfzeile                                       Kopfzeile + Levelleiste
+
+funkl○ch 05.10. — 6 Level geschafft, 11 Punkte      funkl○ch 05.10. — 6 Level geschafft, 11 Punkte
+funkloch.thssn.dev                                  ●●●●● ●×
+                                                    funkloch.thssn.dev
+
+funkl○ch 06.10. — 15 Level geschafft, 77 Punkte     funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
+funkloch.thssn.dev                                  ●●●●● ●●●●●
+                                                    ●●●●● ×
+                                                    funkloch.thssn.dev
+
+funkl○ch 21.11. — 32 Level geschafft, 251 Punkte    funkl○ch 21.11. — 32 Level geschafft, 251 Punkte
+funkloch.thssn.dev                                  ●●●●● ●●●●●
+                                                    ●●●●● ●●●●●
+                                                    ●●●●● ●●●●●
+                                                    ●●×
+                                                    funkloch.thssn.dev
+```
+
+Die Levelleiste wiederholt die Zahl der Kopfzeile als Länge; deutbar ist sie
+ohne Regelkenntnis („so weit gekommen, hier gescheitert"), sie trägt aber keine
+Information, die die Kopfzeile nicht schon hat.
+
+### Befund
+
+**Die Kopfzeile allein wird ausgeliefert.** Die Levelleiste wiederholt nur die
+Zahl aus der Kopfzeile und kostet bei langen Partien mehrere Zeilen — bei
+32 Level fünf —, trägt also nichts bei.
+
+### Kein Material für eine Teilgrafik
+
+Das Spiel hat für eine Teilgrafik kein Material. Es gibt keinen Lösungsweg,
+den man zeigen könnte, und die einzige Größe, die pro Level variiert — die
+übrigen Sender —, ist in 38.5 % der Fälle null.
+
+**Das ist eine Eigenschaft des Spiels, keine der gewählten Zeichen**, und
+schließt weitere Versuche in dieser Richtung aus. Blöcke, Ziffern und
+Kreisrampe sind an derselben Stelle gescheitert; ein vierter Zeichensatz würde
+es auch. Erst wenn das Spiel selbst eine deutbare Größe pro Level bekommt, ist
+die Frage wieder offen.
+
+### Was blieb
+
+- `src/share.js` — nur noch Kopfzeile und `GAME_URL`. `form: 'digits'` und die
+  Rampe (`form: 'ramp'`, die ausgelieferte Kreisform) sind als tote Varianten
+  entfernt, mit ihnen `RAMP`, `FAILED`, `TEN_OR_MORE`, `GROUP`,
+  `GROUPS_PER_LINE` und `levelMarks`. Die Messungen dazu bleiben in diesem
+  Protokoll, `tools/share-forms.js` reproduziert sie weiter.
+- `test/share.test.js` — prüft Kopfzeile und Adresse, nichts dazwischen; die
+  Prüfungen der Zeichen und die Wache gegen zweistellige Reste (nur für die
+  Ziffernform da) sind entfernt.
+- `tools/ui-smoke.js` — der geteilte Text hat genau zwei Zeilen.
+- `README.md` — das Beispiel zeigt die Kopfzeile allein.

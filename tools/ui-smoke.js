@@ -16,8 +16,8 @@
  * time zones, that the board changes at Berlin midnight, that a second
  * attempt at it is refused however the page is reloaded or clicked, and that
  * the text the share button hands on carries the date, the levels cleared, the
- * points and one mark per level for the senders spared there, and nothing that
- * would spoil the board for whoever reads it — and that the button gets it out
+ * points and the address, and nothing that would spoil the board for whoever
+ * reads it — and that the button gets it out
  * by every route it has: the share sheet, the clipboard, or by hand.
  *
  * The moves are not improvised — the same run is played here first with the
@@ -100,9 +100,6 @@ function planRun(from) {
     cleared: levelsCleared(run),
     score: run.score,
     opening: dealt,
-    // Senders left over on each cleared level, in order — what the shared
-    // result has to draw.
-    spared: run.cleared.map(({ left }) => left),
   };
 }
 
@@ -744,15 +741,10 @@ try {
   // --- das geteilte Ergebnis -----------------------------------------------
   // The expectation is built here from the planned run, not by importing
   // share.js: a test that borrows the page's own formatter would agree with
-  // it however wrong it was. One mark per level for the senders spared there —
-  // · none, ○ one, ● two or more — a cross where the run ended, and nothing for
-  // the onboarding level, which scores nothing and every run clears. It still
-  // counts in the header.
+  // it however wrong it was. The header and the address, nothing between.
   const pointsWord = plan.score === 1 ? 'Punkt' : 'Punkte';
   // The name as the wordmark draws it, with the ring for the o.
   const expectedHeader = `funkl○ch 24.09. — ${plan.cleared} Level geschafft, ${plan.score} ${pointsWord}`;
-  const expectedMarks = [...plan.spared.slice(1).map((left) => (left === 0 ? '·' : left === 1 ? '○' : '●')), '×'];
-  console.log(`erwartet: ${expectedMarks.join('')}`);
 
   const button = await daily.evaluate(() => {
     const share = document.getElementById('share');
@@ -793,9 +785,9 @@ try {
   check(viaSheet.shown === false, 'der Text bleibt dabei verborgen');
 
   const lines = (viaSheet.sent ?? '').split('\n');
-  // Header, the block lines, and the game's address last. Spelled out here
-  // rather than imported from share.js, for the same reason as the marks.
-  const body = lines.slice(1, -1);
+  // Header and the game's address. Spelled out here rather than imported from
+  // share.js, for the same reason as the header.
+  check(lines.length === 2, `zwei Zeilen, keine Grafik (${lines.length})`);
   check(lines[0] === expectedHeader, `Kopfzeile: ${lines[0]}`);
   check(lines.at(-1) === 'funkloch.thssn.dev', `letzte Zeile: ${lines.at(-1)}`);
   check((viaSheet.sent ?? '').includes('funkloch.thssn.dev'), 'der geteilte Text enthält die URL');
@@ -803,14 +795,6 @@ try {
   check(lines[0].includes('24.09.'), 'sie nennt das Datum');
   check(lines[0].includes(`${plan.cleared} Level geschafft`), 'sie nennt die geschafften Level');
   check(lines[0].includes(`${plan.score} ${pointsWord}`), `sie nennt die Punkte (${pointsWord}; „1 Punkt" prüft test/share.test.js)`);
-  // The spaces only group the marks in fives; taken out, one character is one
-  // level.
-  const marks = [...body.join('').replace(/\s/g, '')];
-  check(marks.join('') === expectedMarks.join(''),
-    `die Zeichen entsprechen den gesparten Sendern ab Level 2: ${body.join(' / ')}`);
-  check(body.every((line) => line.split(' ').every((group) => group.length <= 5)),
-    'in Fünfergruppen');
-  check(marks.every((mark) => /^[·○●×]$/.test(mark)), 'ein Zeichen je Level, nur · ○ ● und ×');
   // Nothing that would hand the reader the board, let alone the moves.
   check(!/r\d+c\d+/.test(viaSheet.sent ?? ''), 'es verrät keinen Knoten');
 

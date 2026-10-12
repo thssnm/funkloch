@@ -61,23 +61,17 @@ Brett, statt eine neue Partie anzubieten. Umgeschaltet wird in der Kopfzeile.
 
 „Ergebnis teilen" öffnet auf dem Handy die native Teilen-Auswahl (Web Share
 API), sonst kopiert es in die Zwischenablage und sagt „Kopiert."; klappt auch
-das nicht, steht der Text zum Markieren da. Geteilt wird das Ergebnis und ein
-Streifen des Verlaufs, gebaut in `src/share.js`:
+das nicht, steht der Text zum Markieren da. Geteilt wird das Ergebnis, gebaut
+in `src/share.js`:
 
 ```
 funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
-●●○·· ○○·○○
-·○○·×
 funkloch.thssn.dev
 ```
 
-Ein Zeichen je Level ab Level 2, der Reihe nach, als Rampe von leer nach voll:
-`·` kein Sender übrig, `○` einer, `●` zwei oder mehr, und `×` für das Level, an
-dem die Partie scheiterte. Ein Zeichen ist immer ein Level, auch wenn ein
-Chatfenster die Abstände frisst; die Leerzeichen gruppieren nur zu fünft. Die
-letzte Zeile ist die Adresse des Spiels (`GAME_URL` in `src/share.js`). Nichts
-davon verrät das Brett. Warum Kreise und nicht Blöcke, Ziffern oder Emoji, steht
-in `MESSUNGEN.md`.
+Die zweite Zeile ist die Adresse des Spiels (`GAME_URL` in `src/share.js`).
+Nichts davon verrät das Brett. Eine Grafik des Verlaufs gibt es nicht mehr;
+warum keine, steht in `MESSUNGEN.md`.
 
 Der Tag wird **in Berlin** gerechnet (`boardDay` und `DAILY_TIME_ZONE` in
 `src/run.js`), mit echter Zeitzone über `Intl.DateTimeFormat` und nicht mit
