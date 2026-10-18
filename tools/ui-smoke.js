@@ -491,6 +491,48 @@ try {
     'und schraffiert');
   check(await page.locator('.node:not(.is-blocked) .shell-plate').count() === 0,
     'gewöhnliche Knoten tragen keins');
+
+  // --- a tap goes to the nearest node ---------------------------------------
+  // On this board the 44px targets overlap almost entirely, and hit-testing by
+  // element used to hand the tap to whichever node was drawn last. Pressed
+  // along the line between every pair of overlapping targets; the node that
+  // shows the press has to be the nearest one whose target contains the point.
+  // Behind the card, which is lifted for the moment: the run is over, so the
+  // release places nothing.
+  const targets = await page.evaluate(() => {
+    document.getElementById('over').style.visibility = 'hidden';
+    return [...document.querySelectorAll('.node:not(.is-forbidden) .hit')].map((hit) => {
+      const box = hit.getBoundingClientRect();
+      return { id: hit.closest('.node').dataset.id, x: box.left + box.width / 2, y: box.top + box.height / 2, reach: box.width / 2 };
+    });
+  });
+  const nearestTarget = (x, y) => {
+    let best = null;
+    for (const t of targets) {
+      const d = Math.hypot(t.x - x, t.y - y);
+      if (d <= t.reach && (best === null || d < best.d)) best = { id: t.id, d };
+    }
+    return best?.id ?? null;
+  };
+  const probes = [];
+  for (let i = 0; i < targets.length; i++) {
+    for (let j = i + 1; j < targets.length; j++) {
+      const a = targets[i]; const b = targets[j];
+      if (Math.hypot(a.x - b.x, a.y - b.y) >= a.reach + b.reach) continue;
+      for (const t of [0.3, 0.45, 0.55, 0.7]) probes.push([a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t]);
+    }
+  }
+  let wrongHits = 0;
+  for (const [x, y] of probes) {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    const pressed = await page.evaluate(() => document.querySelector('.node.is-pressed')?.dataset.id ?? null);
+    await page.mouse.up();
+    if (pressed !== nearestTarget(x, y)) wrongHits++;
+  }
+  await page.evaluate(() => { document.getElementById('over').style.visibility = ''; });
+  check(probes.length >= 20, `${probes.length} Druckpunkte zwischen überlappenden Trefferflächen`);
+  check(wrongHits === 0, `davon ${wrongHits} am falschen Knoten: der nächste gewinnt`);
   check(await page.evaluate(() => {
     const node = document.querySelector('.node.is-blocked');
     return node ? getComputedStyle(node.querySelector('.dot')).display : null;

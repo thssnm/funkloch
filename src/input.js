@@ -46,6 +46,38 @@ export const MARK_MS = 550;
 const MOVE_SLOP = 12;
 
 /**
+ * Which node a point belongs to: the nearest one whose reach contains it.
+ *
+ * Proximity and not the element under the pointer. The tap targets are at
+ * least 44px across, and on a dense board the nodes stand 24 to 27px apart,
+ * so the targets overlap almost entirely. Hit-testing by element then hands
+ * the tap to whichever node was drawn last, and a player aiming squarely at
+ * one node lands on its neighbour — and, placements being final, pays for it.
+ * The reach stays as the boundary: a point outside every node's reach is
+ * nobody's. Inside, the nearest centre wins.
+ *
+ * Pure: units are whatever the caller measures in, as long as `point` and
+ * `reachOf` agree with the nodes.
+ * @template {{x: number, y: number}} N
+ * @param {N[]} nodes
+ * @param {{x: number, y: number}} point
+ * @param {(node: N) => number} reachOf radius within which a node can be hit
+ * @returns {N | null}
+ */
+export function nearestWithin(nodes, point, reachOf) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const node of nodes) {
+    const distance = Math.hypot(node.x - point.x, node.y - point.y);
+    if (distance < bestDistance && distance <= reachOf(node)) {
+      best = node;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+/**
  * @param {object} scene from render.js
  * @param {{onToggle: (id: string) => void, onToggleMark?: (id: string) => void,
  *          onPreview: (id: string) => void, onPreviewEnd: () => void}} handlers
@@ -67,9 +99,33 @@ export function attachInput(scene, { onToggle, onToggleMark, onPreview, onPrevie
   let lastPointerType = 'mouse';
 
   // A forbidden node is scenery: it accepts nothing and reports nothing.
-  const nodeOf = (event) => {
-    const node = event.target.closest?.('.node') ?? null;
-    return node && !node.classList.contains('is-forbidden') ? node : null;
+  const allowed = (group) => (group && !group.classList.contains('is-forbidden') ? group : null);
+
+  // The node an event's *target* belongs to. Right for keyboard and focus
+  // events, which have no coordinates; wrong for a pointer on a dense board,
+  // where the targets overlap (see nearestWithin) — those go through locate.
+  const nodeOf = (event) => allowed(event.target.closest?.('.node') ?? null);
+
+  // The reach of a node in user units: its tap target, which fitHitAreas keeps
+  // at 44 screen pixels or the ring, whichever is wider.
+  const reachOf = (node) => parseFloat(scene.nodes.get(node.id).hit.getAttribute('r'));
+
+  // The node a pointer event belongs to, by proximity. The pointer's screen
+  // position is taken back into the board's own units through the SVG's
+  // current transform, so the distance is measured where the nodes are.
+  // A forbidden node still shadows the spot it stands on: the nearest node is
+  // found first, and if that one is forbidden the tap is nobody's — otherwise
+  // tapping scenery would place on the neighbour behind it.
+  const locate = (event) => {
+    const ctm = svg.getScreenCTM?.();
+    if (!ctm || !Number.isFinite(event.clientX)) return nodeOf(event);
+    const inverse = ctm.inverse();
+    const point = {
+      x: inverse.a * event.clientX + inverse.c * event.clientY + inverse.e,
+      y: inverse.b * event.clientX + inverse.d * event.clientY + inverse.f,
+    };
+    const node = nearestWithin(scene.board.graph.nodes, point, reachOf);
+    return node ? allowed(scene.nodes.get(node.id).group) : null;
   };
 
   const endPress = () => {
@@ -82,7 +138,7 @@ export function attachInput(scene, { onToggle, onToggleMark, onPreview, onPrevie
   };
 
   const onPointerDown = (event) => {
-    const node = nodeOf(event);
+    const node = locate(event);
     if (!node) return;
     lastPointerType = event.pointerType || 'mouse';
     event.preventDefault(); // no selection, no drag, no scroll started on a node
@@ -127,7 +183,7 @@ export function attachInput(scene, { onToggle, onToggleMark, onPreview, onPrevie
 
   const onPointerUp = (event) => {
     if (!press) return;
-    const onSameNode = nodeOf(event) === press.node;
+    const onSameNode = locate(event) === press.node;
     const { id, phase, mouse } = press;
     endPress();
     if (!onSameNode) return;
@@ -137,15 +193,25 @@ export function attachInput(scene, { onToggle, onToggleMark, onPreview, onPrevie
     // phase 'preview': the player was only looking. Deliberately nothing.
   };
 
-  const onPointerOver = (event) => {
-    const node = nodeOf(event);
-    if (!node || lastPointerType !== 'mouse' || press) return;
-    onPreview(node.dataset.id);
+  // Mouse hover shows the range of the node a click would hit — the same
+  // proximity rule, so the preview never promises one node and the click
+  // takes another. Followed on every move, because the nearest node changes
+  // without any element boundary being crossed.
+  let hovered = null;
+  const onHover = (event) => {
+    if ((event.pointerType || 'mouse') !== 'mouse' || press) return;
+    const id = locate(event)?.dataset.id ?? null;
+    if (id === hovered) return;
+    if (hovered !== null) onPreviewEnd();
+    hovered = id;
+    if (id !== null) onPreview(id);
   };
 
-  const onPointerOut = (event) => {
-    if (lastPointerType !== 'mouse' || press) return;
-    if (nodeOf(event)) onPreviewEnd();
+  const onPointerLeave = () => {
+    endPress();
+    if (hovered === null) return;
+    hovered = null;
+    onPreviewEnd();
   };
 
   const onKeyDown = (event) => {
@@ -170,11 +236,11 @@ export function attachInput(scene, { onToggle, onToggleMark, onPreview, onPrevie
   };
 
   const onContextMenu = (event) => {
-    const node = nodeOf(event);
-    if (!node) return;
-    // Suppressed on every board: a system menu over the game helps nobody, and
-    // on touch this fires mid-hold.
+    // Suppressed anywhere over the board: a system menu over the game helps
+    // nobody, and on touch this fires mid-hold.
     event.preventDefault();
+    const node = locate(event);
+    if (!node) return;
     // The hold ladder owns the touch gesture, so only a real right click notes
     // the node — and only where there is something to note.
     if (canMark && lastPointerType === 'mouse') {
@@ -186,11 +252,11 @@ export function attachInput(scene, { onToggle, onToggleMark, onPreview, onPrevie
   const listeners = [
     ['pointerdown', onPointerDown],
     ['pointermove', onPointerMove],
+    ['pointermove', onHover],
     ['pointerup', onPointerUp],
     ['pointercancel', endPress],
-    ['pointerleave', endPress],
-    ['pointerover', onPointerOver],
-    ['pointerout', onPointerOut],
+    ['pointerleave', onPointerLeave],
+    ['pointerover', onHover],
     ['keydown', onKeyDown],
     ['focusin', onFocusIn],
     ['focusout', onFocusOut],
