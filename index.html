@@ -444,13 +444,17 @@
 
       /* Row 3: the hand. The first card is bigger and lit, the next two are
          small and pale — that says "now, then, then" without the words that
-         used to be there saying it. */
+         used to be there saying it.
+         The small card is 48px, up from 44, for the digit's sake (see
+         .chip-digit). The row's height is the big card's 56px either way, so
+         the header does not grow for it; the smoke test measures the header
+         against the same header with the small cards put back to 44. */
       .hand { display: flex; align-items: center; gap: 10px; }
       .chip {
         display: grid;
         place-items: center;
-        width: 44px;
-        height: 44px;
+        width: 48px;
+        height: 48px;
         border-radius: 12px;
         border: 2px solid var(--line);
         background: var(--panel);
@@ -463,26 +467,38 @@
          because `.dot` and `.ring` belong to the board and a chip wearing them
          would answer every selector that asks for a node. */
       .chip svg { display: block; width: 82%; height: 82%; overflow: visible; }
-      .chip-core { fill: currentColor; }
-      .chip-ring { fill: none; stroke: currentColor; stroke-width: 1.6; }
-      /* The rings alone did not carry the small card. Measured on the 44px
-         chip at both pixel ratios: three rings land at radius 6.15 / 10.45 /
-         14.76 px with a 1.64px stroke, so 2.66px of clear space between them,
-         and a scan along the centre line comes back to the panel colour
-         between every pair (peaks 84-95, valleys 23 on a 33 background) at
-         DPR 1 as well as DPR 2. They do not smear.
-         What they do not do is count: two rings and three differ by one thin
-         stroke in a crowded target, and the card has to be read at a glance,
-         not studied. Hence the digit, which is the cheap half of the fix —
-         growing the rings would have cost the 44px card its size. It sits in
-         the corner on a disc of the card's own colour, because the glyph box
-         reaches back to 10.6 from the centre and would otherwise lie across
-         the outermost ring at 15.2. */
-      .chip-plate { fill: var(--panel); }
+      .chip-ring { fill: none; stroke: currentColor; stroke-width: 1.5; }
+      /* The rings alone did not carry the small card: two rings and three
+         differ by one thin stroke in a crowded target, and the card has to be
+         read at a glance, not studied. Hence the digit. It used to sit in the
+         corner at 9 units — 13px on the small card, 17 on the big one — as a
+         subscript, and that was too small to read mid-game. Now it is the
+         centre of the drawing and the rings go round it: the digit is the
+         information, the rings are the picture, so the ratio tips its way.
+         16 units is 19.7px on the 48px card and 23px on the 56px one. The
+         glyph box of a bold digit at that size reaches about 7.3 units from
+         the centre on the diagonal; the innermost ring starts at 8.6 so its
+         inner edge (7.85) clears it. From there the rings step 3.4 to 15.4,
+         which is the same outer edge the old 15.2 ring had within the card.
+         Tried and rejected: 15 units on the 44px card (digit 16.9px, ring gap
+         2.25px — the gap at DPR 1 was the limit, not the digit), and 17 or 18
+         units on the 48px card (the inner ring hugs the glyph, and at 18 the
+         outer ring runs 1px from the card's border).
+         The rings still resolve. Scanned along the centre line of a rendered
+         radius 3, luminance per device pixel from the card's edge inwards
+         (panel is 23 on the small card, 27 on the big one):
+           48px card, DPR 1: peaks 96 at px 6 / 10 / 14, valleys 23 between
+           56px card, DPR 1: peaks 197 at px 7 / 12 / 16, valleys 27 between
+           48px card, DPR 2: peaks 96, three to four pixels of 23 between
+           56px card, DPR 2: peaks 197, four pixels of 27 between
+         One pixel of panel between the rings at DPR 1 on the small card is
+         the floor; the old layout had 2.66px of clear space, this one 2.34.
+         The header measures 122px (DPR 2 and 3) and 123px (DPR 1) at 360, 390
+         and 560px, the same as with 44px cards, because the row is the big
+         card's 56px either way. */
       .chip-digit {
         fill: currentColor;
-        font: 700 9px system-ui, -apple-system, "Segoe UI", sans-serif;
-        opacity: 0.9;
+        font: 700 16px system-ui, -apple-system, "Segoe UI", sans-serif;
       }
 
       .sets { display: flex; gap: 8px; }
@@ -859,16 +875,18 @@
       let boardKey = null;
 
       /**
-       * Draws one card of the hand: a filled centre and one ring per hop of
-       * reach, so a radius 3 wears three rings. Rings and not a digit because
-       * that is the shape the board itself makes when the signal spreads — the
-       * card and the board then say the same thing in the same language.
+       * Draws one card of the hand: the reach as a digit in the centre and one
+       * ring per hop around it, so a radius 3 wears a 3 inside three rings.
+       * The rings are the shape the board itself makes when the signal spreads
+       * — the card and the board say the same thing in the same language — and
+       * the digit is what you actually read mid-game; see .chip-digit in the
+       * stylesheet for the sizes and what they were measured against.
        *
        * Fixed in a 32-unit box and scaled by the chip, so the small cards and
        * the big one are one drawing at two sizes. The outermost ring of a
-       * radius 3 lands at 15.2 of the 16 available; the mix in ENDLESS_RUN
+       * radius 3 lands at 15.4 of the 16 available; the mix in ENDLESS_RUN
        * tops out there, and a wider reach would need the step reworked rather
-       * than simply extended.
+       * than simply extended. A card that is not dealt stays blank.
        * @param {HTMLElement} chip
        * @param {number|null} radius null for a card that is not dealt
        */
@@ -879,37 +897,25 @@
         svg.setAttribute('role', 'img');
         svg.setAttribute('aria-label', radius === null ? 'keine Karte' : `Reichweite ${radius}`);
 
-        const core = document.createElementNS(SVG_NS, 'circle');
-        core.setAttribute('class', 'chip-core');
-        core.setAttribute('cx', '16');
-        core.setAttribute('cy', '16');
-        core.setAttribute('r', '3');
-        svg.append(core);
-
         for (let hop = 0; hop < (radius ?? 0); hop++) {
           const ring = document.createElementNS(SVG_NS, 'circle');
           ring.setAttribute('class', 'chip-ring');
           ring.setAttribute('cx', '16');
           ring.setAttribute('cy', '16');
-          ring.setAttribute('r', String(6 + hop * 4.2));
+          ring.setAttribute('r', String(8.6 + hop * 3.4));
           svg.append(ring);
         }
 
-        // The digit the rings turned out to need on the small card; see the
-        // measurement next to .chip-digit in the stylesheet.
         if (radius !== null) {
-          const plate = document.createElementNS(SVG_NS, 'circle');
-          plate.setAttribute('class', 'chip-plate');
-          plate.setAttribute('cx', '26.5');
-          plate.setAttribute('cy', '26.5');
-          plate.setAttribute('r', '5');
           const digit = document.createElementNS(SVG_NS, 'text');
           digit.setAttribute('class', 'chip-digit');
-          digit.setAttribute('x', '26.5');
-          digit.setAttribute('y', '29.8');
+          digit.setAttribute('x', '16');
+          // Baseline set so the cap height (about 0.72 of 16 units) is centred
+          // on the rings; a digit has no descender to pull it the other way.
+          digit.setAttribute('y', '21.8');
           digit.setAttribute('text-anchor', 'middle');
           digit.textContent = String(radius);
-          svg.append(plate, digit);
+          svg.append(digit);
         }
         chip.replaceChildren(svg);
       }

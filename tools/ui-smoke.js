@@ -226,6 +226,40 @@ try {
   check(cards[0].width > cards[1].width && cards[1].width === cards[2].width,
     `die erste Karte ist größer (${cards[0].width} gegen ${cards[1].width}px)`);
 
+  // The digit is the information on the card, so it sits in the centre at a
+  // size that reads mid-game, and the rings go round it. The small card grew
+  // from 44 to 48px for it; what it may not do is grow the header. Same
+  // method as the mark below: the header as it stands against the same header
+  // with the small cards put back to 44, measured in one layout.
+  const digits = await page.evaluate(() => {
+    const head = document.querySelector('.head');
+    const small = [...document.querySelectorAll('.chip.next')];
+    const now = head.getBoundingClientRect().height;
+    for (const chip of small) Object.assign(chip.style, { width: '44px', height: '44px' });
+    const old = head.getBoundingClientRect().height;
+    for (const chip of small) Object.assign(chip.style, { width: '', height: '' });
+    return {
+      now,
+      old,
+      placed: [...document.querySelectorAll('.chip-digit')].map((digit) => {
+        const chip = digit.closest('.chip').getBoundingClientRect();
+        const box = digit.getBoundingClientRect();
+        return {
+          // The glyph's centre against the card's, in px; the glyph box is the
+          // em box, so it hangs a little below the cap height it is set by.
+          dx: Math.round(box.left + box.width / 2 - (chip.left + chip.width / 2)),
+          units: parseFloat(getComputedStyle(digit).fontSize),
+        };
+      }),
+    };
+  });
+  check(digits.now === digits.old,
+    `die Kopfzeile misst ${digits.now}px mit 48er-Karten, ${digits.old}px mit 44er-Karten`);
+  check(digits.placed.length === 3 && digits.placed.every((d) => Math.abs(d.dx) <= 1),
+    `die Ziffern stehen in der Kartenmitte (Abweichung ${digits.placed.map((d) => d.dx).join(', ')}px)`);
+  check(digits.placed.every((d) => d.units >= 16),
+    `und messen ${digits.placed[0]?.units} Einheiten, nicht mehr 9`);
+
   // --- Neue Partie is not under a running board ----------------------------
   const restart = await page.evaluate(() => {
     const button = document.getElementById('restart');
