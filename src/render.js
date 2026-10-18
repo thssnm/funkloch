@@ -41,40 +41,123 @@ export const MIN_HIT_PX = 44;
 
 /** Padding around the graph bounds, in user units — room for the widest ring.
  *  A caller that is short of space can ask for less, but not for less than
- *  RING_RADIUS: below that a transmitter on an outer node draws its ring past
- *  the viewBox, and `overflow: visible` then puts it over whatever is next to
- *  the board. See the `padding` option on {@link createScene}. */
+ *  the board's transmitter ring: below that a transmitter on an outer node
+ *  draws its ring past the viewBox, and `overflow: visible` then puts it over
+ *  whatever is next to the board. See the `padding` option on
+ *  {@link createScene}. */
 const PADDING = 36;
 
-/** Radius of the visible node dot; the covered/transmitter sizes are CSS scales. */
-const DOT_RADIUS = 8;
+/** Radius of the visible node dot as a share of the board's nearest pair of
+ *  nodes; the covered/transmitter sizes are CSS scales on top of it (1.75x
+ *  and 2x). Derived per board rather than fixed, so a board whose nodes stand
+ *  further apart gets bigger nodes, and a tight one gets nodes as big as they
+ *  can be without touching.
+ *
+ *  Until 2026-10-18 the dot was a fixed 8 units. The generator lays every
+ *  board on a 60-unit lattice with jitter, so the nearest pair sits at 37-47
+ *  units whatever the node count (200 bot runs, 16 000 boards: median 44,
+ *  p10 42-44, min 37.3), and 8 units was a ratio of 0.17-0.21 in disguise.
+ *  What sets the ceiling is not the dot but the bodies the CSS makes of it:
+ *  a lit node is 1.75 dots, a transmitter 2, each plus a 2.5 stroke, and the
+ *  two have to fit between the nearest pair with a gap left over. Measured
+ *  on seed 5 at 390 and 360px wide, the boards with 9 / 30 / 50 nodes draw
+ *  at 1.53 / 0.79 / 0.61 px per unit (1.40 / 0.72 / 0.56 at 360):
+ *
+ *    ratio   dot px (9/30/50)   worst gap lit–sender   worst gap two senders
+ *    0.18*   12.2 / 6.3 / 4.9   14.3 / 6.3 / 5.3 px     10.8 / 4.5 / 3.9 px
+ *    0.20    13.5 / 6.7 / 5.3    9.7 / 4.7 / 3.8 px      5.8 / 2.8 / 2.3 px
+ *    0.22    14.8 / 7.4 / 5.9    4.6 / 2.2 / 1.8 px      0.4 / 0.1 / 0.1 px
+ *    0.24    15.8 / 8.0 / 6.3   -0.4 / -0.3 / -0.2 px   -4.8 / -2.6 / -2.0 px
+ *    * the old fixed 8 units on these boards
+ *
+ *  "Worst gap" is at the board's nearest pair in the state that fills it
+ *  most. 0.22 lets two adjacent transmitters touch; 0.24 overlaps. 0.20 is
+ *  the last step that keeps a gap in every state on a 360px phone (2.1px on
+ *  the 50-node board), and it costs the edges little: with every node lit
+ *  the median free edge on the 50-node board goes from 23.2 to 21.7px, and
+ *  the share of edges with under 8px of free line from 4 to 7 % (0.22: 12 %,
+ *  0.24: 16 %). The structure stays readable; it was the overlap that bit
+ *  first, not the edges. A bigger step would have to come out of the 1.75x
+ *  and 2x, not out of this number. */
+export const DOT_RATIO = 0.20;
 
-/** Half-length of the arms of the cross drawn on a ruled-out node. */
-const CROSS_ARM = DOT_RADIUS * 1.6;
+/** What a board's nodes stand on when it has no pair to measure: a single
+ *  node, or two on the same spot. The generator's default lattice spacing. */
+const FALLBACK_SPACING = 60;
 
-/** Half-width of the square that stands in for a forbidden node. */
-const BLOCK_HALF = DOT_RADIUS * 1.5;
+/**
+ * Distance between the two closest nodes of a board, over all pairs and not
+ * only along edges: overlap is geometry, and a thinned-out edge does not move
+ * the nodes apart. On the lattices the generator draws the closest pair is an
+ * adjacent pair anyway.
+ * @param {Array<{x: number, y: number}>} nodes
+ * @returns {number} in user units; FALLBACK_SPACING when there is no pair
+ */
+export function nearestPair(nodes) {
+  let nearest = Infinity;
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const d = Math.hypot(nodes[i].x - nodes[j].x, nodes[i].y - nodes[j].y);
+      if (d < nearest) nearest = d;
+    }
+  }
+  return Number.isFinite(nearest) && nearest > 0 ? nearest : FALLBACK_SPACING;
+}
 
-/** Circumradius of the octagon that *is* an impermeable node. Close to the
- *  covered dot (1.75x) so the two read as bodies of the same weight rather than
- *  as a small thing inside a big one — an octagon of a given circumradius
- *  covers about a tenth less area than the circle through the same points. */
-const SHELL_RADIUS = DOT_RADIUS * 1.75;
-
-/** Spacing of the hatch lines inside that octagon, in user units. Wide enough
- *  that the gaps survive the smallest the board is ever drawn at, tight enough
- *  that the node still reads as filled and not as two stray strokes. */
-const HATCH_STEP = 4.2;
-
-/** Radii of the two rings that mark a node lit by more than one transmitter. */
-const CLASH_RADII = [DOT_RADIUS * 2.2, DOT_RADIUS * 2.9];
-
-/** Radius of the transmitter ring. Far enough out to read as a separate ring
- *  rather than a thick border, which is what makes a transmitter identifiable
- *  without relying on its colour. */
-const RING_RADIUS = DOT_RADIUS * 3.1;
+/**
+ * Every radius of the drawing, for one board. All of them hang off the dot,
+ * so the node keeps its proportions at any size; only the transmitter ring is
+ * held back where the board is tight.
+ * @param {Array<{x: number, y: number}>} nodes
+ * @param {number} ratio dot radius as a share of the nearest pair
+ * @returns {{nearest: number, dot: number, cross: number, blockHalf: number,
+ *            shell: number, hatchStep: number, clash: number[], ring: number}}
+ */
+export function metricsFor(nodes, ratio = DOT_RATIO) {
+  const nearest = nearestPair(nodes);
+  const dot = nearest * ratio;
+  return {
+    nearest,
+    dot,
+    /** Half-length of the arms of the cross drawn on a ruled-out node. */
+    cross: dot * 1.6,
+    /** Half-width of the square that stands in for a forbidden node. */
+    blockHalf: dot * 1.5,
+    /** Circumradius of the octagon that *is* an impermeable node. Close to
+     *  the covered dot (1.75x) so the two read as bodies of the same weight
+     *  rather than as a small thing inside a big one — an octagon of a given
+     *  circumradius covers about a tenth less area than the circle through
+     *  the same points. */
+    shell: dot * 1.75,
+    /** Spacing of the hatch lines inside that octagon. Wide enough that the
+     *  gaps survive the smallest the board is ever drawn at, tight enough
+     *  that the node still reads as filled and not as two stray strokes.
+     *  4.2 units at the dot of 8 this drawing was tuned at. */
+    hatchStep: dot * 0.525,
+    /** Radii of the two rings that mark a node lit by more than one
+     *  transmitter. */
+    clash: [dot * 2.2, dot * 2.9],
+    /** Radius of the transmitter ring. Far enough out to read as a separate
+     *  ring rather than a thick border, which is what makes a transmitter
+     *  identifiable without relying on its colour. It was 3.1 dots when the
+     *  dot was 8, which left 4.8 units between the transmitter body (2 dots
+     *  plus stroke) and the ring, and 1.5 units between the ring and a lit
+     *  neighbour on the nearest pair of a typical board. With the dot at
+     *  0.20 of that pair the same 3.1 would run 2.4 units into the
+     *  neighbour; 2.75 keeps clear of it but leaves only 2.6 units of ring
+     *  gap, 1.6px on a 50-node board, and the ring starts to read as a
+     *  border. 2.9 is the middle: 3.8 units of ring gap (2.3px there), and
+     *  at the nearest pair, in the one state where a lit node stands next
+     *  to a transmitter, the ring's stroke meets the neighbour's by 0.6
+     *  units, under half a pixel on a phone. */
+    ring: dot * 2.9,
+  };
+}
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** Two decimals: enough for any screen, and keeps the attributes readable. */
+const round2 = (value) => Math.round(value * 100) / 100;
 
 /** Counter behind the clip-path ids. The hatching of every impermeable node is
  *  clipped to the same octagon, so one clipPath per scene is enough — but two
@@ -127,18 +210,22 @@ function distancesFrom(graph, id, k) {
  * a plain number in the run. The renderer only needs the graph and its k.
  * @param {{graph: import('./graph.js').Graph, k: number}} board a puzzle level
  *        as stored, or `{graph, k: 1}` for a board of the run
- * @param {{document?: Document, padding?: number}} [options] `padding` is the
- *        margin around the graph in user units; less of it means the same board
- *        drawn larger in the same box. Clamped to RING_RADIUS from below.
+ * @param {{document?: Document, padding?: number, dotRatio?: number}} [options]
+ *        `padding` is the margin around the graph in user units; less of it
+ *        means the same board drawn larger in the same box. Clamped to the
+ *        transmitter ring from below. `dotRatio` overrides {@link DOT_RATIO};
+ *        it is there for the calibration tools, not for the page.
  * @returns {{svg: SVGSVGElement, nodes: Map<*, object>, edges: Array<object>,
- *            board: object, viewBox: {width: number}}}
+ *            board: object, viewBox: {width: number},
+ *            metrics: ReturnType<typeof metricsFor>}}
  */
 export function createScene(
   board,
-  { document: doc = globalThis.document, padding = PADDING } = {},
+  { document: doc = globalThis.document, padding = PADDING, dotRatio = DOT_RATIO } = {},
 ) {
   const { nodes, edges } = board.graph;
-  const margin = Math.max(padding, RING_RADIUS);
+  const metrics = metricsFor(nodes, dotRatio);
+  const margin = Math.max(padding, metrics.ring);
   const xs = nodes.map((node) => node.x);
   const ys = nodes.map((node) => node.y);
   const minX = Math.min(...xs) - margin;
@@ -159,7 +246,7 @@ export function createScene(
   const clip = doc.createElementNS(SVG_NS, 'clipPath');
   clip.setAttribute('id', clipId);
   const clipShape = doc.createElementNS(SVG_NS, 'polygon');
-  clipShape.setAttribute('points', octagon(SHELL_RADIUS));
+  clipShape.setAttribute('points', octagon(metrics.shell));
   clip.append(clipShape);
   defs.append(clip);
 
@@ -191,15 +278,15 @@ export function createScene(
     // Preview halo, behind everything; only visible while a range is shown.
     const aura = doc.createElementNS(SVG_NS, 'circle');
     aura.setAttribute('class', 'aura');
-    aura.setAttribute('r', RING_RADIUS * 1.15);
+    aura.setAttribute('r', round2(metrics.ring * 1.15));
 
     const ring = doc.createElementNS(SVG_NS, 'circle');
     ring.setAttribute('class', 'ring');
-    ring.setAttribute('r', RING_RADIUS);
+    ring.setAttribute('r', round2(metrics.ring));
 
     const dot = doc.createElementNS(SVG_NS, 'circle');
     dot.setAttribute('class', 'dot');
-    dot.setAttribute('r', DOT_RADIUS);
+    dot.setAttribute('r', round2(metrics.dot));
 
     // The transmitter's own radius, written on it. With senders of mixed radii
     // the number is the only thing that tells two transmitters apart.
@@ -220,7 +307,7 @@ export function createScene(
     if (node.blocked === true) {
       shellPlate = doc.createElementNS(SVG_NS, 'polygon');
       shellPlate.setAttribute('class', 'shell-plate');
-      shellPlate.setAttribute('points', octagon(SHELL_RADIUS));
+      shellPlate.setAttribute('points', octagon(metrics.shell));
 
       // Hatching, clipped to the plate. Diagonal lines rather than a pattern
       // fill: a <pattern> resolves `currentColor` against its own place in the
@@ -231,14 +318,15 @@ export function createScene(
       hatch.setAttribute('clip-path', `url(#${clipId})`);
       // Beyond this offset a 45-degree line misses the octagon entirely and
       // would only be drawn to be clipped away.
-      const steps = Math.floor((SHELL_RADIUS * Math.SQRT2 * Math.cos(Math.PI / 8)) / HATCH_STEP);
+      const { shell: shellRadius, hatchStep } = metrics;
+      const steps = Math.floor((shellRadius * Math.SQRT2 * Math.cos(Math.PI / 8)) / hatchStep);
       for (let step = -steps; step <= steps; step++) {
-        const offset = step * HATCH_STEP;
+        const offset = step * hatchStep;
         const stroke = doc.createElementNS(SVG_NS, 'line');
-        stroke.setAttribute('x1', -SHELL_RADIUS);
-        stroke.setAttribute('y1', -SHELL_RADIUS + offset);
-        stroke.setAttribute('x2', SHELL_RADIUS);
-        stroke.setAttribute('y2', SHELL_RADIUS + offset);
+        stroke.setAttribute('x1', round2(-shellRadius));
+        stroke.setAttribute('y1', round2(-shellRadius + offset));
+        stroke.setAttribute('x2', round2(shellRadius));
+        stroke.setAttribute('y2', round2(shellRadius + offset));
         hatch.append(stroke);
       }
       shell.append(shellPlate, hatch);
@@ -247,9 +335,9 @@ export function createScene(
     // Two concentric rings: the shape itself says "more than one signal".
     const clash = doc.createElementNS(SVG_NS, 'g');
     clash.setAttribute('class', 'clash');
-    for (const radius of CLASH_RADII) {
+    for (const radius of metrics.clash) {
       const circle = doc.createElementNS(SVG_NS, 'circle');
-      circle.setAttribute('r', radius);
+      circle.setAttribute('r', round2(radius));
       clash.append(circle);
     }
 
@@ -260,34 +348,36 @@ export function createScene(
     block.setAttribute('class', 'block');
     const plate = doc.createElementNS(SVG_NS, 'rect');
     plate.setAttribute('class', 'plate');
-    plate.setAttribute('x', -BLOCK_HALF);
-    plate.setAttribute('y', -BLOCK_HALF);
-    plate.setAttribute('width', BLOCK_HALF * 2);
-    plate.setAttribute('height', BLOCK_HALF * 2);
-    plate.setAttribute('rx', 3);
+    const half = metrics.blockHalf;
+    plate.setAttribute('x', round2(-half));
+    plate.setAttribute('y', round2(-half));
+    plate.setAttribute('width', round2(half * 2));
+    plate.setAttribute('height', round2(half * 2));
+    plate.setAttribute('rx', round2(half * 0.25));
     const bar = doc.createElementNS(SVG_NS, 'rect');
     bar.setAttribute('class', 'bar');
-    bar.setAttribute('x', -BLOCK_HALF * 0.62);
-    bar.setAttribute('y', -BLOCK_HALF * 0.22);
-    bar.setAttribute('width', BLOCK_HALF * 1.24);
-    bar.setAttribute('height', BLOCK_HALF * 0.44);
-    bar.setAttribute('rx', 1.5);
+    bar.setAttribute('x', round2(-half * 0.62));
+    bar.setAttribute('y', round2(-half * 0.22));
+    bar.setAttribute('width', round2(half * 1.24));
+    bar.setAttribute('height', round2(half * 0.44));
+    bar.setAttribute('rx', round2(half * 0.125));
     block.append(plate, bar);
 
     // The player's "nothing goes here" cross, drawn above the dot so it stays
     // legible whatever the dot is doing underneath.
     const cross = doc.createElementNS(SVG_NS, 'g');
     cross.setAttribute('class', 'cross');
+    const arm = metrics.cross;
     for (const [x1, y1, x2, y2] of [
-      [-CROSS_ARM, -CROSS_ARM, CROSS_ARM, CROSS_ARM],
-      [-CROSS_ARM, CROSS_ARM, CROSS_ARM, -CROSS_ARM],
+      [-arm, -arm, arm, arm],
+      [-arm, arm, arm, -arm],
     ]) {
-      const arm = doc.createElementNS(SVG_NS, 'line');
-      arm.setAttribute('x1', x1);
-      arm.setAttribute('y1', y1);
-      arm.setAttribute('x2', x2);
-      arm.setAttribute('y2', y2);
-      cross.append(arm);
+      const line = doc.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', round2(x1));
+      line.setAttribute('y1', round2(y1));
+      line.setAttribute('x2', round2(x2));
+      line.setAttribute('y2', round2(y2));
+      cross.append(line);
     }
 
     // Invisible tap target, always at least MIN_HIT_PX across — see fitHitAreas.
@@ -314,7 +404,7 @@ export function createScene(
     });
   });
 
-  return { svg, nodes: nodeElements, edges: edgeElements, board, viewBox: { width } };
+  return { svg, nodes: nodeElements, edges: edgeElements, board, viewBox: { width }, metrics };
 }
 
 /**
@@ -438,7 +528,7 @@ export function fitHitAreas(scene, minPx = MIN_HIT_PX) {
   const onScreen = scene.svg.getBoundingClientRect().width;
   if (!onScreen) return;
   const scale = onScreen / scene.viewBox.width;
-  const radius = Math.max(minPx / 2 / scale, RING_RADIUS);
+  const radius = Math.max(minPx / 2 / scale, scene.metrics.ring);
   for (const parts of scene.nodes.values()) {
     parts.hit.setAttribute('r', radius.toFixed(2));
   }

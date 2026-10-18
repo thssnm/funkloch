@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createScene, HOP_MS, render } from '../src/render.js';
+import { createScene, DOT_RATIO, HOP_MS, metricsFor, nearestPair, render } from '../src/render.js';
 
 /**
  * The smallest document the renderer will accept. There is no browser in the
@@ -129,5 +129,60 @@ test('render marks impermeable nodes', async (t) => {
     }
     assert.ok(built.nodes.get('b').group.classList.contains('is-transmitter'));
     assert.equal(built.nodes.get('b').label.textContent, '1');
+  });
+});
+
+test('node size follows the nearest pair of the board', async (t) => {
+  await t.test('the nearest pair is measured over all nodes, not only along edges', () => {
+    // c and d stand 30 apart but the edge between them is gone; they are
+    // still the closest pair, and the dot has to be sized for them.
+    const nodes = [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 60, y: 0 }, { id: 'c', x: 0, y: 60 }, { id: 'd', x: 30, y: 60 }];
+    assert.equal(nearestPair(nodes), 30);
+    assert.equal(nearestPair([{ id: 'a', x: 0, y: 0 }]), 60, 'no pair: the lattice spacing');
+    assert.equal(nearestPair([{ id: 'a', x: 1, y: 1 }, { id: 'b', x: 1, y: 1 }]), 60, 'coincident: the same');
+  });
+
+  await t.test('every radius scales with the board', () => {
+    const wide = line5;
+    const tight = { ...line5, nodes: line5.nodes.map((node) => ({ ...node, x: node.x / 2 })) };
+    const a = createScene({ graph: wide, k: 1 }, { document: fakeDocument() });
+    const b = createScene({ graph: tight, k: 1 }, { document: fakeDocument() });
+    assert.equal(a.metrics.dot, 60 * DOT_RATIO);
+    assert.equal(b.metrics.dot, 30 * DOT_RATIO);
+    for (const key of ['cross', 'blockHalf', 'shell', 'hatchStep']) {
+      assert.ok(Math.abs(a.metrics[key] / b.metrics[key] - 2) < 1e-9, `${key} halves with the spacing`);
+    }
+    assert.equal(a.nodes.get('a').dot.getAttribute('r'), String(Math.round(60 * DOT_RATIO * 100) / 100));
+    assert.equal(b.nodes.get('a').dot.getAttribute('r'), String(Math.round(30 * DOT_RATIO * 100) / 100));
+  });
+
+  await t.test('bodies never overlap at the nearest pair, in any state', () => {
+    // The biggest bodies the stylesheet makes: a transmitter at 2 dots next
+    // to a lit node at 1.75, each with half a 2.5 stroke outside the radius.
+    for (const nearest of [37, 44, 60, 120]) {
+      const { dot } = metricsFor([{ x: 0, y: 0 }, { x: nearest, y: 0 }]);
+      const sender = (dot + 1.25) * 2;
+      const lit = (dot + 1.25) * 1.75;
+      assert.ok(sender + lit < nearest, `sender next to lit node at ${nearest}: ${sender + lit}`);
+      assert.ok(sender + sender < nearest, `two senders at ${nearest}: ${2 * sender}`);
+    }
+  });
+
+  await t.test('the ring stays a ring: clear of its own body, short of the neighbour', () => {
+    for (const nearest of [37, 44, 60]) {
+      const { dot, ring } = metricsFor([{ x: 0, y: 0 }, { x: nearest, y: 0 }]);
+      // Inside: the transmitter body is 2 dots plus half its 2.5 stroke, the
+      // ring's own 3 stroke takes 1.5 inwards; what is left must be a gap.
+      assert.ok(ring - 1.5 - (dot * 2 + 1.25) >= 2.5, `ring gap at ${nearest}: ${ring - 1.5 - dot * 2 - 1.25}`);
+      // Outside: the ring's centre line stays inside the lit neighbour's body
+      // line at the nearest pair; only the strokes may meet.
+      assert.ok(ring + dot * 1.75 <= nearest, `ring reaches ${ring + dot * 1.75} of ${nearest}`);
+    }
+  });
+
+  await t.test('the margin grows with the ring, so an outer transmitter fits', () => {
+    const scene = createScene({ graph: line5, k: 1 }, { document: fakeDocument(), padding: 0 });
+    const [minX] = scene.svg.getAttribute('viewBox').split(' ').map(Number);
+    assert.ok(-minX >= scene.metrics.ring, `viewBox starts at ${minX}, ring is ${scene.metrics.ring}`);
   });
 });
