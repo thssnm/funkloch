@@ -37,6 +37,7 @@ import {
   advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelsCleared, place,
 } from '../src/run.js';
 import { lookaheadChoice } from './bot64.js';
+import { GAME_URL } from '../src/share.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
 const seed = Number.parseInt(args.seed ?? '7', 10);
@@ -162,6 +163,42 @@ try {
   check((await page.evaluate(() => document.getElementById('hud-left')
     .closest('.race-value').textContent.replace(/\s+/g, ' ').trim())).endsWith('Sender'),
     'die Rennzeile nennt die Sender, Zahl zuerst');
+
+  // --- the link preview ------------------------------------------------------
+  // What a chat shows next to the shared address. The tags have to be there
+  // and absolute — preview services resolve nothing relative — and every icon
+  // the head or the manifest names has to come back from the server.
+  const preview = await page.evaluate(() => {
+    const get = (selector) => document.querySelector(selector)?.getAttribute('content') ?? null;
+    return {
+      title: get('meta[property="og:title"]'),
+      description: get('meta[property="og:description"]'),
+      url: get('meta[property="og:url"]'),
+      image: get('meta[property="og:image"]'),
+      type: get('meta[property="og:type"]'),
+      card: get('meta[name="twitter:card"]'),
+      twitterImage: get('meta[name="twitter:image"]'),
+    };
+  });
+  check(preview.title === 'Funkloch' && preview.type === 'website' && preview.card === 'summary_large_image',
+    `Vorschau-Tags: ${preview.title}, ${preview.type}, ${preview.card}`);
+  check(Boolean(preview.description), `mit Beschreibung: ${preview.description}`);
+  check([preview.url, preview.image, preview.twitterImage].every((u) => /^https:\/\//.test(u ?? '')),
+    `og:url, og:image und twitter:image sind absolut (${preview.image})`);
+  check(preview.url === `${GAME_URL}/`, `og:url ist die geteilte Adresse: ${preview.url}`);
+  const assets = ['favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest', 'og-image.png'];
+  for (const asset of assets) {
+    const response = await page.request.get(`http://127.0.0.1:${port}/${asset}`);
+    const type = response.headers()['content-type'] ?? '';
+    check(response.status() === 200 && /image|manifest/.test(type), `${asset} kommt an (${response.status()}, ${type})`);
+  }
+  const size = await page.evaluate(() => new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(`${image.naturalWidth}×${image.naturalHeight}`);
+    image.onerror = () => resolve('Fehler');
+    image.src = './og-image.png';
+  }));
+  check(size === '1200×630', `das Vorschaubild misst ${size}`);
 
   // --- the three rows of the header ----------------------------------------
   // Bookkeeping small and dimmed on top, the two numbers of the race below it

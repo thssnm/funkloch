@@ -9,6 +9,22 @@
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#10131a" />
+    <!-- The link preview, for the result the share button carries into chats.
+         Absolute URLs, because preview services resolve nothing relative, and
+         written out rather than read from GAME_URL in src/share.js, because
+         those services run no script. test/meta.test.js holds the two
+         together: a domain change that misses one of them fails there. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Funkloch" />
+    <meta property="og:description" content="Jeden Tag ein neues Netz voller Funklöcher, und du hast nur eine Handvoll Sender, um sie alle zu schließen." />
+    <meta property="og:url" content="https://funkloch.thssn.dev/" />
+    <meta property="og:image" content="https://funkloch.thssn.dev/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="funkloch" />
+    <meta property="og:locale" content="de_DE" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://funkloch.thssn.dev/og-image.png" />
     <style>
       :root {
         --bg: #10131a;

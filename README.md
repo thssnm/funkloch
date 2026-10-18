@@ -148,7 +148,7 @@ LD_LIBRARY_PATH=~/.local/browser-libs/root/usr/lib64 npm run smoke
 | --- | --- |
 | `npm run levels` | baut `levels/` neu — aus demselben Seed byte-identisch |
 | `npm run preview` | Screenshots und Rendering-Prüfungen im Browser |
-| `node tools/make-icons.js` | rastert `favicon.svg` zu den App-Icons |
+| `node tools/make-icons.js` | rastert `favicon.svg` zu den App-Icons und setzt daraus und aus der Wortmarke das Vorschaubild `og-image.png` |
 | `node tools/endless.js --runs=1000` | wie weit die Bots im Endlosmodus kommen |
 | `node tools/blocked.js --bots` | was undurchlässige Knoten mit einem Brett machen |
 | `node tools/density.js` | was die Kantendichte mit Brettform und Bots macht |

@@ -24,8 +24,11 @@
 
 /**
  * Where the game is played, as the last line of every shared result: whoever
- * reads it in a chat can follow it to today's board. Kept here and nowhere
- * else, so moving the game is a change to this line.
+ * reads it in a chat can follow it to today's board. Kept here, so moving the
+ * game is a change to this line — and to the og:url and og:image tags in
+ * index.html, which preview services read without running any script and
+ * which therefore cannot import it. test/meta.test.js fails if the two part
+ * ways.
  *
  * With the scheme, so that it is a link everywhere. A bare host was linked by
  * most chat apps but not all, and only by guessing from the top-level domain;

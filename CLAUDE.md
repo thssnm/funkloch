@@ -164,4 +164,7 @@ starten (`cat`, `sed -n`, `grep`, `node tools/…`, `npm test`).
   zählt plötzlich 19 statt 18.
 - Die App-Icons sind abgeleitet, nicht gezeichnet: `favicon.svg` ist die Quelle,
   `tools/make-icons.js` rastert sie. Wer ein PNG von Hand ändert, gabelt das
-  Icon in vier leicht verschiedene Zeichnungen.
+  Icon in vier leicht verschiedene Zeichnungen. Das Vorschaubild `og-image.png`
+  setzt dasselbe Werkzeug aus der Marke und der Wortmarke in `index.html`
+  zusammen; die Adresse in den `og:`-Tags hält `test/meta.test.js` mit
+  `GAME_URL` zusammen, weil Vorschaudienste kein Script ausführen.

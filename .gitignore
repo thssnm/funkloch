@@ -10,6 +10,8 @@ screenshots/
 !/apple-touch-icon.png
 !/icon-192.png
 !/icon-512.png
+# ...and the link preview, same tool, same reason: it has to be on the server.
+!/og-image.png
 
 # A local copy of the system libraries Chromium needs, unpacked next to the
 # project where they are not installed system-wide.
