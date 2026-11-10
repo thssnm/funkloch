@@ -2,7 +2,7 @@
  * The text a finished daily run is shared as: a header with the result and the
  * address of the game, and nothing else.
  *
- *   funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
+ *   funkl○ch 06.10. — in Level 16 von 25 gescheitert, 77 Punkte
  *   https://funkloch.thssn.dev
  *
  * Pure and DOM-free like the rest of the game half: it reads a run state and
@@ -55,25 +55,29 @@ export function points(count) {
 }
 
 /**
- * The shared result.
- *
- * A run that cleared its last level says so in words, not only in its count:
+ * The shared result. Since the daily board has an end (2026-11-10) the line
+ * says how a day went against it — played through, or the level it ended in,
+ * out of how many:
  *
  *   funkl○ch 06.10. — durchgespielt, alle 25 Level, 143 Punkte
- *   funkl○ch 06.10. — 24 Level geschafft, 98 Punkte
+ *   funkl○ch 06.10. — in Level 12 von 25 gescheitert, 41 Punkte
  *
- * "25 Level geschafft" next to "24 Level geschafft" would leave it to the
- * reader to know that 25 is the end; the daily board has had one since
- * 2026-11-10, and whoever reached it should not have to explain that.
+ * The lost line used to give the levels cleared ("11 Level geschafft"). Next
+ * to a goal that number reads as distance travelled with no destination;
+ * "in Level 12 von 25" places the day on the way to the end the page shows
+ * in its header the whole time, and the end card names the same level. A run
+ * without a last level — not shared today, but possible — leaves out the
+ * "von".
  * @param {object} state a finished run state from run.js
  * @param {string} day the day of the board it was played on, `YYYY-MM-DD` (`boardDay`)
  * @returns {string}
  */
 export function shareText(state, day) {
   const [, month, date] = day.split('-');
+  const last = state.config?.lastLevel;
   const result = state.status === 'won'
     ? `durchgespielt, alle ${state.cleared.length} Level`
-    : `${state.cleared.length} Level geschafft`;
+    : `in Level ${state.level}${last === undefined ? '' : ` von ${last}`} gescheitert`;
   const header = `${GAME_NAME} ${date}.${month}. — ${result}, ${points(state.score)}`;
   return [header, GAME_URL].join('\n');
 }

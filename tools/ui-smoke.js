@@ -224,8 +224,9 @@ try {
   // and the element that used to carry one is gone rather than merely emptied.
   check(await page.locator('#hud-level-best, #hud-stage-best').count() === 0,
     'das Level hat keinen eigenen Bestwert mehr');
+  // innerText, what is read: the goal is there but hidden in free play.
   check((await page.evaluate(() => document.getElementById('hud-level')
-    .closest('span').textContent.replace(/\s+/g, ' ').trim())) === 'Level 1',
+    .closest('span').innerText.replace(/\s+/g, ' ').trim())) === 'Level 1',
     'die Kopfzeile sagt nur „Level 1"');
   // The rename is complete on the page, not only where this test looks.
   check(!/Etappe|Depot/.test(await page.evaluate(() => document.body.textContent)),
@@ -681,11 +682,12 @@ try {
   check(wordmark?.aboveList === true, 'er steht über Level, Punkten und Bestwert');
 
   check(seen.overTitle === 'Keine Sender mehr.', `Karte betitelt sich „${seen.overTitle}"`);
-  // The card counts what was cleared, the HUD what was being played: whoever
-  // fails in level 10 has cleared 9, and both numbers say so side by side.
-  check(seen.overLabel === 'Level geschafft', `die Karte beschriftet „${seen.overLabel}"`);
-  check(seen.overLevel === String(expected.cleared),
-    `Karte zeigt ${seen.overLevel} Level geschafft`);
+  // The card names the level the run ended in, as the HUD did when it ended:
+  // one number for one run (until 2026-11-10 the card counted the levels
+  // cleared, one fewer). Free play has no goal, so no "von".
+  check(seen.overLabel === 'Level', `die Karte beschriftet „${seen.overLabel}"`);
+  check(seen.overLevel === String(expected.level),
+    `Karte zeigt Level ${seen.overLevel}, das Level, in dem die Partie endete`);
   check(seen.overScore === String(expected.score), `Karte zeigt ${seen.overScore} Punkte`);
   check(seen.level === String(expected.level), `HUD steht auf Level ${seen.level}, dem gescheiterten`);
   check(seen.score === String(expected.score), `HUD-Punkte ${seen.score}`);
@@ -838,6 +840,18 @@ try {
   const firstVisit = await openedOn(daily);
   check(firstVisit.daily && !firstVisit.free && firstVisit.level === '1' && !firstVisit.over,
     'der erste Besuch öffnet auf dem Tagesbrett');
+
+  /** The level reading in the header as a player reads it, goal and all. */
+  const levelReading = (target) => target.evaluate(() => {
+    const goal = document.getElementById('hud-goal');
+    return {
+      text: document.getElementById('hud-level').parentElement.innerText.replace(/\s+/g, ' ').trim(),
+      goalShown: !goal.hidden && goal.offsetParent !== null,
+    };
+  });
+  const dailyReading = await levelReading(daily);
+  check(dailyReading.goalShown && dailyReading.text === 'Level 1 von 25',
+    `die Kopfzeile zeigt das Ziel: „${dailyReading.text}"`);
   // Left in free play with today's attempt still open: back on the daily board.
   await daily.click('#mode-frei');
   await daily.waitForSelector('.board .node');
@@ -946,7 +960,7 @@ try {
     countdown: document.getElementById('countdown').textContent,
     stored: JSON.parse(localStorage.getItem('funkloch.taeglich')),
   }));
-  check(ended.level === String(plan.cleared), `Tageskarte zeigt ${ended.level} Level geschafft`);
+  check(ended.level === `${plan.level} von 25`, `Tageskarte zeigt Level ${ended.level}`);
   check(ended.score === String(plan.score), `Tageskarte zeigt ${ended.score} Punkte`);
   check(ended.restartShown === false, 'die Tageskarte bietet keine neue Partie an');
   check(ended.dailyShown === true, 'sie zeigt stattdessen Ergebnis und Wartezeit');
@@ -984,7 +998,7 @@ try {
   // it however wrong it was. The header and the address, nothing between.
   const pointsWord = plan.score === 1 ? 'Punkt' : 'Punkte';
   // The name as the wordmark draws it, with the ring for the o.
-  const expectedHeader = `funkl○ch 24.09. — ${plan.cleared} Level geschafft, ${plan.score} ${pointsWord}`;
+  const expectedHeader = `funkl○ch 24.09. — in Level ${plan.level} von 25 gescheitert, ${plan.score} ${pointsWord}`;
 
   const button = await daily.evaluate(() => {
     const share = document.getElementById('share');
@@ -1033,7 +1047,7 @@ try {
   check((viaSheet.sent ?? '').includes('https://funkloch.thssn.dev'), 'der geteilte Text enthält die URL als Link');
   check(!(viaSheet.sent ?? '').includes('vercel.app'), 'und nicht mehr die alte Vercel-Adresse');
   check(lines[0].includes('24.09.'), 'sie nennt das Datum');
-  check(lines[0].includes(`${plan.cleared} Level geschafft`), 'sie nennt die geschafften Level');
+  check(lines[0].includes(`in Level ${plan.level} von 25 gescheitert`), 'sie nennt das Level, in dem der Tag endete, und das Ziel');
   check(lines[0].includes(`${plan.score} ${pointsWord}`), `sie nennt die Punkte (${pointsWord}; „1 Punkt" prüft test/share.test.js)`);
   // Nothing that would hand the reader the board, let alone the moves.
   check(!/r\d+c\d+/.test(viaSheet.sent ?? ''), 'es verrät keinen Knoten');
@@ -1084,7 +1098,7 @@ try {
     score: document.getElementById('over-score').textContent,
     moves: JSON.parse(localStorage.getItem('funkloch.taeglich')).moves.length,
   }));
-  check(again.level === String(plan.cleared) && again.score === String(plan.score),
+  check(again.level === `${plan.level} von 25` && again.score === String(plan.score),
     'ein Neuladen zeigt dasselbe Ergebnis wieder');
 
   // Not merely hidden behind the card: the board itself refuses. Clicked with
@@ -1100,7 +1114,7 @@ try {
     over: document.getElementById('over').hidden,
   }));
   check(denied.moves === again.moves, `kein Zug kommt hinzu (${denied.moves})`);
-  check(denied.level === String(plan.cleared) && denied.score === String(plan.score),
+  check(denied.level === `${plan.level} von 25` && denied.score === String(plan.score),
     'und das Ergebnis bleibt stehen');
   check(denied.over === false, 'die Karte bleibt liegen');
   const spent = await openedOn(daily);
@@ -1115,6 +1129,9 @@ try {
   const back = await openedOn(daily);
   check(back.free, 'ein Tipp, und der Umschalter steht auf Frei');
   check(back.level === '1' && !back.over, 'und das freie Spiel fängt wieder an');
+  const freeReading = await levelReading(daily);
+  check(!freeReading.goalShown && freeReading.text === 'Level 1',
+    `das freie Spiel hat kein Ziel in der Kopfzeile: „${freeReading.text}"`);
 
   // Left in free play with the day spent: still the daily result on reload,
   // not the free run.
@@ -1179,9 +1196,29 @@ try {
     }));
     check(card.title === 'Alle 25 Level geschafft.' && card.won,
       `ein durchgespielter Tag endet auf „${card.title}", in der Signalfarbe`);
-    check(card.level === '25' && card.score === String(run.score),
-      `die Karte zeigt ${card.level} Level und ${card.score} Punkte`);
+    check(card.level === '25 von 25' && card.score === String(run.score),
+      `die Karte zeigt Level ${card.level} und ${card.score} Punkte`);
     check(card.hud === '25', 'die Kopfzeile bleibt auf Level 25 stehen, ein 26. gibt es nicht');
+    const doneReading = await levelReading(through);
+    check(doneReading.text === 'Level 25 von 25', `und liest „${doneReading.text}"`);
+    // The widest the reading gets, on the narrowest phones: the row keeps to
+    // one line and to the screen.
+    for (const width of [320, 360]) {
+      await through.setViewportSize({ width, height: 740 });
+      const row = await through.evaluate(() => {
+        const ledger = document.getElementById('hud-ledger');
+        const one = Number.parseFloat(getComputedStyle(ledger).fontSize) * 2.2;
+        return {
+          oneLine: ledger.getBoundingClientRect().height <= one,
+          fits: document.documentElement.scrollWidth <= window.innerWidth,
+          height: Math.round(ledger.getBoundingClientRect().height),
+        };
+      });
+      check(row.oneLine && row.fits,
+        `bei ${width} px bleibt die Kopfzeile in einer Zeile und auf dem Schirm (${row.height} px hoch)`);
+    }
+    await through.screenshot({ path: `${shots}/ui-won-360.png` });
+    await through.setViewportSize({ width: 560, height: 960 });
     check(!card.restartShown && card.dailyShown && /^\d{1,2}:\d{2}:\d{2}$/.test(card.countdown),
       'auch hier Ergebnis und Countdown statt einer neuen Partie');
 

@@ -7,9 +7,9 @@ import {
 import { GAME_NAME, GAME_URL, points, shareText } from '../src/share.js';
 import { greedyChoice } from '../tools/bot.js';
 
-/** A finished state without playing one: only the fields share.js reads. */
+/** A finished daily state without playing one: only the fields share.js reads. */
 const finished = (lefts, score = 0) => ({
-  config: ENDLESS_RUN,
+  config: DAILY_RUN,
   cleared: lefts.map((left, i) => ({ level: i + 1, left })),
   level: lefts.length + 1,
   status: 'lost',
@@ -36,19 +36,25 @@ test('points', async (t) => {
 test('shareText', async (t) => {
   const state = finished([4, 2, 0, 1], 5);
 
-  await t.test('heads with date, all levels cleared and the points', () => {
+  await t.test('heads with date, the level the day ended in out of how many, and the points', () => {
     const [header] = shareText(state, '2026-09-24').split('\n');
-    assert.equal(header, 'funkl○ch 24.09. — 4 Level geschafft, 5 Punkte');
+    assert.equal(header, 'funkl○ch 24.09. — in Level 5 von 25 gescheitert, 5 Punkte');
     assert.ok(header.startsWith(GAME_NAME));
     assert.match(shareText(finished([4, 1], 1), '2026-09-24'), /, 1 Punkt$/m);
   });
 
   await t.test('is the header and the address, with nothing in between', () => {
-    const long = finished(Array.from({ length: 32 }, (_, i) => i % 4), 251);
+    const long = finished(Array.from({ length: 20 }, (_, i) => i % 4), 251);
     assert.equal(
       shareText(long, '2026-11-21'),
-      'funkl○ch 21.11. — 32 Level geschafft, 251 Punkte\nhttps://funkloch.thssn.dev',
+      'funkl○ch 21.11. — in Level 21 von 25 gescheitert, 251 Punkte\nhttps://funkloch.thssn.dev',
     );
+  });
+
+  await t.test('leaves out the goal for a run that has none', () => {
+    const endless = { ...state, config: ENDLESS_RUN };
+    assert.equal(shareText(endless, '2026-09-24').split('\n')[0],
+      'funkl○ch 24.09. — in Level 5 gescheitert, 5 Punkte');
   });
 
   await t.test('ends on the address of the game', () => {
@@ -58,10 +64,11 @@ test('shareText', async (t) => {
     assert.equal(GAME_URL, 'https://funkloch.thssn.dev');
   });
 
-  await t.test('counts every level a played run cleared', () => {
+  await t.test('names the level a played run ended in', () => {
     const run = playOut(dailySeed(Date.UTC(2026, 8, 24, 12)), DAILY_RUN);
+    assert.equal(run.status, 'lost');
     const [header] = shareText(run, '2026-09-24').split('\n');
-    assert.ok(header.includes(` ${run.level - 1} Level geschafft, `), header);
+    assert.ok(header.includes(` in Level ${run.level} von 25 gescheitert, `), header);
   });
 
   await t.test('says a run played through in words, not only in its count', () => {
@@ -72,7 +79,7 @@ test('shareText', async (t) => {
       'funkl○ch 10.11. — durchgespielt, alle 25 Level, 325 Punkte\nhttps://funkloch.thssn.dev',
     );
     assert.equal(shareText(stopped, '2026-11-10').split('\n')[0],
-      'funkl○ch 10.11. — 24 Level geschafft, 300 Punkte');
+      'funkl○ch 10.11. — in Level 25 von 25 gescheitert, 300 Punkte');
     assert.ok(!shareText(stopped, '2026-11-10').includes('durchgespielt'));
   });
 

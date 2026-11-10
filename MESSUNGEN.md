@@ -2155,3 +2155,69 @@ gleichen (278 von 278, bis Level 25).
 - `CLAUDE.md` — der Rollout-Bot ist der Maßstab, der Menschen-Faktor als
   ungeprüfte Annahme vermerkt, frühere Kalibrierungen als gegen den Planer
   gemacht markiert.
+
+---
+
+## 2026-11-10 — Das Ziel in der Kopfzeile, das Level des Scheiterns in der Zeile
+
+**Werkzeug:** keins; Anzeige, kein Parameter.
+**Ergebnis:** Auf dem Tagesbrett zeigt die Kopfzeile „Level 12 von 25", die
+Ergebniszeile eines verlorenen Tages „in Level 12 von 25 gescheitert" und die
+Endkarte „Level 12 von 25". Kopfzeile, Endkarte und Ergebniszeile nennen
+dasselbe Level: das, in dem die Partie endete.
+
+### Warum
+
+Der Kern der Rückmeldung zum Plateau war, dass jedes Level gleich wirkt. Ein
+Ende nach Level 25 hilft dagegen nur, wenn man es sieht: ohne sichtbares Ziel
+merkt niemand, dass es eins gibt. Das Ziel hängt an `lastLevel` der Partie,
+nicht an der Spielart; das freie Spiel hat keins und zeigt weiter nur
+„Level 12".
+
+### Was das an der Zählung vom 2026-10-12 ändert
+
+Der Eintrag „Level statt Etappe" legte fest, dass Endkarte **und**
+Ergebniszeile das letzte geschaffte Level zählen. Für die Ergebniszeile gilt
+das nicht mehr: Sie nennt das Level, in dem der Tag endete, und das Ziel. Neben
+einem Ziel liest sich „11 Level geschafft" als Strecke ohne Richtung; „in
+Level 12 von 25" stellt den Tag auf den Weg, den die Kopfzeile die ganze
+Partie über zeigt. Ein durchgespielter Tag sagt „durchgespielt, alle 25
+Level".
+
+**Nachtrag, ebenfalls 2026-11-10: auch die Endkarte.** Zuerst zählte die
+Endkarte weiter die geschafften Level. Neben der neuen Zeile standen damit zwei
+Zahlen für denselben Tag — „Level geschafft: 11" auf der Karte, „in Level 12
+gescheitert" in der Zeile — und das liest sich wie ein Fehler. Die Karte nennt
+jetzt dasselbe Level wie Kopfzeile und Zeile, beschriftet „Level", auf dem
+Tagesbrett mit Ziel („12 von 25", durchgespielt „25 von 25"), im freien Spiel
+ohne („12"). Damit gilt die Festlegung vom 2026-10-12 auf der Seite nirgends
+mehr; das freie Spiel ist eingeschlossen, weil Karte und Kopfzeile beiden
+Spielarten gehören.
+
+Die **Werkzeuge** zählen weiter das geschaffte Level wie seit 2026-10-12, und
+`state.cleared` bzw. `levelsCleared` bleiben, was sie sind. Keine Tabelle in
+dieser Datei ist betroffen.
+
+### Was es kostet
+
+„von 25" macht die Levelanzeige etwa 40 px breiter. Bei 320 px Breite braucht
+die Kopfzeile damit rund 307 von 288 px, gemessen mit den breitesten Zahlen
+des Tagesbretts (Level 25 von 25, dreistellige Punkte); vorher passte sie. Unter
+340 px entfällt darum die Marke links, die nur Dekoration ist. Bei 360 px
+bleibt sie.
+
+### Was blieb
+
+- `index.html` — `#hud-goal` mit „von N" hinter der Levelzahl, sichtbar, wenn
+  die Partie ein `lastLevel` hat; die Lesung bricht nicht um; unter 340 px
+  ohne `.hud-mark`. Die Endkarte beschriftet „Level" statt „Level geschafft"
+  und zeigt `state.level`, mit „von N", wenn die Partie ein Ende hat.
+- `src/share.js` — „in Level N von 25 gescheitert", ohne „von" für eine Partie
+  ohne Ende.
+- `test/share.test.js` — die neuen Zeilen, auch ohne Ziel.
+- `tools/ui-smoke.js` — liest die Kopfzeile wie ein Spieler: „Level 1 von 25"
+  auf dem Tagesbrett, „Level 1" im freien Spiel, „Level 25 von 25" nach dem
+  Durchspielen; bei 320 und 360 px eine Zeile ohne Überstand. Die Endkarte
+  zeigt im freien Spiel das Level, in dem die Partie endete, auf dem
+  Tagesbrett „N von 25", durchgespielt „25 von 25".
+- `README.md` — Kopfzeile und Beispielzeile.

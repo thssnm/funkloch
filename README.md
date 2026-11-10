@@ -49,8 +49,9 @@ Läufen, die auf demselben Brett gestorben sind, unterscheidet er noch den, der
 seine Level mit Sendern übrig geräumt hat, von dem, der sich durchgequält hat.
 
 Während der Partie zeigt die Kopfzeile das Level, das gerade gespielt wird.
-Abgerechnet wird das letzte **geschaffte**: wer in Level 10 scheitert, hat 9
-geschafft, und so steht es auf der Endkarte und in der Ergebniszeile.
+Kopfzeile, Endkarte und Ergebniszeile nennen dasselbe Level: das, in dem die
+Partie endete. Wer in Level 10 scheitert, liest überall Level 10. Die
+Werkzeuge zählen dagegen das letzte **geschaffte**, dort sind es 9.
 
 ## Tagesbrett
 
@@ -64,8 +65,10 @@ Anders als das freie Spiel hat das Tagesbrett ein Ende (`DAILY_RUN` in
 Endloskurve, nur Level 7 hat einen Sender mehr; ab Level 12 bleibt das Brett
 bei 60 Knoten und 9 Sendern, und alle drei Level wird die Hand eine Stufe
 kleiner (3/4/2 → 4/3/2 → 3/5/1 → 5/2/2 → 4/4/1 Sender mit Reichweite 1/2/3).
-Wer durchspielt, sieht „Alle 25 Level geschafft." und teilt „durchgespielt".
-Warum so, steht in `MESSUNGEN.md` unter 2026-11-10.
+Die Kopfzeile zeigt während der Partie das Ziel mit, „Level 12 von 25"; im
+freien Spiel steht nur „Level 12". Wer durchspielt, sieht „Alle 25 Level
+geschafft." und teilt „durchgespielt". Warum so, steht in `MESSUNGEN.md` unter
+2026-11-10.
 
 Die Seite öffnet immer auf dem Tagesbrett, egal was zuletzt gespielt wurde: ist
 der Versuch offen, zum Spielen, ist er verbraucht, mit Ergebnis und Countdown.
@@ -79,12 +82,13 @@ das nicht, steht der Text zum Markieren da. Geteilt wird das Ergebnis, gebaut
 in `src/share.js`:
 
 ```
-funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
+funkl○ch 06.10. — in Level 16 von 25 gescheitert, 77 Punkte
 https://funkloch.thssn.dev
 ```
 
-Ein durchgespielter Tag sagt es in Worten: `funkl○ch 06.10. — durchgespielt,
-alle 25 Level, 143 Punkte`.
+Ein verlorener Tag nennt das Level, in dem er endete, und das Ziel; ein
+durchgespielter sagt es in Worten: `funkl○ch 06.10. — durchgespielt, alle 25
+Level, 143 Punkte`. Die Endkarte nennt dasselbe Level wie Kopfzeile und Zeile.
 
 Die zweite Zeile ist die Adresse des Spiels als Link (`GAME_URL` in `src/share.js`).
 Nichts davon verrät das Brett. Eine Grafik des Verlaufs gibt es nicht mehr;

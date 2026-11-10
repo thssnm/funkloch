@@ -95,6 +95,15 @@
         color: var(--muted);
       }
       .ledger b { color: var(--text); font-weight: 600; }
+      /* "Level 25 von 25" is one reading and never breaks inside. */
+      .ledger > span { white-space: nowrap; }
+      /* The daily goal makes the level reading about 40px wider. On the
+         narrowest phones (320px) the row then needs about 307px of 288, so the
+         mark, which is decoration, gives up its 24 — measured with the widest
+         numbers the daily board shows, Level 25 von 25 and three-digit points. */
+      @media (max-width: 340px) {
+        .ledger .hud-mark { display: none; }
+      }
       /* Pushes the score to the far edge, so the two readings bracket the row. */
       .ledger-score { margin-left: auto; }
       /* The record is quieter than the live number: it is there to be aimed at.
@@ -612,7 +621,7 @@
               <circle cx="4.5" cy="19.5" r="2.6" /><circle cx="19.5" cy="19.5" r="2.6" />
             </g>
           </svg>
-          <span>Level <b id="hud-level">–</b></span>
+          <span>Level <b id="hud-level">–</b><span id="hud-goal" hidden> von <b id="hud-last">–</b></span></span>
           <div class="modes" id="modes" role="group" aria-label="Spielart">
             <button type="button" id="mode-frei" aria-pressed="false">Frei</button>
             <button type="button" id="mode-taeglich" aria-pressed="true">Täglich</button>
@@ -647,7 +656,7 @@
           </svg>
           <h2 id="over-title">Keine Sender mehr.</h2>
           <dl>
-            <dt>Level geschafft</dt><dd id="over-level">–</dd>
+            <dt>Level</dt><dd id="over-level">–</dd>
             <dt>Punkte</dt><dd id="over-score">–</dd>
             <dt id="over-best-label">Bestwert</dt><dd id="over-best">–</dd>
           </dl>
@@ -692,6 +701,8 @@
       const controls = document.getElementById('controls');
       const hud = {
         level: document.getElementById('hud-level'),
+        goal: document.getElementById('hud-goal'),
+        last: document.getElementById('hud-last'),
         open: document.getElementById('hud-open'),
         openLabel: document.getElementById('hud-open-label'),
         left: document.getElementById('hud-left'),
@@ -1007,10 +1018,16 @@
         trackRecord();
         syncModes();
 
-        // The level being played. Only the end card and the shared result count
-        // the levels cleared instead: while a run is on, the number to read is
-        // where you are, not what is behind you.
+        // The level being played. Only the end card counts the levels cleared
+        // instead: while a run is on, the number to read is where you are, not
+        // what is behind you.
         hud.level.textContent = String(state.level);
+        // And where it ends, on a run that has an end — the daily board. Without
+        // the goal in view nobody notices there is one. Read off the run's own
+        // config, so free play, which has no last level, shows none.
+        const last = state.config.lastLevel;
+        hud.goal.hidden = last === undefined;
+        hud.last.textContent = last === undefined ? '' : String(last);
         hud.open.textContent = String(state.uncovered.length);
         hud.openLabel.textContent = state.uncovered.length === 1 ? 'Funkloch' : 'Funklöcher';
         hud.left.textContent = String(state.senders.length);
@@ -1051,9 +1068,12 @@
           const won = state.status === 'won';
           over.title.textContent = won ? `Alle ${levelsCleared(state)} Level geschafft.` : 'Keine Sender mehr.';
           over.title.classList.toggle('is-won', won);
-          // Levels cleared, not the level the run died in: whoever fails in
-          // level 10 has cleared 9.
-          over.level.textContent = String(levelsCleared(state));
+          // The level the run ended in — the number the header showed when it
+          // ended and the shared line names — with the goal on a run that has
+          // one. Until 2026-11-10 the card counted the levels cleared, one
+          // fewer; two numbers for the same day side by side read as a bug.
+          const last = state.config.lastLevel;
+          over.level.textContent = last === undefined ? String(state.level) : `${state.level} von ${last}`;
           over.score.textContent = String(state.score);
           over.best.textContent = points(best);
           // A daily board ends on a result and a wait, not on an offer of
