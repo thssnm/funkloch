@@ -59,6 +59,12 @@ abgeleitet, alle spielen am selben Tag dasselbe Brett, und es gibt einen Versuch
 pro Tag. Danach zeigt das Spiel das Ergebnis und die Zeit bis zum nächsten
 Brett, statt eine neue Partie anzubieten. Umgeschaltet wird in der Kopfzeile.
 
+Die Seite öffnet immer auf dem Tagesbrett, egal was zuletzt gespielt wurde: ist
+der Versuch offen, zum Spielen, ist er verbraucht, mit Ergebnis und Countdown.
+Die Spielart wird nicht gespeichert. Ins freie Spiel geht es mit einem Tipp auf
+„Frei" in der Kopfzeile; nur ein `?seed=` in der Adresse öffnet direkt eine
+freie Partie.
+
 „Ergebnis teilen" öffnet auf dem Handy die native Teilen-Auswahl (Web Share
 API), sonst kopiert es in die Zwischenablage und sagt „Kopiert."; klappt auch
 das nicht, steht der Text zum Markieren da. Geteilt wird das Ergebnis, gebaut

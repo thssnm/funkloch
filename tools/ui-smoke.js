@@ -12,6 +12,8 @@
  * up at all.
  *
  * The daily board gets its own pass at the end, on a stopped clock: that the
+ * page opens on it after every reload — attempt open or spent, free play left
+ * active or not — with free play one tap away, that the
  * same Berlin day gives the same board in two separate browsers in different
  * time zones, that the board changes at Berlin midnight, that a second
  * attempt at it is refused however the page is reloaded or clicked, and that
@@ -673,6 +675,10 @@ try {
     await tab.clock.setFixedTime(new Date(startedAt));
     await tab.goto(`http://127.0.0.1:${port}/index.html`);
     await tab.waitForSelector('.board .node');
+    // Without a seed the page opens on the daily board; free play is the
+    // switch in the header.
+    await tab.click('#mode-frei');
+    await tab.waitForSelector('.board .node');
     const shape = () => tab.$$eval('.board .node',
       (nodes) => nodes.map((n) => `${n.dataset.id}${n.classList.contains('is-blocked') ? '!' : ''}`).join(' '));
     const first = {
@@ -695,6 +701,8 @@ try {
 
     // A new run a few seconds later is a different run with a different seed.
     await tab.goto(`http://127.0.0.1:${port}/index.html`);
+    await tab.waitForSelector('.board .node');
+    await tab.click('#mode-frei');
     await tab.waitForSelector('.board .node');
     await tab.clock.setFixedTime(new Date(startedAt + 5000));
     await tab.evaluate(() => document.getElementById('restart').click());
@@ -733,6 +741,31 @@ try {
   await daily.goto(`http://127.0.0.1:${port}/index.html`);
   await daily.waitForSelector('.board .node');
 
+  /** What the page opened on: the switch, the level, and whether the card is up. */
+  const openedOn = (target) => target.evaluate(() => ({
+    daily: document.getElementById('mode-taeglich').getAttribute('aria-pressed') === 'true',
+    free: document.getElementById('mode-frei').getAttribute('aria-pressed') === 'true',
+    level: document.getElementById('hud-level').textContent,
+    over: !document.getElementById('over').hidden,
+  }));
+
+  // --- beim Laden steht das Tagesbrett -------------------------------------
+  // A first visit, nothing stored: the daily board, unplayed.
+  const firstVisit = await openedOn(daily);
+  check(firstVisit.daily && !firstVisit.free && firstVisit.level === '1' && !firstVisit.over,
+    'der erste Besuch öffnet auf dem Tagesbrett');
+  // Left in free play with today's attempt still open: back on the daily board.
+  await daily.click('#mode-frei');
+  await daily.waitForSelector('.board .node');
+  check((await openedOn(daily)).free, 'der Umschalter geht auf Frei');
+  await daily.reload();
+  await daily.waitForSelector('.board .node');
+  const afterFree = await openedOn(daily);
+  check(afterFree.daily && afterFree.level === '1' && !afterFree.over,
+    'nach einem Neuladen aus dem freien Spiel steht wieder das Tagesbrett (Versuch offen)');
+  check(await daily.evaluate(() => localStorage.getItem('funkloch.modus')) === null,
+    'die Spielart wird nicht mehr gespeichert');
+
   // An attempt at today's board stored by the build before the onboarding
   // level: no rules marker, and moves made on yesterday's 18-node level 1.
   // Replayed, they would name nodes that may not exist on today's first
@@ -742,7 +775,7 @@ try {
     day: today, moves: ['r9c9', 'r8c8', null, 'r7c7'], stage: 3, score: 12, done: true,
   })), dayName);
 
-  await daily.click('#mode-taeglich');
+  await daily.reload();
   await daily.waitForSelector('.board .node');
   check(await daily.getAttribute('#mode-taeglich', 'aria-pressed') === 'true',
     'der Umschalter steht auf Täglich');
@@ -764,8 +797,6 @@ try {
     (nodes) => nodes.map((n) => `${n.dataset.id}${n.classList.contains('is-blocked') ? '!' : ''}`).join(' '));
 
   const first = await boardShape(daily);
-  check(await daily.evaluate(() => localStorage.getItem('funkloch.modus')) === 'taeglich',
-    'die Spielart überlebt einen Neuladen');
   await daily.reload();
   await daily.waitForSelector('.board .node');
   check(await boardShape(daily) === first, 'dasselbe Datum gibt dasselbe Brett');
@@ -783,9 +814,10 @@ try {
     await stranger.clock.setFixedTime(new Date(instant));
     await stranger.goto(`http://127.0.0.1:${port}/index.html`);
     await stranger.waitForSelector('.board .node');
+    // No click on the switch: a page opened without a seed is on the daily
+    // board already, and has to be.
     if (await stranger.getAttribute('#mode-taeglich', 'aria-pressed') !== 'true') {
-      await stranger.click('#mode-taeglich');
-      await stranger.waitForSelector('.board .node');
+      check(false, `beim Laden um ${new Date(instant).toISOString()} steht nicht das Tagesbrett`);
     }
     return boardShape(stranger);
   };
@@ -976,18 +1008,29 @@ try {
   check(denied.level === String(plan.cleared) && denied.score === String(plan.score),
     'und das Ergebnis bleibt stehen');
   check(denied.over === false, 'die Karte bleibt liegen');
+  const spent = await openedOn(daily);
+  check(spent.daily && spent.over, 'nach einem Neuladen mit verbrauchtem Versuch steht das Tagesbrett mit Ergebnis');
 
   // --- zurück ins freie Spiel ----------------------------------------------
-  await daily.click('#mode-frei');
+  // From the spent day's card, in one tap: the switch has to be in view and
+  // not covered by the card. A click without `force` is refused otherwise.
+  check(await daily.isVisible('#mode-frei'), 'der Weg ins freie Spiel ist auf der Tageskarte zu sehen');
+  await daily.click('#mode-frei', { timeout: 2000 });
   await daily.waitForSelector('.board .node');
-  const back = await daily.evaluate(() => ({
-    level: document.getElementById('hud-level').textContent,
-    over: document.getElementById('over').hidden,
-    pressed: document.getElementById('mode-frei').getAttribute('aria-pressed'),
-    mode: localStorage.getItem('funkloch.modus'),
-  }));
-  check(back.pressed === 'true' && back.mode === 'frei', 'der Umschalter geht zurück auf Frei');
-  check(back.level === '1' && back.over === true, 'und das freie Spiel fängt wieder an');
+  const back = await openedOn(daily);
+  check(back.free, 'ein Tipp, und der Umschalter steht auf Frei');
+  check(back.level === '1' && !back.over, 'und das freie Spiel fängt wieder an');
+
+  // Left in free play with the day spent: still the daily result on reload,
+  // not the free run.
+  await daily.reload();
+  await daily.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  const spentAfterFree = await openedOn(daily);
+  check(spentAfterFree.daily && spentAfterFree.over
+    && await daily.textContent('#over-score') === String(plan.score),
+    'nach einem Neuladen aus dem freien Spiel steht das Tagesergebnis (Versuch verbraucht)');
+  check(await daily.evaluate(() => /^\d{1,2}:\d{2}:\d{2}$/.test(document.getElementById('countdown').textContent)),
+    'mit Countdown bis zum nächsten Brett');
 
   check(dailyNoise.length === 0,
     `keine Konsolenfehler im Tagesmodus${dailyNoise.length ? `: ${dailyNoise.join(' | ')}` : ''}`);

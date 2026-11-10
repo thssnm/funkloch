@@ -601,8 +601,8 @@
           </svg>
           <span>Level <b id="hud-level">–</b></span>
           <div class="modes" id="modes" role="group" aria-label="Spielart">
-            <button type="button" id="mode-frei" aria-pressed="true">Frei</button>
-            <button type="button" id="mode-taeglich" aria-pressed="false">Täglich</button>
+            <button type="button" id="mode-frei" aria-pressed="false">Frei</button>
+            <button type="button" id="mode-taeglich" aria-pressed="true">Täglich</button>
           </div>
           <span class="ledger-score">Punkte <b id="hud-score">0</b><i class="best" id="hud-score-best"></i></span>
         </div>
@@ -714,8 +714,14 @@
       const BEST_KEY = 'funkloch.endlos.best';
       /** Today's daily attempt: which day it is for, and every move in it. */
       const DAILY_KEY = 'funkloch.taeglich';
-      /** Which of the two modes the page was last left in. */
-      const MODE_KEY = 'funkloch.modus';
+      /**
+       * Where older builds kept the mode the page was last left in, to open in
+       * it again. That made the daily board something a returning player had to
+       * go looking for: whoever last left in free play came back to free play,
+       * and a first visit always started there. The page now always opens on the
+       * daily board, so the mode is no longer kept and the old entry is dropped.
+       */
+      const STALE_MODE_KEY = 'funkloch.modus';
 
       /**
        * Which deal a stored daily attempt was played on. The attempt is kept as
@@ -756,6 +762,7 @@
         for (const key of Object.keys(localStorage)) {
           if (key.startsWith('sendernetz.')) localStorage.removeItem(key);
         }
+        localStorage.removeItem(STALE_MODE_KEY);
       } catch {
         /* storage denied: then there is nothing of the old name to clear either */
       }
@@ -851,21 +858,6 @@
           localStorage.setItem(DAILY_KEY, JSON.stringify(value));
         } catch {
           /* storage denied: then the attempt simply is not held across a reload */
-        }
-      };
-
-      const readMode = () => {
-        try {
-          return localStorage.getItem(MODE_KEY) === 'taeglich' ? 'taeglich' : 'frei';
-        } catch {
-          return 'frei';
-        }
-      };
-      const writeMode = (value) => {
-        try {
-          localStorage.setItem(MODE_KEY, value);
-        } catch {
-          /* storage denied: then the page opens in the free mode every time */
         }
       };
 
@@ -1099,7 +1091,6 @@
       function startDaily() {
         if (mode === 'frei' && state !== null) parked = state;
         mode = 'taeglich';
-        writeMode(mode);
         boardKey = null;
         record = false;
         const now = Date.now();
@@ -1206,7 +1197,6 @@
 
       function showFree(next) {
         mode = 'frei';
-        writeMode(mode);
         stopTicker();
         boardKey = null;
         state = next;
@@ -1257,18 +1247,21 @@
       });
       window.addEventListener('resize', () => scene && fitHitAreas(scene));
 
-      // Every visit gets its own free run. A fixed opening seed would mean the
-      // same first boards every time, and a record could be walked up by
-      // reloading until a kind draw turned up. The seed comes from the clock
-      // through `freeSeed`, never from Math.random, and the end card links it
-      // as `?seed=`, which pins a run down for replaying it, for development
-      // and for comparing notes about one — and because that is
-      // an explicit request for one particular board, it wins over the mode the
-      // page was last left in.
+      // Every visit opens on the daily board, whatever was played last and
+      // whether today's attempt is already spent: unplayed it is there to play,
+      // spent it shows the result and the wait for the next one. Either way the
+      // switch in the header is in view, one tap from a free run — which is
+      // what keeps a finished day from being a screen with nothing to do.
+      //
+      // The one exception is `?seed=`. The free end card links its run that
+      // way, for replaying it, for development and for comparing notes about
+      // one, and an explicit request for one particular board wins over the
+      // daily one. A free run without it takes its seed from the clock through
+      // `freeSeed`, never from Math.random, so a record cannot be walked up by
+      // reloading until a kind draw turns up.
       const asked = Number.parseInt(new URLSearchParams(location.search).get('seed') ?? '', 10);
       if (Number.isInteger(asked)) newRun(asked);
-      else if (readMode() === 'taeglich') startDaily();
-      else newRun();
+      else startDaily();
     </script>
   </body>
 </html>
