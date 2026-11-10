@@ -387,6 +387,39 @@
       /* An author `display` beats the UA rule behind the hidden attribute, so
          the card would otherwise sit on the board from the first frame on. */
       .over[hidden] { display: none; }
+      /* Setting the card aside to look at the board — which nodes stayed dark.
+         The card's own button is small and first; a tap beside the card does
+         the same (see the click handler). The way back is a pill on the stage
+         that only shows while the card is away: without it nobody would know
+         the card can be brought back. */
+      .over .peek {
+        flex: none;
+        min-height: 32px;
+        margin: 0 auto 8px;
+        padding: 0 10px;
+        border: 0;
+        background: none;
+        color: var(--muted);
+        font-size: 13px;
+        text-decoration: underline;
+      }
+      .unpeek {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        flex: none;
+        min-height: 36px;
+        padding: 0 12px;
+        border-radius: 999px;
+        font-size: 13px;
+        box-shadow: 0 2px 10px rgba(5, 7, 12, 0.5);
+      }
+      .unpeek[hidden] { display: none; }
+      /* A finished board is for looking at, not for playing: no pointer
+         reaches it, no hand cursor, no hover. run.js refuses a placement on
+         an ended run anyway; this keeps the board from looking playable. */
+      #stage.is-ended .board { pointer-events: none; }
+      #stage.is-ended .hit { cursor: default; }
       @keyframes settle { from { opacity: 0; } }
       /* The wordmark is drawn rather than set: the o is the same ring the
          board draws for a node with no signal, in the same two colours. Inline
@@ -751,6 +784,7 @@
 
       <div id="stage">
         <div class="over" id="over" role="status" hidden>
+          <button class="peek" id="peek" type="button">Brett ansehen</button>
           <svg class="wordmark" id="wordmark" viewBox="0 0 184 48" role="img" aria-label="funkloch">
             <title>funkloch</title>
             <text x="94" y="40" text-anchor="end">funkl</text>
@@ -785,6 +819,9 @@
           </div>
           <button class="again" id="restart" type="button">Neue Partie</button>
         </div>
+        <!-- While the card is set aside: the one way back to it, and the sign
+             that there is one. Outside the card, so it stays when the card goes. -->
+        <button class="unpeek" id="unpeek" type="button" hidden>Ergebnis anzeigen</button>
       </div>
 
       <p id="status" role="status"></p>
@@ -848,6 +885,8 @@
       };
       const over = {
         card: document.getElementById('over'),
+        peek: document.getElementById('peek'),
+        unpeek: document.getElementById('unpeek'),
         title: document.getElementById('over-title'),
         level: document.getElementById('over-level'),
         score: document.getElementById('over-score'),
@@ -1151,7 +1190,7 @@
         scene = createScene({ graph: state.graph, k: 1 }, { padding: 26 });
         // The end-of-run card lives inside the stage so it can lie over the
         // board; it has to be put back, or the first new board takes it with it.
-        stage.replaceChildren(scene.svg, over.card);
+        stage.replaceChildren(scene.svg, over.card, over.unpeek);
         detach = attachInput(scene, {
           onToggle: (id) => {
             // A tap that changes nothing — an occupied node, a finished run —
@@ -1240,7 +1279,11 @@
         // Two ends: out of senders, or — on the daily board, which has a last
         // level — every level cleared. Same card, different headline.
         const ended = state.status === 'lost' || state.status === 'won';
-        over.card.hidden = !ended;
+        // A new board starts with its card in place, whatever the last one was
+        // left showing.
+        if (!ended) peeking = false;
+        stage.classList.toggle('is-ended', ended);
+        showCard(ended);
         if (ended) {
           const daily = mode === 'taeglich';
           const won = state.status === 'won';
@@ -1275,6 +1318,37 @@
         saveDaily();
         draw();
       }
+
+      // ---- the card, set aside ------------------------------------------------
+
+      /** Whether the end card is set aside to show the board behind it. */
+      let peeking = false;
+
+      /** Paints card and pill from `peeking`; `ended` says whether there is a
+       *  card at all. Only visibility: what the card holds — countdown, share
+       *  verdict, entry — is not touched, so nothing is lost on the way out
+       *  and back. */
+      function showCard(ended) {
+        over.card.hidden = !ended || peeking;
+        over.unpeek.hidden = !ended || !peeking;
+      }
+
+      function setPeeking(next) {
+        peeking = next;
+        const ended = state !== null && (state.status === 'lost' || state.status === 'won');
+        showCard(ended);
+        // Focus follows the card, so a keyboard user is not left on nothing.
+        if (ended) (peeking ? over.unpeek : over.peek).focus();
+      }
+
+      over.peek.addEventListener('click', () => setPeeking(true));
+      over.unpeek.addEventListener('click', () => setPeeking(false));
+      // A tap beside the card — on the dimmed board — sets it aside as well.
+      // Only the backdrop itself: the card's content is laid out in the middle
+      // and a tap on it must keep meaning what it says.
+      over.card.addEventListener('click', (event) => {
+        if (event.target === over.card) setPeeking(true);
+      });
 
       // ---- the daily board ---------------------------------------------------
 

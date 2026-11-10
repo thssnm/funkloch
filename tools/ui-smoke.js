@@ -77,6 +77,63 @@ const check = (ok, what) => {
 };
 
 /**
+ * Sets the end card aside, looks at the board, taps it, and brings the card
+ * back — the same round on every card there is. The board has to be in full
+ * view and take nothing; the card has to come back as it was.
+ * @param {import('playwright').Page} target with an end card showing
+ * @param {string} label for the checks
+ */
+async function peekAround(target, label) {
+  const before = await target.evaluate(() => ({
+    level: document.getElementById('hud-level').textContent,
+    left: document.getElementById('hud-left').textContent,
+    score: document.getElementById('hud-score').textContent,
+    title: document.getElementById('over-title').textContent,
+  }));
+  await target.click('#peek');
+  const aside = await target.evaluate(() => {
+    const board = document.querySelector('.board');
+    const pill = document.getElementById('unpeek');
+    const stage = document.getElementById('stage').getBoundingClientRect();
+    const box = pill.getBoundingClientRect();
+    return {
+      cardHidden: document.getElementById('over').hidden,
+      boardShown: board.offsetParent !== null || board.getBoundingClientRect().height > 0,
+      boardTakesNothing: getComputedStyle(board).pointerEvents === 'none',
+      cursor: getComputedStyle(board.querySelector('.hit')).cursor,
+      pillShown: !pill.hidden && box.height > 0,
+      pillOnStage: box.top >= stage.top && box.bottom <= stage.bottom,
+      pillText: pill.textContent,
+    };
+  });
+  check(aside.cardHidden && aside.boardShown, `${label}: „Brett ansehen" legt die Karte beiseite, das Brett steht frei`);
+  check(aside.boardTakesNothing && aside.cursor === 'default', `${label}: das Brett nimmt nichts mehr an`);
+  check(aside.pillShown && aside.pillOnStage && aside.pillText === 'Ergebnis anzeigen',
+    `${label}: „${aside.pillText}" bleibt am Rand der Bühne stehen`);
+  // Taps on nodes, forced through: a finished board is for looking at.
+  const ids = await target.$$eval('.board .node', (nodes) => nodes.map((n) => n.dataset.id));
+  for (const id of ids.slice(0, 3)) {
+    await target.click(`.node[data-id="${id}"] .hit`, { force: true }).catch(() => {});
+  }
+  const after = await target.evaluate(() => ({
+    level: document.getElementById('hud-level').textContent,
+    left: document.getElementById('hud-left').textContent,
+    score: document.getElementById('hud-score').textContent,
+    cardHidden: document.getElementById('over').hidden,
+  }));
+  check(after.cardHidden && after.level === before.level && after.left === before.left && after.score === before.score,
+    `${label}: Tippen auf Knoten ändert nichts (Level ${after.level}, ${after.left} Sender, ${after.score} Punkte)`);
+  await target.click('#unpeek');
+  const back = await target.evaluate(() => ({
+    cardShown: !document.getElementById('over').hidden,
+    pillHidden: document.getElementById('unpeek').hidden,
+    title: document.getElementById('over-title').textContent,
+  }));
+  check(back.cardShown && back.pillHidden && back.title === before.title,
+    `${label}: „Ergebnis anzeigen" holt die Karte zurück, unverändert`);
+}
+
+/**
  * Plays a whole run with a bot — the planner unless told otherwise — and
  * writes down what it did, so the browser can be asked to reproduce it click
  * for click and the expected numbers are known before the page is ever opened.
@@ -673,6 +730,13 @@ try {
   }));
   await page.screenshot({ path: `${shots}/ui-over.png` });
 
+  // --- die Karte beiseite, das Brett ansehen ---------------------------------
+  await peekAround(page, 'freies Spiel');
+  check(await page.isVisible('#restart'), 'und „Neue Partie" ist wieder da');
+  await page.click('#peek');
+  await page.screenshot({ path: `${shots}/ui-peek.png` });
+  await page.click('#unpeek');
+
   // --- octagons, on the board the run ended on ------------------------------
   // The first board has none any more, so they are checked here, behind the
   // card. An impermeable node is a different body, not an ordinary one with a
@@ -699,9 +763,12 @@ try {
   // along the line between every pair of overlapping targets; the node that
   // shows the press has to be the nearest one whose target contains the point.
   // Behind the card, which is lifted for the moment: the run is over, so the
-  // release places nothing.
+  // release places nothing. A finished board takes no pointer at all (the
+  // stage's is-ended class), and this probe is about where a press lands, not
+  // about the end of a run — so that is lifted for it too, and put back after.
   const targets = await page.evaluate(() => {
     document.getElementById('over').style.visibility = 'hidden';
+    document.getElementById('stage').classList.remove('is-ended');
     return [...document.querySelectorAll('.node:not(.is-forbidden) .hit')].map((hit) => {
       const box = hit.getBoundingClientRect();
       return { id: hit.closest('.node').dataset.id, x: box.left + box.width / 2, y: box.top + box.height / 2, reach: box.width / 2 };
@@ -731,7 +798,10 @@ try {
     await page.mouse.up();
     if (pressed !== nearestTarget(x, y)) wrongHits++;
   }
-  await page.evaluate(() => { document.getElementById('over').style.visibility = ''; });
+  await page.evaluate(() => {
+    document.getElementById('over').style.visibility = '';
+    document.getElementById('stage').classList.add('is-ended');
+  });
   check(probes.length >= 20, `${probes.length} Druckpunkte zwischen überlappenden Trefferflächen`);
   check(wrongHits === 0, `davon ${wrongHits} am falschen Knoten: der nächste gewinnt`);
   check(await page.evaluate(() => {
@@ -1221,8 +1291,11 @@ try {
   check(again.level === `${plan.level} von 25` && again.score === String(plan.score),
     'ein Neuladen zeigt dasselbe Ergebnis wieder');
 
-  // Not merely hidden behind the card: the board itself refuses. Clicked with
-  // force, so the overlay is not what is being tested here.
+  // Not merely hidden behind the card: the board itself refuses. The card is
+  // set aside first — a tap beside it would do that anyway — and the nodes
+  // are clicked with force, so neither the overlay nor the pointer block on a
+  // finished board is what is being tested here.
+  await daily.click('#peek');
   const ids = await daily.$$eval('.board .node', (nodes) => nodes.map((n) => n.dataset.id));
   for (const id of ids.slice(0, 3)) {
     await daily.click(`.node[data-id="${id}"] .hit`, { force: true }).catch(() => {});
@@ -1236,7 +1309,9 @@ try {
   check(denied.moves === again.moves, `kein Zug kommt hinzu (${denied.moves})`);
   check(denied.level === `${plan.level} von 25` && denied.score === String(plan.score),
     'und das Ergebnis bleibt stehen');
-  check(denied.over === false, 'die Karte bleibt liegen');
+  check(denied.over === true, 'die Karte bleibt dabei beiseite');
+  await daily.click('#unpeek');
+  check(await daily.evaluate(() => !document.getElementById('over').hidden), 'und kommt auf Tipp zurück');
   const spent = await openedOn(daily);
   check(spent.daily && spent.over, 'nach einem Neuladen mit verbrauchtem Versuch steht das Tagesbrett mit Ergebnis');
 
@@ -1303,6 +1378,31 @@ try {
   check(await daily.isHidden('#enter') && await daily.isHidden('#enter-form'), 'und bietet kein zweites Eintragen an');
   const deviceShown = await daily.evaluate((id) => document.body.innerText.includes(id), sent.client_id);
   check(!deviceShown, 'die Geräte-ID steht nirgends auf der Seite');
+
+  // The card set aside and back, with the entry made: nothing on it is lost.
+  await peekAround(daily, 'Tagesbrett');
+  // A tap beside the card — on the dimmed board, in a corner of the stage —
+  // sets it aside as well; a tap on the card's content does not.
+  await daily.click('#over', { position: { x: 8, y: 8 } });
+  check(await daily.evaluate(() => document.getElementById('over').hidden), 'ein Tipp neben die Karte legt sie ebenfalls beiseite');
+  await daily.click('#unpeek');
+  await daily.click('#over-title');
+  check(await daily.evaluate(() => !document.getElementById('over').hidden), 'ein Tipp auf die Karte selbst nicht');
+  const kept = await daily.evaluate(() => ({
+    status: document.getElementById('enter-status').textContent,
+    countdown: /^\d{1,2}:\d{2}:\d{2}$/.test(document.getElementById('countdown').textContent),
+    share: document.getElementById('share').offsetParent !== null,
+  }));
+  check(kept.status === placeText, `der Eintrag steht noch da: ${kept.status}`);
+  check(kept.countdown && kept.share, 'Countdown und „Ergebnis teilen" auch');
+  await daily.evaluate(() => {
+    window.__shared = undefined;
+    Object.defineProperty(navigator, 'share', { configurable: true, value: async (data) => { window.__shared = data.text; } });
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+  });
+  await daily.click('#share');
+  await until(daily, () => typeof window.__shared === 'string', 2000);
+  check((await daily.evaluate(() => window.__shared ?? '')).includes('gescheitert'), 'und Teilen geht danach noch');
 
   // The leaderboard: the top ten, the place, and the own row below a gap.
   await daily.click('#ranks-open');
@@ -1450,6 +1550,15 @@ try {
     await through.locator('#over').evaluate((element) =>
       Promise.all(element.getAnimations().map((animation) => animation.finished)));
     await through.screenshot({ path: `${shots}/ui-won.png` });
+
+    // Played through, the board behind the card is a closing picture: every
+    // node lit, and still nothing to do on it.
+    await peekAround(through, 'durchgespielt');
+    const lit = await through.evaluate(() => ({
+      nodes: document.querySelectorAll('.board .node').length,
+      covered: document.querySelectorAll('.board .node.is-covered').length,
+    }));
+    check(lit.nodes > 0 && lit.covered === lit.nodes, `dahinter sind alle ${lit.nodes} Knoten versorgt`);
 
     // A follow-up entry: the saved name, one click, no field.
     check(throughBoard.requests.length === 0, 'auch hier keine Anfrage beim Start');

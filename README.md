@@ -75,6 +75,13 @@ freien Spiel steht nur „Level 12". Wer durchspielt, sieht „Alle 25 Level
 geschafft." und teilt „durchgespielt". Warum so, steht in `MESSUNGEN.md` unter
 2026-11-10.
 
+Die Endkarte lässt sich beiseitelegen, in beiden Spielarten und nach beiden
+Ausgängen: „Brett ansehen" auf der Karte oder ein Tipp neben sie zeigt das
+Brett in voller Helligkeit, damit man sieht, welche Knoten dunkel geblieben
+sind. Das Brett ist dann nur anzusehen, ein Tipp auf einen Knoten tut nichts.
+„Ergebnis anzeigen" am unteren Rand der Bühne holt die Karte zurück, mit
+allem, was darauf war: Countdown, Teilen, Eintrag.
+
 Die Seite öffnet immer auf dem Tagesbrett, egal was zuletzt gespielt wurde: ist
 der Versuch offen, zum Spielen, ist er verbraucht, mit Ergebnis und Countdown.
 Die Spielart wird nicht gespeichert. Ins freie Spiel geht es mit einem Tipp auf
