@@ -173,7 +173,12 @@
 
       /* Positioned, so the board can fill it outright: a percentage height on
          a flex item does not resolve against a flex-derived height. */
-      #stage { flex: 1; min-height: 320px; position: relative; }
+      /* The stage runs edge to edge, through the page's 16px gutters, which the
+         rest of the page keeps. On a phone the width is what limits the
+         board's scale — the boards are wider than tall, the stage is not —
+         and the two gutters cost 9 to 11 % of node radius (MESSUNGEN.md,
+         "Die Breite ausnutzen", 2026-11-10). */
+      #stage { flex: 1; min-height: 320px; position: relative; margin: 0 -16px; }
 
       /* Fills the stage and scales the drawing to fit; preserveAspectRatio
          keeps the geometry undistorted. */

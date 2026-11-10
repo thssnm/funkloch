@@ -2313,3 +2313,155 @@ node tools/stage-gain.js        # startet seinen eigenen Server auf 8743
 ### Was blieb
 
 - `tools/stage-gain.js` — das Werkzeug. Sonst nichts: kein Code am Spiel.
+
+---
+
+## 2026-11-10 — Die Breite ausnutzen: Seitenrand weg, Drehung nicht
+
+**Werkzeug:** `tools/stage-gain.js --width` (Variante des vorigen Eintrags)
+**Ergebnis: Der Seitenrand der Bühne ist weg** (`#stage { margin: 0 -16px }`),
+9 bis 11 % mehr Knotenradius auf dem Telefon ohne Risiko. **Die Drehung ist
+nicht eingebaut**: 5 bis 6 % auf den kleinen Telefonen, mit Umbau an der
+Trefferauflösung, und zusammen mit dem Rand greift ihre Bedingung ohnehin
+nicht mehr. Nebenbei repariert: `fitHitAreas` nahm nur die Breite als
+Maßstab.
+
+### Die Frage
+
+Der vorige Eintrag zeigte, dass auf dem Telefon die Breite den Maßstab
+begrenzt, nicht die Höhe. Oben und unten ist Luft, links und rechts sitzt das
+Brett an der Kante der Bühne — und die Bühne hat, wie die ganze Seite, 16 px
+Rand je Seite. Zwei Hebel, beide ohne Änderung am Generator und ohne dass
+sich gespeicherte Bretter ändern:
+
+1. Den Seitenrand der Bühne aufgeben; Kopfzeile, Hilfetext und
+   Datenschutz-Link behalten ihren.
+2. Das Brett beim Einpassen um 90° drehen, wenn es breiter als hoch ist und
+   die Bühne höher als breit; derselbe Graph, nur die Darstellung.
+
+Dazu beides zusammen, und als fünfter Fall beides plus den ausgeblendeten
+Hilfetext aus dem vorigen Eintrag.
+
+### Gemessen
+
+Sechs Bretter je Größe, in die Bühne gezeichnet, Radius eines gewöhnlichen
+Knotens auf dem Schirm; „Luft" ist der freie Streifen je Seite zwischen
+viewBox und Bühnenrand. Die Drehung für die Messung über ein `<g transform>`
+mit getauschter viewBox — zum Messen des Radius genügt das, als Umsetzung
+wäre es der Weg, der die Trefferauflösung bricht (unten).
+
+```
+360 × 640 (Bühne 328×356, ohne Rand 360×356, ohne Rand und Hilfetext 360×431)
+Knoten  Variante                 Radius    Gewinn   Luft oben/unten  links/rechts  gedreht
+    22  heute                    7.80 px             37 px            0 px
+    22  ohne Rand                8.39 px   +7.6 %    26 px            4 px
+    22  gedreht                  8.15 px   +4.5 %     4 px           21 px         4/6
+    22  beides                   8.39 px   +7.6 %    26 px            4 px         0/6
+    22  beides, ohne Hilfetext   9.46 px  +21.3 %    14 px           15 px         4/6
+    60  heute                    5.03 px             28 px            0 px
+    60  ohne Rand                5.51 px   +9.5 %    14 px            0 px
+    60  gedreht                  5.28 px   +4.9 %     6 px            7 px         5/6
+    60  beides                   5.51 px   +9.5 %    14 px            0 px         0/6
+    60  beides, ohne Hilfetext   6.08 px  +20.7 %    18 px            0 px         5/6
+
+320 × 568 (Bühne 288×320, ohne Rand 320×320, ohne Rand und Hilfetext 320×359)
+    60  heute                    4.42 px             28 px            0 px
+    60  ohne Rand                4.91 px  +11.0 %    14 px            0 px
+    60  gedreht                  4.69 px   +6.2 %     7 px            5 px         5/6
+    60  beides                   4.91 px  +11.0 %    14 px            0 px         0/6
+    60  beides, ohne Hilfetext   5.24 px  +18.6 %     9 px            4 px         5/6
+
+390 × 844 (Bühne 358×560, ohne Rand 390×560, ohne Rand und Hilfetext 390×635)
+    22  heute                    8.54 px            125 px            0 px
+    22  ohne Rand                9.30 px   +8.9 %   111 px            0 px
+    22  gedreht                 10.46 px  +22.5 %    58 px            0 px         4/6
+    22  beides                  11.36 px  +33.1 %    39 px            1 px         4/6
+    60  heute                    5.49 px            116 px            0 px
+    60  ohne Rand                5.99 px   +8.9 %   101 px            0 px
+    60  gedreht                  6.04 px  +10.0 %    83 px            0 px         5/6
+    60  beides                   6.58 px  +19.8 %    66 px            0 px         5/6
+    60  beides, ohne Hilfetext   6.58 px  +19.8 %   103 px            0 px         5/6
+```
+
+34 und 46 Knoten liegen jeweils innerhalb von 0.3 Prozentpunkten bei 60.
+„gedreht" zählt, wie viele der sechs Bretter die Drehbedingung erfüllten;
+ein 22er-Brett von sechs war schon hochformatig.
+
+Die Tabelle ist vom Stand *vor* dem Einbau. Das Werkzeug misst „heute" an
+der Seite, wie sie ausgeliefert wird; seit der Rand weg ist, steht dort
+dasselbe wie unter „ohne Rand" (5.51 px bei 360 × 640), und „gedreht" greift
+auf den kleinen Telefonen nicht mehr (0 von 6).
+
+**Trefferflächen nach dem Randwegfall:** auf dem dichtesten Brett des
+Smoke-Laufs (42 Knoten, Level 7) misst die kleinste Trefferfläche bei
+360 × 640 und bei 320 × 568 je **44.0 px**. Die Knoten sind größer geworden,
+die Abstände dieselben, die Trefferflächen unverändert am Minimum.
+
+### Was die Zahlen sagen
+
+- **Der Seitenrand allein bringt 9 bis 11 %** auf den kleinen Telefonen,
+  9 % auf dem großen. Kein Umbau, kein Risiko.
+- **Die Drehung allein bringt auf den kleinen Telefonen 5 bis 6 %.** Die
+  Bühne ist dort mit 0.92 fast quadratisch, ein gedrehtes Brett (1.10 → 0.91)
+  hat fast dieselbe Form; danach begrenzt die Höhe. Nur auf dem hohen Telefon
+  (Bühne 0.64) zahlt sie sich aus: 10 %, beim 22er-Brett 22 %.
+- **„Beides" ist auf den kleinen Telefonen dasselbe wie „ohne Rand".** Ohne
+  Seitenrand ist die Bühne 360 × 356 bzw. 320 × 320, nicht mehr höher als
+  breit, und die Drehbedingung greift nicht. Erst der ausgeblendete Hilfetext
+  macht sie wieder hochformatig (360 × 431); dann greift die Drehung, und alle
+  drei Hebel zusammen bringen rund 20 %.
+
+### Was bei der Drehung bräche
+
+Festgehalten für den Fall, dass sich die Bedingungen ändern — etwa wenn der
+Hilfetext doch geht, oder hohe Telefone wichtiger werden:
+
+- **Trefferauflösung über Nähe.** `locate` in `input.js` rechnet den Zeiger
+  über die CTM des SVG-Wurzelelements zurück und sucht den nächsten Knoten in
+  den Graph-Koordinaten (`scene.board.graph.nodes`). Eine Drehung über ein
+  `<g transform>` wäre für diese Rechnung unsichtbar; Tipps gingen an falsche
+  Knoten. Die Drehung müsste in `render.js` auf gezeichneten Koordinaten
+  liegen, und die Nähe-Suche müsste dieselben benutzen; der Graph bliebe
+  unangetastet. Die Druckproben im Smoke-Test („0 von 48 am falschen Knoten")
+  fingen einen Fehler hier.
+- **Trefferflächen.** Nach der Drehung begrenzt auf den kleinen Telefonen die
+  Höhe; `fitHitAreas` mit Breite allein hätte die 44 px verfehlt. Das ist
+  jetzt repariert, unabhängig von der Drehung.
+- **Nicht betroffen:** die Signalanimation (Verzögerung nach Hops, ohne
+  Geometrie), die Endkarte (HTML über der Bühne) und das Nachspielen eines
+  gespeicherten Tagesversuchs (`place`/`advance` über Knoten-IDs, bevor
+  gezeichnet wird).
+
+### `fitHitAreas`: der Maßstab ist das Minimum
+
+`fitHitAreas` rechnete den Maßstab aus Bühnenbreite zu viewBox-Breite. Das
+stimmt, solange die Breite begrenzt — auf dem Telefon bisher immer, deshalb
+fiel es nicht auf. Auf einer Bühne, die über die Höhe begrenzt, wären die
+Trefferflächen kleiner als 44 px gewesen, auf einer dreimal zu breiten Bühne
+ein Drittel. Jetzt ist der Maßstab `min(Breite/vbBreite, Höhe/vbHöhe)`, so wie
+`preserveAspectRatio` zeichnet; `test/render.test.js` prüft beide Seiten.
+
+### Befund
+
+**Seitenrand weg, Drehung nicht.** 9 bis 11 % ohne Risiko gegen 5 bis 6 %
+mit Umbau an zwei Stellen, und zusammen mit dem Rand hat die Drehung keinen
+Fall mehr. Die Drehung bleibt als Hebel dokumentiert.
+
+### Reproduktion
+
+```sh
+node tools/stage-gain.js --width   # Rand, Drehung, beides, alles; drei Bildschirme
+npm run smoke                      # Kanten, Ränder, kleinste Trefferfläche
+```
+
+### Was blieb
+
+- `index.html` — `#stage { margin: 0 -16px }`.
+- `src/render.js` — `fitHitAreas` nimmt das Minimum beider Verhältnisse;
+  `createScene` gibt `viewBox.height` mit.
+- `test/render.test.js` — Trefferflächen auf breiten- und höhenbegrenzter
+  Bühne, nie kleiner als der Ring, unberührt vor dem Layout.
+- `tools/ui-smoke.js` — bei 360 und 320 px: Bühne von Kante zu Kante,
+  Kopfzeile/Hilfetext/Datenschutz-Link bei 16 px, kleinste Trefferfläche
+  ≥ 44 px auf dem dichtesten Brett.
+- `tools/stage-gain.js` — `--width` misst die fünf Varianten.

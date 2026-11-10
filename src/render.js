@@ -404,7 +404,7 @@ export function createScene(
     });
   });
 
-  return { svg, nodes: nodeElements, edges: edgeElements, board, viewBox: { width }, metrics };
+  return { svg, nodes: nodeElements, edges: edgeElements, board, viewBox: { width, height }, metrics };
 }
 
 /**
@@ -525,9 +525,14 @@ export function clearRange(scene) {
  * @param {number} [minPx]
  */
 export function fitHitAreas(scene, minPx = MIN_HIT_PX) {
-  const onScreen = scene.svg.getBoundingClientRect().width;
-  if (!onScreen) return;
-  const scale = onScreen / scene.viewBox.width;
+  const onScreen = scene.svg.getBoundingClientRect();
+  if (!onScreen.width || !onScreen.height) return;
+  // The drawing is scaled uniformly to fit (preserveAspectRatio), so the
+  // scale is whichever side fits tighter. Until 2026-11-10 only the width
+  // was taken, which was right as long as the width limited — on a phone it
+  // always did — and would have left the targets short of minPx on a stage
+  // that limits by height.
+  const scale = Math.min(onScreen.width / scene.viewBox.width, onScreen.height / scene.viewBox.height);
   const radius = Math.max(minPx / 2 / scale, scene.metrics.ring);
   for (const parts of scene.nodes.values()) {
     parts.hit.setAttribute('r', radius.toFixed(2));

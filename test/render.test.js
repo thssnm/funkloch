@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createScene, DOT_RATIO, HOP_MS, metricsFor, nearestPair, render } from '../src/render.js';
+import {
+  createScene, DOT_RATIO, fitHitAreas, HOP_MS, metricsFor, MIN_HIT_PX, nearestPair, render,
+} from '../src/render.js';
 
 /**
  * The smallest document the renderer will accept. There is no browser in the
@@ -184,5 +186,57 @@ test('node size follows the nearest pair of the board', async (t) => {
     const scene = createScene({ graph: line5, k: 1 }, { document: fakeDocument(), padding: 0 });
     const [minX] = scene.svg.getAttribute('viewBox').split(' ').map(Number);
     assert.ok(-minX >= scene.metrics.ring, `viewBox starts at ${minX}, ring is ${scene.metrics.ring}`);
+  });
+});
+
+/**
+ * A 10 × 10 grid at the usual spacing: a square board many nearest pairs
+ * across. On a board only one pair across, the ring — which scales with the
+ * pair — would be the floor for the target on any stage, and the rule under
+ * test would never show.
+ */
+const grid10 = {
+  nodes: Array.from({ length: 100 }, (_, i) => ({ id: `r${Math.floor(i / 10)}c${i % 10}`, x: (i % 10) * 60, y: Math.floor(i / 10) * 60 })),
+  edges: [],
+};
+
+test('tap targets are at least 44px across, whichever side limits the fit', async (t) => {
+  /** The scene as drawn into a stage of the given size, and the target radius
+   *  on screen that results. The drawing is scaled uniformly to fit, so the
+   *  scale is the tighter of the two sides — what a browser does with
+   *  preserveAspectRatio, stood in for here. */
+  const drawnInto = (width, height) => {
+    const scene = createScene({ graph: grid10, k: 1 }, { document: fakeDocument(), padding: 0 });
+    scene.svg.getBoundingClientRect = () => ({ width, height });
+    fitHitAreas(scene);
+    const scale = Math.min(width / scene.viewBox.width, height / scene.viewBox.height);
+    const radius = Number(scene.nodes.get('r0c0').hit.getAttribute('r'));
+    return { scene, onScreen: radius * scale * 2 };
+  };
+
+  await t.test('on a stage that limits by width', () => {
+    const { onScreen } = drawnInto(300, 900);
+    assert.ok(onScreen >= MIN_HIT_PX - 0.01, `${onScreen}px across`);
+  });
+
+  await t.test('on a stage that limits by height', () => {
+    // Until 2026-11-10 the width alone set the scale, and on this stage the
+    // targets came out at a third of the size they should have.
+    const { onScreen } = drawnInto(900, 300);
+    assert.ok(onScreen >= MIN_HIT_PX - 0.01, `${onScreen}px across`);
+    assert.ok(onScreen < MIN_HIT_PX * 1.5, `and not far past it either (${onScreen}px)`);
+  });
+
+  await t.test('never smaller than the ring', () => {
+    const { scene } = drawnInto(100000, 100000);
+    assert.equal(Number(scene.nodes.get('r0c0').hit.getAttribute('r')), Number(scene.metrics.ring.toFixed(2)));
+  });
+
+  await t.test('leaves the targets alone before layout', () => {
+    const scene = createScene({ graph: grid10, k: 1 }, { document: fakeDocument(), padding: 0 });
+    scene.svg.getBoundingClientRect = () => ({ width: 0, height: 0 });
+    const before = scene.nodes.get('r0c0').hit.getAttribute('r');
+    fitHitAreas(scene);
+    assert.equal(scene.nodes.get('r0c0').hit.getAttribute('r'), before);
   });
 });

@@ -42,6 +42,7 @@ import {
 import { lookaheadChoice } from './bot64.js';
 import { rolloutChoice } from './plateau.js';
 import { LEADERBOARD } from '../src/leaderboard.js';
+import { MIN_HIT_PX } from '../src/render.js';
 import { GAME_URL } from '../src/share.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
@@ -735,6 +736,41 @@ try {
   check(await page.isVisible('#restart'), 'und „Neue Partie" ist wieder da');
   await page.click('#peek');
   await page.screenshot({ path: `${shots}/ui-peek.png` });
+
+  // --- das Brett bis an den Rand ---------------------------------------------
+  // On a phone the stage runs edge to edge while the rest of the page keeps
+  // its 16px gutter; and the tap targets stay at least 44px across — this is
+  // the run's last and densest board, with the card set aside so the targets
+  // are what gets measured. fitHitAreas runs on resize.
+  for (const [width, height] of [[360, 640], [320, 568]]) {
+    await page.setViewportSize({ width, height });
+    // The resize event, and with it fitHitAreas, lands a moment after the
+    // viewport has changed; measured too early, the targets are still the
+    // last viewport's. Waited for, not forced: it has to come by itself.
+    await until(page, () => Math.min(...[...document.querySelectorAll('.board .hit')]
+      .map((hit) => hit.getBoundingClientRect().width)) >= 43.5, 2000);
+    const edges = await page.evaluate(() => {
+      const rect = (selector) => document.querySelector(selector).getBoundingClientRect();
+      const stage = rect('#stage');
+      const hits = [...document.querySelectorAll('.board .hit')].map((hit) => hit.getBoundingClientRect().width);
+      return {
+        stage: [Math.round(stage.left), Math.round(stage.right)],
+        ledger: Math.round(rect('#hud-ledger').left),
+        hint: Math.round(rect('.hint').left),
+        legal: Math.round(rect('.legal').left),
+        smallestHit: Math.min(...hits),
+        hits: hits.length,
+        fits: document.documentElement.scrollWidth <= window.innerWidth,
+      };
+    });
+    check(edges.stage[0] === 0 && edges.stage[1] === width && edges.fits,
+      `bei ${width} px reicht das Brett von ${edges.stage[0]} bis ${edges.stage[1]}, ohne Überstand`);
+    check(edges.ledger === 16 && edges.hint === 16 && edges.legal === 16,
+      `Kopfzeile, Hilfetext und Datenschutz-Link behalten ihren Rand (${edges.ledger}/${edges.hint}/${edges.legal} px)`);
+    check(edges.smallestHit >= MIN_HIT_PX - 0.5,
+      `die kleinste von ${edges.hits} Trefferflächen misst ${edges.smallestHit.toFixed(1)} px`);
+  }
+  await page.setViewportSize({ width: 560, height: 960 });
   await page.click('#unpeek');
 
   // --- octagons, on the board the run ended on ------------------------------
