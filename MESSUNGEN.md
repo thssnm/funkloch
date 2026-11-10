@@ -2221,3 +2221,95 @@ bleibt sie.
   zeigt im freien Spiel das Level, in dem die Partie endete, auf dem
   Tagesbrett „N von 25", durchgespielt „25 von 25".
 - `README.md` — Kopfzeile und Beispielzeile.
+
+---
+
+## 2026-11-10 — Hilfetext ab Level 5 ausblenden: bringt die Höhe dem Brett etwas?
+
+**Werkzeug:** `tools/stage-gain.js` (neu)
+**Ergebnis: nicht eingebaut.** Der Hilfetext bleibt. Mehr Bühnenhöhe macht
+die Knoten auf dem Telefon nicht größer, weil die Breite die Skalierung
+begrenzt, nicht die Höhe.
+
+### Die Frage
+
+Der Hilfetext unter dem Brett erklärt Tippen und die achteckigen Knoten. Nach
+den ersten Leveln weiß das jeder, und auf dem Telefon kostet er Höhe. Der
+Vorschlag: ab Level 5 ausblenden und die Höhe der Bühne geben, damit die
+Knoten größer werden. Bedingung: lohnt sich nur ab etwa 5 % mehr
+Knotenradius. Und vorher prüfen, ob die Bühne überhaupt begrenzt.
+
+### Wie das Brett skaliert
+
+Zwei Größen, die man auseinanderhalten muss:
+
+- Der Knotenradius **im Brett** ist 0.20 des engsten Knotenpaars
+  (`DOT_RATIO`, Eintrag „Knotenradius aus dem engsten Paar"). Er hängt am
+  Brett, nicht an der Bühne.
+- Der Knotenradius **auf dem Schirm** ist dieser Radius mal dem Maßstab, mit
+  dem das Brett in die Bühne gepasst wird: `min(Bühnenbreite / Brettbreite,
+  Bühnenhöhe / Bretthöhe)`, uniform (`preserveAspectRatio`).
+
+Mehr Bühnenhöhe hilft also nur, wenn die Höhe der kleinere der beiden
+Quotienten ist. Die Bretter sind breiter als hoch — Breite zu Höhe im Mittel
+1.20 (22 Knoten) bis 1.10 (34 bis 60 Knoten), einzelne bis 1.44 —, eine
+Telefonbühne ist höher als breit (0.92 bei 360 × 640, 0.90 bei 320 × 568,
+0.64 bei 390 × 844). Dann begrenzt die Breite.
+
+### Gemessen
+
+Sechs Bretter je Größe, in die Bühne gezeichnet, Hilfetext ein- und
+ausgeblendet, Radius eines gewöhnlichen Knotens auf dem Schirm.
+`node tools/stage-gain.js`:
+
+```
+360 × 640
+Knoten  Bühne mit→ohne  Radius mit→ohne   Gewinn  begrenzt durch
+    22  356→431 px      7.80→7.82 px       0.3 %  Breite (5 von 6), einmal Höhe→Breite
+    34  356→431 px      6.43→6.43 px       0.0 %  Breite
+    46  356→431 px      5.76→5.76 px       0.0 %  Breite
+    60  356→431 px      5.03→5.03 px       0.0 %  Breite
+
+320 × 568
+    22  320→359 px      6.87→6.87 px       0.0 %  Breite
+    34  320→359 px      5.65→5.65 px       0.0 %  Breite
+    46  320→359 px      5.06→5.06 px       0.0 %  Breite
+    60  320→359 px      4.42→4.42 px       0.0 %  Breite
+
+390 × 844
+    22  560→635 px      8.54→8.54 px       0.0 %  Breite
+    34  560→635 px      7.02→7.02 px       0.0 %  Breite
+    46  560→635 px      6.29→6.29 px       0.0 %  Breite
+    60  560→635 px      5.49→5.49 px       0.0 %  Breite
+```
+
+Die Bühne gewinnt 75 px (360 × 640) bzw. 39 px (320 × 568), der Knotenradius
+**0.0 %**. Ein einziges 22er-Brett war mit Hilfetext knapp höhenbegrenzt und
+gewinnt 0.3 %. Alles andere ist Luft über und unter dem Brett.
+
+### Befund
+
+**Nicht eingebaut.** Die Grenze liegt weit unter den geforderten 5 %. Die
+Bühne ist auf dem Telefon nicht der begrenzende Faktor; die Breite ist es,
+und die ist mit dem Hilfetext dieselbe wie ohne.
+
+Was die Knoten auf dem Telefon tatsächlich größer machen würde, zur
+Einordnung, nicht als Vorschlag:
+
+- **Die seitlichen 16 px Rand** der Seite: das Brett auf volle Breite gäbe
+  etwa 10 % Radius (328 → 360 px), auf Kosten des Randes, den auch Kopfzeile
+  und Hilfetext haben.
+- **Hochformatige Bretter.** Bei einem Brett mit dem Seitenverhältnis der
+  Bühne (0.92 statt 1.2) wäre der Maßstab rund 30 % größer. Das ist eine
+  Änderung am Generator — und damit an jeder gespeicherten Levelsequenz,
+  siehe „Byte-Identität der Level-Sets" in `CLAUDE.md`.
+
+### Reproduktion
+
+```sh
+node tools/stage-gain.js        # startet seinen eigenen Server auf 8743
+```
+
+### Was blieb
+
+- `tools/stage-gain.js` — das Werkzeug. Sonst nichts: kein Code am Spiel.
