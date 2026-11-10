@@ -150,6 +150,21 @@ bei `levels/` bares Geld wert, wo Byte-Identität ein Test ist.
 Für die Shell bleibt, wofür sie da ist: lesen, suchen, Tests und Werkzeuge
 starten (`cat`, `sed -n`, `grep`, `node tools/…`, `npm test`).
 
+## Berichten, was nebenher passiert ist
+
+Alles, was außerhalb des Arbeitsverzeichnisses passiert oder von den
+Konventionen hier abweicht, steht im Bericht — vollständig und ungefragt. Dazu
+gehören:
+
+- Installationen und Downloads, mit Ziel und Umfang (was genau, wohin, wie groß),
+- Git-Operationen über das Verlangte hinaus, etwa `stash`, `reset`, `checkout`,
+- Konfigurationsoptionen, auch einmalige wie `git -c …`,
+- jede Abweichung von `Edit` und `Write`, und was danach damit geschah.
+
+Lieber zu viel berichten als auf Nachfrage nachliefern. Was erst die Nachfrage
+ans Licht bringt, war im ersten Bericht falsch, auch wenn jeder Satz darin
+stimmte.
+
 ## Kleinkram
 
 - Kommentare im Quelltext auf Englisch, Oberfläche und Werkzeug-Ausgabe auf
@@ -158,6 +173,11 @@ starten (`cat`, `sed -n`, `grep`, `node tools/…`, `npm test`).
   devDependency und nur für `tools/preview.js` und `tools/ui-smoke.js`.
 - Nach Änderungen an `index.html`, `render.js` oder `input.js`: `npm run smoke`.
   Element-IDs sind die Nahtstelle zwischen Seite und Test.
+- Fehlt der Browser für den Smoke-Test, genügt
+  `npx playwright install chromium --only-shell`. Der Test braucht nur die
+  Headless Shell; ohne `--only-shell` kommen der volle Chromium und ffmpeg mit,
+  zusammen gut 600 MB Ballast. Die anderen Werkzeuge (`preview.js`,
+  `make-icons.js`, `share-forms.js`) starten ebenfalls headless.
 - `.node`, `.edge` und `.dot` gehören dem Brett. Anderes SVG auf der Seite —
   Marke, Icons — braucht eigene Klassennamen (`.mark-node`, `.mark-edge`), sonst
   antwortet es auf jeden Selektor, der einen Knoten meint, und `.node`
