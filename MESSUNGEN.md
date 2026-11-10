@@ -2314,6 +2314,39 @@ node tools/stage-gain.js        # startet seinen eigenen Server auf 8743
 
 - `tools/stage-gain.js` — das Werkzeug. Sonst nichts: kein Code am Spiel.
 
+### Nachtrag, 2026-11-10: der Hilfetext geht jetzt doch — aus einem anderen Grund
+
+Der Text verschwindet seit diesem Tag, sobald jemand einmal über Level 5
+hinaus gespielt hat (`funkloch.hilfe`, beide Spielarten, dauerhaft). Nicht
+wegen der Knoten — die Messung oben gilt weiter, die Breite begrenzt —,
+sondern weil er dann gelesen ist. Der Platz geht an die Bühne, als Luft
+oben und unten.
+
+Gemessen mit dem Smoke-Test, mit Datenschutz-Link und Standzeile an Ort und
+Stelle (die Standzeile fehlt in der Tabelle von `stage-gain.js`, dort ist
+die Bühne 28 px höher):
+
+```
+Bildschirm   Bühne mit Hilfetext   ohne Hilfetext   Höhe/Breite vorher → nachher
+360 × 640    360 × 356             360 × 403        0.99 → 1.12
+320 × 568    320 × 320             320 × 331        1.00 → 1.03
+```
+
+Die Bühne ist damit wieder höher als breit, aber nur knapp. Die Drehung
+(Eintrag „Die Breite ausnutzen") greift wieder; `stage-gain.js --width`,
+Variante „alles", gegen den heutigen Stand ohne Seitenrand: **+10 %** bei
+360 × 640 (34 bis 60 Knoten, 431 px Bühne ohne Standzeile, mit Standzeile
+weniger), **+7 bis 8 %** bei 320 × 568, +10 % bei 390 × 844 wie zuvor. Die
+20 % aus der alten Tabelle waren gegen den Stand *mit* Seitenrand gerechnet;
+die eine Hälfte davon ist seit dem Randwegfall längst realisiert.
+
+**Die Drehung ist damit endgültig erledigt.** 7 bis 10 % rechtfertigen den
+Umbau an der Trefferauflösung (`locate` in `input.js`, siehe „Was bei der
+Drehung bräche") nicht. Sie wird nicht erneut vorgeschlagen, solange sich
+die Bedingungen nicht ändern: andere Bühnenmaße, hochformatige Bretter aus
+dem Generator, oder eine Trefferauflösung, die ohnehin auf gezeichneten
+Koordinaten rechnet.
+
 ---
 
 ## 2026-11-10 — Die Breite ausnutzen: Seitenrand weg, Drehung nicht
@@ -2446,6 +2479,11 @@ ein Drittel. Jetzt ist der Maßstab `min(Breite/vbBreite, Höhe/vbHöhe)`, so wi
 **Seitenrand weg, Drehung nicht.** 9 bis 11 % ohne Risiko gegen 5 bis 6 %
 mit Umbau an zwei Stellen, und zusammen mit dem Rand hat die Drehung keinen
 Fall mehr. Die Drehung bleibt als Hebel dokumentiert.
+
+Nachtrag vom selben Tag: Seit der Hilfetext ab Level 6 weg ist, greift die
+Drehbedingung wieder, der Gewinn gegen den heutigen Stand liegt aber bei 7
+bis 10 %. Damit ist die Drehung endgültig erledigt; die Zahlen stehen im
+Nachtrag zum Eintrag „Hilfetext ab Level 5 ausblenden".
 
 ### Reproduktion
 

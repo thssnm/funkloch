@@ -706,6 +706,9 @@
       button:not(:disabled):hover { border-color: var(--muted); }
 
       .hint { margin: 0; color: var(--muted); font-size: 14px; }
+      /* Gone for good once the player has played past level 5 (see HINT_KEY);
+         the height goes to the stage. Same trap as `.over[hidden]`. */
+      .hint[hidden] { display: none; }
       /* For bug reports, not for play: small, faint and last on the page. */
       .version {
         margin: 0;
@@ -835,7 +838,7 @@
         <button id="go" type="button" hidden>Weiter</button>
       </div>
 
-      <p class="hint">
+      <p class="hint" id="hint">
         Tippen setzt den Sender aus der Hand — gesetzt ist gesetzt. Achteckige
         Knoten leuchten selbst, geben das Signal aber nicht weiter.
       </p>
@@ -874,6 +877,7 @@
 
       const stage = document.getElementById('stage');
       const statusLine = document.getElementById('status');
+      const hint = document.getElementById('hint');
       const goButton = document.getElementById('go');
       const controls = document.getElementById('controls');
       const hud = {
@@ -970,6 +974,20 @@
        * daily board, so the mode is no longer kept and the old entry is dropped.
        */
       const STALE_MODE_KEY = 'funkloch.modus';
+      /**
+       * Whether the hint under the board has done its job. It explains tapping
+       * and the octagons; whoever has played past level 5 — in either mode —
+       * knows both, and from then on the hint only takes height from the
+       * stage. Set once and kept for good: no new run, no new day and no
+       * switch of mode brings the hint back.
+       *
+       * Read back from storage rather than remembered here. Where nothing can
+       * be stored — storage off, a page opened off the file system — the hint
+       * stays, which is the harmless side to err on.
+       */
+      const HINT_KEY = 'funkloch.hilfe';
+      /** The last level the hint is shown on; level 6 on screen takes it away. */
+      const HINT_LAST_LEVEL = 5;
 
       /**
        * Which deal a stored daily attempt was played on. The attempt is kept as
@@ -1111,9 +1129,22 @@
         }
       };
 
+      const readHintDone = () => {
+        try { return localStorage.getItem(HINT_KEY) === 'gelesen'; } catch { return false; }
+      };
+      const writeHintDone = () => {
+        try {
+          localStorage.setItem(HINT_KEY, 'gelesen');
+        } catch {
+          /* storage denied: the hint stays, as readHintDone will say */
+        }
+      };
+
       let best = readBest();
       /** Whether *this* run has already pushed the record. */
       let record = false;
+      /** Whether the hint under the board is gone for good; see HINT_KEY. */
+      let hintDone = readHintDone();
 
       /** 'frei' or 'taeglich'. */
       let mode = 'frei';
@@ -1264,6 +1295,16 @@
         drawChip(hud.now, state.current ?? null);
         hud.next.forEach((chip, index) => drawChip(chip, state.preview[index] ?? null));
 
+        // The hint, until the player has played past level 5 — in this run or
+        // any earlier one, in either mode — and then never again. The mark is
+        // read back after it is written: where it could not be stored the
+        // hint stays (HINT_KEY).
+        if (!hintDone && state.level > HINT_LAST_LEVEL) {
+          writeHintDone();
+          hintDone = readHintDone();
+        }
+        hint.hidden = hintDone;
+
         statusLine.classList.toggle('is-won', state.status === 'levelCleared');
         goButton.hidden = state.status !== 'levelCleared';
         // Nothing to show means no row: the height belongs to the board.
@@ -1351,9 +1392,27 @@
       // A tap beside the card — on the dimmed board — sets it aside as well.
       // Only the backdrop itself: the card's content is laid out in the middle
       // and a tap on it must keep meaning what it says.
-      over.card.addEventListener('click', (event) => {
-        if (event.target === over.card) setPeeking(true);
+      //
+      // Pointer events, and the press has to begin on the backdrop. Until
+      // 2026-11-10 this was a click listener, and the tap that ends a run
+      // fooled it: input.js answers on pointerup, the card appears under the
+      // finger, and only then does the browser make the click for that tap.
+      // On touch the click is hit-tested afresh when it is made, so it landed
+      // on the backdrop and put the card away in the same instant — a run
+      // that ended without a card, with only "Ergebnis anzeigen" to show for
+      // it. A mouse click is targeted where the press began and never reached
+      // the card, which is why the clicked-through smoke test never saw it;
+      // its touch pass does. No pointer event of a press that began on the
+      // board reaches the card, so this cannot be fooled the same way.
+      let backdropPress = false;
+      over.card.addEventListener('pointerdown', (event) => {
+        backdropPress = event.target === over.card;
       });
+      over.card.addEventListener('pointerup', (event) => {
+        if (backdropPress && event.target === over.card) setPeeking(true);
+        backdropPress = false;
+      });
+      over.card.addEventListener('pointercancel', () => { backdropPress = false; });
 
       // ---- the daily board ---------------------------------------------------
 

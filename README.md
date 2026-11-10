@@ -47,6 +47,13 @@ das Signal breitet sich aus, alles muss versorgt sein —, und es ist so
 ausgelegt, dass auch der gierige Bot es nie verliert. Weil es so großzügig ist,
 bringen seine Reste keine Punkte; es zählt aber als geschafft.
 
+Der Hilfetext unter dem Brett — Tippen setzt, Achtecke leuchten selbst —
+verschwindet, sobald jemand das Spiel kennt: wer einmal über Level 5 hinaus
+gespielt hat, in welcher Spielart auch immer, sieht ihn nie wieder. Die
+Markierung liegt lokal (`funkloch.hilfe`); wo nichts gespeichert werden kann,
+bleibt der Text stehen, das ist der harmlosere Fall. Datenschutz-Link und
+Standanzeige bleiben, der frei werdende Platz geht an die Bühne.
+
 Bestwert sind die **Punkte**, und nur sie. Das Level ist Standanzeige ohne
 eigenen Rekord: zwei Bestwerte ließen offen, welcher zählt, und von den beiden
 misst der Punktestand mehr. Er steigt mit dem Level ohnehin, und zwischen zwei

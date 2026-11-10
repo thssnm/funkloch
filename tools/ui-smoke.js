@@ -22,6 +22,17 @@
  * reads it — and that the button gets it out
  * by every route it has: the share sheet, the clipboard, or by hand.
  *
+ * The daily board's end card gets one more pass on touch input, both
+ * outcomes: the click a browser makes for a tap comes after the card is up
+ * and is hit-tested afresh, which once put the card away in the same instant.
+ * Mouse clicks, which the rest of this file plays with, never saw that. So
+ * the ways that are tapped — placing, the card set aside and back, the entry,
+ * sharing, the switch — are played once more by finger, on a phone's viewport.
+ *
+ * The hint under the board is checked along the way: shown to a fresh player,
+ * gone from level 6 on and for good — after a reload, on a new run, on the
+ * daily board — and still there where nothing can be stored.
+ *
  * The moves are not improvised — the same run is played here first with the
  * planning bot, and the browser is then asked to reproduce it click for click,
  * so the expected numbers are known before the page is opened.
@@ -83,15 +94,17 @@ const check = (ok, what) => {
  * view and take nothing; the card has to come back as it was.
  * @param {import('playwright').Page} target with an end card showing
  * @param {string} label for the checks
+ * @param {{tap?: boolean}} [options] by tap instead of by click, on a page with touch
  */
-async function peekAround(target, label) {
+async function peekAround(target, label, { tap = false } = {}) {
+  const press = (selector, options) => (tap ? target.tap(selector, options) : target.click(selector, options));
   const before = await target.evaluate(() => ({
     level: document.getElementById('hud-level').textContent,
     left: document.getElementById('hud-left').textContent,
     score: document.getElementById('hud-score').textContent,
     title: document.getElementById('over-title').textContent,
   }));
-  await target.click('#peek');
+  await press('#peek');
   const aside = await target.evaluate(() => {
     const board = document.querySelector('.board');
     const pill = document.getElementById('unpeek');
@@ -114,7 +127,7 @@ async function peekAround(target, label) {
   // Taps on nodes, forced through: a finished board is for looking at.
   const ids = await target.$$eval('.board .node', (nodes) => nodes.map((n) => n.dataset.id));
   for (const id of ids.slice(0, 3)) {
-    await target.click(`.node[data-id="${id}"] .hit`, { force: true }).catch(() => {});
+    await press(`.node[data-id="${id}"] .hit`, { force: true }).catch(() => {});
   }
   const after = await target.evaluate(() => ({
     level: document.getElementById('hud-level').textContent,
@@ -124,7 +137,7 @@ async function peekAround(target, label) {
   }));
   check(after.cardHidden && after.level === before.level && after.left === before.left && after.score === before.score,
     `${label}: Tippen auf Knoten ändert nichts (Level ${after.level}, ${after.left} Sender, ${after.score} Punkte)`);
-  await target.click('#unpeek');
+  await press('#unpeek');
   const back = await target.evaluate(() => ({
     cardShown: !document.getElementById('over').hidden,
     pillHidden: document.getElementById('unpeek').hidden,
@@ -322,6 +335,7 @@ try {
     localStorage.removeItem('funkloch.endlos.best');
     localStorage.removeItem('funkloch.taeglich');
     localStorage.removeItem('funkloch.modus');
+    localStorage.removeItem('funkloch.hilfe');
     // A record left behind by the old name, to see it swept away on load.
     localStorage.setItem('sendernetz.endlos.best', JSON.stringify({ stage: 99, score: 99 }));
   });
@@ -332,6 +346,23 @@ try {
   // Not merely gone from storage: a run that has scored nothing yet shows no
   // record at all, so the old 99 was never read either.
   check(await page.textContent('#hud-score-best') === '', 'und nicht übernommen');
+
+  // --- der Hilfetext, für einen frischen Spieler ----------------------------
+  // Shown until the player has played past level 5. The level that takes it
+  // away is watched along the run below; that it stays away, after it.
+  const freshHint = await page.evaluate(() => {
+    const hint = document.getElementById('hint');
+    return {
+      shown: !hint.hidden && hint.offsetParent !== null,
+      text: hint.textContent.replace(/\s+/g, ' ').trim(),
+      gutter: Math.round(hint.getBoundingClientRect().left),
+      stored: localStorage.getItem('funkloch.hilfe'),
+    };
+  });
+  check(freshHint.shown && freshHint.text.startsWith('Tippen setzt den Sender'),
+    `ein frischer Spieler sieht den Hilfetext: „${freshHint.text.slice(0, 38)} …"`);
+  check(freshHint.gutter === 16 && freshHint.stored === null,
+    'mit 16 px Rand, und noch ohne Markierung im Speicher');
 
   // --- der laufende Stand ---------------------------------------------------
   // Under the hint and last on the page, never in the header.
@@ -690,6 +721,8 @@ try {
     'der Neustart räumt das Brett für den gespielten Lauf');
 
   let firstGo = true;
+  /** The level the hint under the board was first found gone on. */
+  let hintGoneAt = null;
   for (const step of script) {
     if (step.go && firstGo) {
       // Level 1 just cleared, with senders to spare. They score nothing, and
@@ -705,8 +738,20 @@ try {
     }
     if (step.go) await page.click('#go');
     else await page.click(`.node[data-id="${step.id}"] .hit`);
+    // The hint goes with the first board past level 5, i.e. on the step
+    // onto level 6, and not before.
+    if (step.go && hintGoneAt === null) {
+      const seen = await page.evaluate(() => ({
+        level: Number(document.getElementById('hud-level').textContent),
+        gone: document.getElementById('hint').hidden,
+      }));
+      if (seen.gone) hintGoneAt = seen.level;
+    }
   }
   await page.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  check(hintGoneAt === 6, `der Hilfetext verschwindet mit Level 6 (weg ab Level ${hintGoneAt})`);
+  check(await page.evaluate(() => localStorage.getItem('funkloch.hilfe')) === 'gelesen',
+    'und ist als gelesen gespeichert (funkloch.hilfe)');
   // The card fades in. Shooting before that has finished says nothing about
   // what it looks like, and the first version of this check photographed a
   // half-transparent card and looked like a stacking bug.
@@ -755,8 +800,12 @@ try {
       const hits = [...document.querySelectorAll('.board .hit')].map((hit) => hit.getBoundingClientRect().width);
       return {
         stage: [Math.round(stage.left), Math.round(stage.right)],
+        stageSize: [Math.round(stage.width), Math.round(stage.height)],
         ledger: Math.round(rect('#hud-ledger').left),
-        hint: Math.round(rect('.hint').left),
+        // The hint is gone by now — this run passed level 5 — so the version
+        // line, last on the page, stands in for it as the block below the stage.
+        hintGone: document.getElementById('hint').hidden,
+        version: Math.round(rect('#version').left),
         legal: Math.round(rect('.legal').left),
         smallestHit: Math.min(...hits),
         hits: hits.length,
@@ -765,8 +814,12 @@ try {
     });
     check(edges.stage[0] === 0 && edges.stage[1] === width && edges.fits,
       `bei ${width} px reicht das Brett von ${edges.stage[0]} bis ${edges.stage[1]}, ohne Überstand`);
-    check(edges.ledger === 16 && edges.hint === 16 && edges.legal === 16,
-      `Kopfzeile, Hilfetext und Datenschutz-Link behalten ihren Rand (${edges.ledger}/${edges.hint}/${edges.legal} px)`);
+    check(edges.ledger === 16 && edges.legal === 16 && edges.version === 16 && edges.hintGone,
+      `Kopfzeile, Datenschutz-Link und Stand behalten ihren Rand (${edges.ledger}/${edges.legal}/${edges.version} px), der Hilfetext ist weg`);
+    // Not a check, a reading: how tall the stage is against its width once
+    // the hint is gone. MESSUNGEN.md ("Die Breite ausnutzen") keeps the figures.
+    console.log(`       Bühne ohne Hilfetext bei ${width}×${height}: ${edges.stageSize[0]}×${edges.stageSize[1]} px,`
+      + ` Höhe/Breite ${(edges.stageSize[1] / edges.stageSize[0]).toFixed(2)}`);
     check(edges.smallestHit >= MIN_HIT_PX - 0.5,
       `die kleinste von ${edges.hits} Trefferflächen misst ${edges.smallestHit.toFixed(1)} px`);
   }
@@ -897,6 +950,8 @@ try {
   await page.waitForSelector('.board .node');
   check(await page.locator('#over').count() === 1, 'die Karte bleibt im DOM, wenn ein Brett wechselt');
   check(await page.locator('#over').isVisible() === false, 'und liegt nicht über der neuen Partie');
+  check(await page.evaluate(() => document.getElementById('hint').hidden),
+    'der Hilfetext kommt mit der neuen Partie nicht zurück');
 
   // A fresh visit remembers the record and starts clean.
   await page.reload();
@@ -905,10 +960,46 @@ try {
     level: document.getElementById('hud-level').textContent,
     scoreBest: document.getElementById('hud-score-best').textContent,
     over: document.getElementById('over').hidden,
+    hintGone: document.getElementById('hint').hidden && document.getElementById('hint').offsetParent === null,
   }));
   check(after.scoreBest === `best ${expected.score}`, `Punkterekord überlebt: ${after.scoreBest}`);
   check(after.level === '1', 'die neue Partie steht auf Level 1');
   check(after.over === true, 'die Karte ist wieder weg');
+  check(after.hintGone, 'und der Hilfetext bleibt auch nach dem Neuladen weg');
+
+  // --- ohne Speicher bleibt der Hilfetext --------------------------------------
+  // A browser that refuses storage: the mark cannot be kept, so the hint is
+  // not taken away — not even for this visit, where it would be back on the
+  // next one anyway. The game itself must not mind the refusal.
+  {
+    const denied = await browser.newContext({ viewport: { width: 560, height: 960 } });
+    const deniedApi = [];
+    await guardApi(denied, deniedApi);
+    await denied.addInitScript(() => {
+      Object.defineProperty(window, 'localStorage', {
+        get() { throw new DOMException('denied', 'SecurityError'); },
+      });
+    });
+    const quiet = await denied.newPage();
+    const deniedNoise = [];
+    quiet.on('pageerror', (error) => deniedNoise.push(String(error)));
+    await quiet.goto(`http://127.0.0.1:${port}/index.html?seed=${seed}`);
+    await quiet.waitForSelector('.board .node');
+    for (const step of script) {
+      if (step.go) await quiet.click('#go');
+      else await quiet.click(`.node[data-id="${step.id}"] .hit`);
+    }
+    await quiet.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+    const deniedHint = await quiet.evaluate(() => ({
+      level: document.getElementById('hud-level').textContent,
+      shown: !document.getElementById('hint').hidden && document.getElementById('hint').offsetParent !== null,
+    }));
+    check(deniedHint.shown && deniedHint.level === String(expected.level),
+      `ohne Speicher bleibt der Hilfetext stehen, auch in Level ${deniedHint.level}`);
+    check(deniedNoise.length === 0,
+      `und die Partie läuft ohne Speicher durch${deniedNoise.length ? `: ${deniedNoise.join(' | ')}` : ''}`);
+    await denied.close();
+  }
 
   // --- ein Bestwert von einer anderen Skala ---------------------------------
   // Unmarked is from before the leftovers were weighted by level; `scale: 2` is
@@ -1052,6 +1143,8 @@ try {
   check(firstVisit.daily && !firstVisit.free && firstVisit.level === '1' && !firstVisit.over,
     'der erste Besuch öffnet auf dem Tagesbrett');
   check(board.requests.length === 0, 'beim Start keine Anfrage an die Rangliste');
+  check(await daily.evaluate(() => !document.getElementById('hint').hidden),
+    'mit dem Hilfetext, wie jeder frische Spieler');
   const rankButton = await daily.evaluate(() => {
     const button = document.getElementById('ranks-open');
     return {
@@ -1546,6 +1639,14 @@ try {
     check(card.level === '25 von 25' && card.score === String(run.score),
       `die Karte zeigt Level ${card.level} und ${card.score} Punkte`);
     check(card.hud === '25', 'die Kopfzeile bleibt auf Level 25 stehen, ein 26. gibt es nicht');
+    // Replayed past level 5 on the daily board, in a browser that never
+    // played free: the hint is gone here as well, and marked so.
+    const throughHint = await through.evaluate(() => ({
+      gone: document.getElementById('hint').hidden,
+      stored: localStorage.getItem('funkloch.hilfe'),
+    }));
+    check(throughHint.gone && throughHint.stored === 'gelesen',
+      'ein Tag bis Level 25 nimmt den Hilfetext ebenfalls weg, für beide Spielarten');
     const doneReading = await levelReading(through);
     check(doneReading.text === 'Level 25 von 25', `und liest „${doneReading.text}"`);
     // The widest the reading gets, on the narrowest phones: the row keeps to
@@ -1633,6 +1734,192 @@ try {
       `keine Konsolenfehler beim Durchspielen${throughNoise.length ? `: ${throughNoise.join(' | ')}` : ''}`);
     await throughContext.close();
   }
+
+  // --- per Touch: die Endkarte nach dem letzten Tipp -------------------------
+  // input.js answers a tap on pointerup, the card appears, and only then does
+  // the browser make the click for that tap. On touch that click is
+  // hit-tested afresh and lands on the card's backdrop, where a tap means
+  // "set the card aside" — so until 2026-11-10 a run that ended by touch
+  // ended without its card. The clicks above never saw it: a mouse click is
+  // targeted where the press began. Both outcomes, each on the last tap of a
+  // stored attempt, on the phone's own input.
+  //
+  // The tap only means anything if the last node lies beside the card's
+  // content, not under it. That is checked, not assumed; for a day played
+  // through, the first winning day whose last node does is taken.
+  const touchContext = await browser.newContext({
+    viewport: { width: 560, height: 960 }, hasTouch: true, isMobile: true,
+  });
+  const touchApi = [];
+  await guardApi(touchContext, touchApi);
+  /** Opens the daily board of `at` with every move but the last stored, taps
+   *  the last one, and reports what the card did. */
+  const lastTap = async (at, moves) => {
+    const tab = await touchContext.newPage();
+    const tabNoise = [];
+    tab.on('pageerror', (error) => tabNoise.push(String(error)));
+    await tab.clock.install({ time: new Date(at) });
+    await tab.goto(`http://127.0.0.1:${port}/index.html`);
+    await tab.waitForSelector('.board .node');
+    await tab.evaluate((attempt) => localStorage.setItem('funkloch.taeglich', JSON.stringify(attempt)), {
+      day: new Date(at).toISOString().slice(0, 10),
+      rules: 3,
+      moves: moves.slice(0, -1),
+      levelsCleared: 0,
+      score: 0,
+      done: false,
+    });
+    await tab.reload();
+    await tab.waitForSelector('.board .node');
+    const last = moves.at(-1);
+    await tab.tap(`.node[data-id="${last}"] .hit`);
+    // The click the browser makes for the tap follows on its own time.
+    await tab.waitForTimeout(250);
+    const seen = await tab.evaluate((id) => {
+      const over = document.getElementById('over');
+      const hit = document.querySelector(`.node[data-id="${id}"] .hit`).getBoundingClientRect();
+      // Whether the tap lay beside the card's content, hit-tested with the
+      // card up — whatever it is doing right now.
+      const wasHidden = over.hidden;
+      over.hidden = false;
+      const onBackdrop = document.elementFromPoint(hit.x + hit.width / 2, hit.y + hit.height / 2) === over;
+      over.hidden = wasHidden;
+      return {
+        onBackdrop,
+        cardShown: !over.hidden && over.offsetParent !== null,
+        pillHidden: document.getElementById('unpeek').hidden,
+        title: document.getElementById('over-title').textContent,
+        level: document.getElementById('hud-level').textContent,
+      };
+    }, last);
+    await tab.close();
+    return { ...seen, noise: tabNoise };
+  };
+
+  const lostByTouch = await lastTap(day, plan.script.map((step) => (step.go ? null : step.id)));
+  check(lostByTouch.onBackdrop,
+    `der letzte Tipp des Planers am ${dayName} liegt neben dem Karteninhalt (sonst sagt die nächste Prüfung nichts)`);
+  check(lostByTouch.cardShown && lostByTouch.pillHidden && lostByTouch.title === 'Keine Sender mehr.',
+    `per Touch gescheitert in Level ${lostByTouch.level}: die Endkarte steht und bleibt`);
+
+  let wonByTouch = null;
+  for (let offset = 0; offset < 20 && wonByTouch === null; offset++) {
+    const at = Date.UTC(2026, 8, 25 + offset, 12);
+    const run = planRun(dailySeed(at), DAILY_RUN, rolloutChoice);
+    if (run.status !== 'won') continue;
+    const tapped = await lastTap(at, run.script.map((step) => (step.go ? null : step.id)));
+    if (tapped.onBackdrop) wonByTouch = { ...tapped, name: new Date(at).toISOString().slice(0, 10) };
+  }
+  check(wonByTouch !== null, 'ein durchgespielter Tag, dessen letzter Tipp neben dem Karteninhalt liegt');
+  if (wonByTouch !== null) {
+    check(wonByTouch.cardShown && wonByTouch.pillHidden && wonByTouch.title === 'Alle 25 Level geschafft.',
+      `per Touch durchgespielt am ${wonByTouch.name}: die Endkarte steht und bleibt`);
+    // Whatever the card reads of the leaderboard on its own, a tap that ends
+    // a run must never write to it.
+    check(wonByTouch.noise.length === 0 && lostByTouch.noise.length === 0
+      && touchApi.every((request) => request.startsWith('GET ')),
+      `ohne Konsolenfehler, und nichts an die Rangliste geschrieben (${touchApi.length} Anfragen, alle GET)`);
+  }
+  await touchContext.close();
+
+  // --- per Touch: die Wege mit Tipp ----------------------------------------
+  // The game is played on phones, and everything above is played by mouse.
+  // Not all of it again — only what a finger does differently from a click:
+  // the taps that place, the card set aside and brought back, the entry, the
+  // share button, the switch. A phone's viewport, so the card and the board
+  // are laid out as they are played.
+  const phoneContext = await browser.newContext({
+    viewport: { width: 360, height: 640 }, hasTouch: true, isMobile: true,
+  });
+  await phoneContext.grantPermissions(['clipboard-read', 'clipboard-write'],
+    { origin: `http://127.0.0.1:${port}` });
+  const phoneBoard = fakeLeaderboard();
+  phoneBoard.seed([['Spieler 1', 20, 60], ['Spieler 2', 19, 59]]
+    .map(([username, level, points]) => ({ date: dayName, username, level, points })));
+  await phoneContext.route(API, phoneBoard.handle);
+  const phone = await phoneContext.newPage();
+  const phoneNoise = [];
+  phone.on('pageerror', (error) => phoneNoise.push(String(error)));
+  phone.on('console', (message) => message.type() === 'error' && !fromLeaderboard(message)
+    && phoneNoise.push(message.text()));
+  await phone.clock.install({ time: new Date(day) });
+  await phone.goto(`http://127.0.0.1:${port}/index.html`);
+  await phone.waitForSelector('.board .node');
+
+  // A whole day by taps: placing and the step onto the next level.
+  for (const step of plan.script) {
+    if (step.go) await phone.tap('#go');
+    else await phone.tap(`.node[data-id="${step.id}"] .hit`);
+  }
+  await phone.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  await phone.waitForTimeout(250);
+  const phoneEnd = await phone.evaluate(() => ({
+    level: document.getElementById('over-level').textContent,
+    score: document.getElementById('over-score').textContent,
+    cardShown: !document.getElementById('over').hidden,
+    pillHidden: document.getElementById('unpeek').hidden,
+  }));
+  check(phoneEnd.cardShown && phoneEnd.pillHidden
+    && phoneEnd.level === `${plan.level} von 25` && phoneEnd.score === String(plan.score),
+    `per Touch gespielt: Level ${phoneEnd.level}, ${phoneEnd.score} Punkte, die Karte steht`);
+
+  // The card set aside and back, by tap: the button, a tap beside the card,
+  // and a tap on the card's content, which must not count as beside it.
+  await peekAround(phone, 'per Touch', { tap: true });
+  await phone.tap('#over', { position: { x: 8, y: 8 } });
+  check(await phone.evaluate(() => document.getElementById('over').hidden),
+    'per Touch: ein Tipp neben die Karte legt sie beiseite');
+  await phone.tap('#unpeek');
+  await phone.tap('#over-title');
+  check(await phone.evaluate(() => !document.getElementById('over').hidden),
+    'per Touch: ein Tipp auf die Karte selbst nicht');
+
+  // The entry: tap, type, tap. The name field is typed into, which is no
+  // different on a phone; what is different is reaching the field at all.
+  await phone.tap('#enter');
+  check(await phone.isVisible('#enter-name'), 'per Touch: „In die Rangliste" öffnet das Namensfeld');
+  await phone.fill('#enter-name', 'Bo');
+  await phone.tap('#enter-send');
+  await until(phone, () => document.getElementById('enter-status').textContent.includes('Platz'), 5000);
+  const phoneEntry = JSON.parse(phoneBoard.requests.find((r) => r.method === 'POST')?.body ?? '{}');
+  check(phoneEntry.username === 'Bo' && phoneEntry.level === plan.cleared && phoneEntry.points === plan.score,
+    `per Touch eingetragen: ${phoneEntry.username}, ${phoneEntry.level} Level, ${phoneEntry.points} Punkte`);
+  check(await phone.textContent('#enter-status') === 'Eingetragen als Bo – Platz 3 von 3.',
+    `die Karte meldet: ${await phone.textContent('#enter-status')}`);
+
+  // Sharing, through the sheet a phone has.
+  await phone.evaluate(() => {
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: async (data) => { window.__shared = data.text; },
+    });
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+  });
+  await phone.tap('#share');
+  await until(phone, () => typeof window.__shared === 'string', 2000);
+  const phoneShared = await phone.evaluate(() => ({
+    text: window.__shared ?? '',
+    label: document.getElementById('share').textContent,
+  }));
+  check(phoneShared.text.split('\n')[0] === expectedHeader && phoneShared.label === 'Geteilt.',
+    `per Touch geteilt: ${phoneShared.text.split('\n')[0]}`);
+
+  // The switch, both ways: into a free run, and back onto the spent day.
+  await phone.tap('#mode-frei');
+  await phone.waitForSelector('.board .node');
+  const phoneFree = await openedOn(phone);
+  check(phoneFree.free && phoneFree.level === '1' && !phoneFree.over,
+    'per Touch: der Umschalter geht auf Frei, ein neues Brett ohne Karte');
+  await phone.tap(`.node[data-id="${await phone.$eval('.board .node', (node) => node.dataset.id)}"] .hit`);
+  check(await phone.locator('.node.is-transmitter').count() === 1, 'per Touch: ein Tipp setzt im freien Spiel');
+  await phone.tap('#mode-taeglich');
+  await phone.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  const phoneBack = await openedOn(phone);
+  check(phoneBack.daily && phoneBack.over && await phone.textContent('#over-score') === String(plan.score),
+    'per Touch: zurück auf Täglich steht das Tagesergebnis');
+  check(phoneNoise.length === 0,
+    `keine Konsolenfehler per Touch${phoneNoise.length ? `: ${phoneNoise.join(' | ')}` : ''}`);
+  await phoneContext.close();
 
   check(dailyNoise.length === 0,
     `keine Konsolenfehler im Tagesmodus${dailyNoise.length ? `: ${dailyNoise.join(' | ')}` : ''}`);
