@@ -85,3 +85,22 @@ test('every icon the page or the manifest names ships', async (t) => {
     assert.ok(!existsSync(join(ROOT, '.vercelignore')), 'no .vercelignore to hold a file back');
   });
 });
+
+test('the privacy page', async (t) => {
+  const file = join(ROOT, 'datenschutz.html');
+
+  await t.test('exists, ships, and is linked from the game', () => {
+    assert.ok(existsSync(file));
+    assert.equal(spawnSync('git', ['check-ignore', '-q', 'datenschutz.html'], { cwd: ROOT }).status, 1);
+    const links = html.match(/href="datenschutz\.html"/g) ?? [];
+    assert.ok(links.length >= 2, 'under the hint and where the result is entered');
+  });
+
+  await t.test('says what the leaderboard keeps, who sees it, and for how long', () => {
+    const text = readFileSync(file, 'utf8').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    for (const needed of [
+      'Name', 'Level', 'Punkte', 'Datum', 'Geräte-ID', 'öffentlich', 'IP-Adresse',
+      'Klick', 'Einwilligung', 'zwei Tagen', 'E-Mail', 'Alwyzon', 'Österreich',
+    ]) assert.ok(text.includes(needed), needed);
+  });
+});

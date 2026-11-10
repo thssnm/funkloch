@@ -12,6 +12,11 @@ Reine ES-Module, kein Build-Schritt, keine Laufzeit-Abhängigkeiten. Die
 Spiellogik ist DOM-frei und deterministisch; der Browser bekommt sie über
 `<script type="module">` direkt aus `src/`.
 
+Gespielt wird ohne Server. Zwei Dinge reden trotzdem mit einem: der Stand
+unter dem Hilfetext (`api/version.js`, eine Vercel Function neben der Seite)
+und die tägliche Rangliste, die der Browser direkt bei PocketBase unter
+`https://api.thssn.dev` abfragt — nur wenn man sie öffnet oder sich einträgt.
+
 ## Die Modi
 
 **Rätsel** (`src/game.js`, Level in `levels/`) — 30 handverlesene Bretter mit
@@ -93,6 +98,38 @@ Level, 143 Punkte`. Die Endkarte nennt dasselbe Level wie Kopfzeile und Zeile.
 Die zweite Zeile ist die Adresse des Spiels als Link (`GAME_URL` in `src/share.js`).
 Nichts davon verrät das Brett. Eine Grafik des Verlaufs gibt es nicht mehr;
 warum keine, steht in `MESSUNGEN.md`.
+
+### Rangliste
+
+Nach dem Vorbild der Rangliste in Landlines. „Rangliste" rechts in der
+Kartenreihe öffnet die Top 10 des Tages; wer eingetragen ist, sieht „Platz X
+von Y", und steht er nicht unter den zehn, folgen „…" und die eigene Zeile mit
+dem echten Platz. Sortiert wird nach geschafften Level, dann Punkten, beides
+absteigend (`-level,-points`); gleiches Level und gleiche Punkte teilen den
+Platz. Eine Zeile liest sich „25 Level, 130 Punkte".
+
+Eingetragen wird nur auf der Endkarte des Tagesbretts und nur per Klick, neben
+„Ergebnis teilen". Beim ersten Mal fragt das Spiel nach einem Namen (2 bis 20
+Zeichen) und merkt ihn sich; danach heißt der Knopf „Als <Name> eintragen",
+daneben „Namen ändern". Ein Eintrag pro Gerät und Tag: eine zufällige
+Geräte-ID im localStorage, die nie auf der Seite erscheint, und ein Unique
+Index auf (date, client_id) auf dem Server. Eingetragen wird die Zahl der
+**geschafften** Level — 4, wer in Level 5 scheitert, 25, wer durchspielt —,
+nicht das Level, das Karte und Kopfzeile zeigen.
+
+Der Code liegt in `src/leaderboard.js`: nur `fetch`, kein SDK, 5 s Timeout,
+Adresse, Collection und Sortierung als Konstanten in `LEADERBOARD`. Beim Start
+geht keine Anfrage hinaus; gelesen wird beim Öffnen der Rangliste und nach dem
+Eintragen, geschrieben nur beim Klick. Ist der Server nicht erreichbar, sagt
+die Rangliste es in einer Zeile, und das Spiel läuft weiter. Namen kommen nur
+als Text auf die Seite. Was gespeichert wird und wie lange, steht in
+`datenschutz.html`, verlinkt unter dem Hilfetext und beim Eintragen.
+
+Der Server: PocketBase unter `https://api.thssn.dev`, Collection
+`funkloch_daily` mit `date`, `username`, `level`, `points` und dem versteckten
+`client_id`; Unique Index auf (date, client_id); List, View und Create
+öffentlich, Update und Delete gesperrt. Die Seite hat keine Content Security
+Policy; käme eine dazu, braucht sie `connect-src https://api.thssn.dev`.
 
 Der Tag wird **in Berlin** gerechnet (`boardDay` und `DAILY_TIME_ZONE` in
 `src/run.js`), mit echter Zeitzone über `Intl.DateTimeFormat` und nicht mit

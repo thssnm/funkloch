@@ -373,6 +373,16 @@
         background: rgba(16, 19, 26, 0.86);
         background: color-mix(in srgb, var(--bg) 86%, transparent);
         animation: settle 420ms ease-out 1;
+        /* With the name field open the daily card is taller than the stage on
+           a small phone (about 520px of content on a 356px stage at 360×640).
+           It scrolls inside the stage rather than spilling over the header and
+           the hint, and `safe` keeps its top in reach when it does. */
+        overflow-y: auto;
+        place-content: safe center;
+      }
+      /* And on a short screen the wordmark makes room for the field. */
+      @media (max-height: 760px) {
+        .over:has(.enter-form:not([hidden])) .wordmark { display: none; }
       }
       /* An author `display` beats the UA rule behind the hidden attribute, so
          the card would otherwise sit on the board from the first frame on. */
@@ -458,6 +468,98 @@
       }
       .over .countdown { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
       .over .countdown b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+      /* Entering the day's result, next to sharing it. Both are offers, never
+         done for the player; on a narrow card the two buttons wrap. */
+      .over .daily-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+      .over .daily-actions .share { margin: 0; min-width: 150px; }
+      .over .enter { flex: 0 1 auto; min-width: 150px; }
+      .over .enter[hidden], .over .enter-form[hidden], .over .enter-rename[hidden],
+      .over .enter-status[hidden] { display: none; }
+      .over .enter-form {
+        display: grid;
+        gap: 6px;
+        width: min(100%, 260px);
+        margin: 10px auto 0;
+        text-align: left;
+        font-size: 14px;
+      }
+      .over .enter-form label { color: var(--muted); }
+      .over .enter-form input {
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 16px; /* below 16px iOS zooms the page on focus */
+      }
+      .over .enter-hint { margin: 0; color: var(--muted); font-size: 12px; }
+      .over .enter-hint.is-wrong { color: var(--over); }
+      .over .enter-rename {
+        flex: none;
+        min-height: 32px;
+        margin: 4px auto 0;
+        padding: 0 8px;
+        border: 0;
+        background: none;
+        color: var(--muted);
+        font-size: 13px;
+        text-decoration: underline;
+      }
+      .over .enter-status { margin: 8px 0 0; font-size: 14px; }
+      .over .enter-status.is-wrong { color: var(--muted); }
+      .over .enter-note { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+      .over .enter-note a, .legal a, .ranks-note a { color: inherit; }
+
+      /* ---- the leaderboard ------------------------------------------------- */
+      /* Its button sits at the far end of the card row, which is as tall as the
+         cards anyway: the header does not grow by a pixel for it. */
+      .hand .ranks-open {
+        flex: 0 0 auto;
+        min-height: 36px;
+        margin-left: auto;
+        padding: 0 12px;
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .ranks {
+        width: min(92vw, 380px);
+        max-height: 86vh;
+        padding: 18px 18px 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel);
+        color: var(--text);
+      }
+      .ranks::backdrop { background: rgba(5, 7, 12, 0.7); }
+      .ranks-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+      .ranks h2 { margin: 0; font-size: 17px; font-weight: 600; }
+      .ranks-head span { color: var(--muted); font-size: 13px; }
+      .ranks-status { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+      .ranks-status:empty { display: none; }
+      .ranks-place { margin: 10px 0 0; color: var(--signal); font-size: 14px; }
+      .ranks-place[hidden] { display: none; }
+      .ranks-list { display: grid; gap: 2px; margin: 10px 0 0; padding: 0; list-style: none; }
+      .ranks-row {
+        display: grid;
+        grid-template-columns: 2.2em 1fr auto;
+        gap: 8px;
+        padding: 5px 6px;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+      .ranks-row.own { background: var(--line); }
+      .ranks-rank { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+      .ranks-name { overflow-wrap: anywhere; }
+      .ranks-result { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .ranks-gap { color: var(--muted); text-align: center; }
+      .ranks-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; }
+      .ranks-close { width: 100%; margin-top: 12px; }
+
+      .legal { margin: 0; color: var(--muted); font-size: 12px; }
 
       @media (prefers-reduced-motion: reduce) {
         .over { animation: none; }
@@ -643,6 +745,7 @@
           <span class="chip now" id="chip-now"></span>
           <span class="chip next" id="chip-1"></span>
           <span class="chip next" id="chip-2"></span>
+          <button class="ranks-open" id="ranks-open" type="button">Rangliste</button>
         </div>
       </div>
 
@@ -663,7 +766,20 @@
           <p class="record" id="over-record" hidden>Neuer Bestwert.</p>
           <p class="seed" id="over-seed">Partie <a id="over-seed-link" href="?seed=">–</a></p>
           <div class="daily" id="over-daily" hidden>
-            <button class="share" id="share" type="button">Ergebnis teilen</button>
+            <div class="daily-actions">
+              <button class="share" id="share" type="button">Ergebnis teilen</button>
+              <button class="enter" id="enter" type="button">In die Rangliste</button>
+            </div>
+            <form class="enter-form" id="enter-form" hidden novalidate>
+              <label for="enter-name">Name für die Rangliste</label>
+              <input id="enter-name" type="text" autocomplete="nickname" maxlength="40" spellcheck="false" />
+              <p class="enter-hint" id="enter-hint">2 bis 20 Zeichen. Er steht öffentlich in der Rangliste.</p>
+              <button id="enter-send" type="submit">Eintragen</button>
+            </form>
+            <button class="enter-rename" id="enter-rename" type="button" hidden>Namen ändern</button>
+            <p class="enter-status" id="enter-status" role="status" hidden></p>
+            <p class="enter-note" id="enter-note">Eintragen zeigt Name, Level und Punkte öffentlich.
+              <a href="datenschutz.html">Datenschutz</a></p>
             <pre class="share-line" id="share-line" hidden></pre>
             <p class="countdown">Nächstes Brett in <b id="countdown">–</b></p>
           </div>
@@ -681,7 +797,23 @@
         Tippen setzt den Sender aus der Hand — gesetzt ist gesetzt. Achteckige
         Knoten leuchten selbst, geben das Signal aber nicht weiter.
       </p>
+      <p class="legal"><a href="datenschutz.html">Datenschutz</a></p>
       <p class="version" id="version" hidden>Stand <span id="version-commit"></span></p>
+
+      <!-- Today's leaderboard. A dialog, unlike the end card: it is opened on
+           purpose, from any screen, and closed again. -->
+      <dialog class="ranks" id="ranks" aria-labelledby="ranks-title">
+        <div class="ranks-head">
+          <h2 id="ranks-title">Rangliste</h2>
+          <span id="ranks-date"></span>
+        </div>
+        <p class="ranks-status" id="ranks-status"></p>
+        <p class="ranks-place" id="ranks-place" hidden></p>
+        <ol class="ranks-list" id="ranks-list"></ol>
+        <p class="ranks-note">Das Tagesbrett von heute: geschaffte Level, dann Punkte.
+          Eingetragen wird auf der Endkarte. <a href="datenschutz.html">Datenschutz</a></p>
+        <button class="ranks-close" id="ranks-close" type="button">Schließen</button>
+      </dialog>
     </main>
 
     <script type="module">
@@ -691,6 +823,9 @@
       } from './src/run.js';
       import { createScene, fitHitAreas, render } from './src/render.js';
       import { points, shareText } from './src/share.js';
+      import {
+        createLeaderboard, formatResult, isValidName, LEADERBOARD, sanitizeName,
+      } from './src/leaderboard.js';
       import { attachInput } from './src/input.js';
 
       const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -731,6 +866,49 @@
         frei: document.getElementById('mode-frei'),
         taeglich: document.getElementById('mode-taeglich'),
       };
+      const enter = {
+        button: document.getElementById('enter'),
+        form: document.getElementById('enter-form'),
+        name: document.getElementById('enter-name'),
+        hint: document.getElementById('enter-hint'),
+        send: document.getElementById('enter-send'),
+        rename: document.getElementById('enter-rename'),
+        status: document.getElementById('enter-status'),
+      };
+      const ranksView = {
+        open: document.getElementById('ranks-open'),
+        dialog: document.getElementById('ranks'),
+        date: document.getElementById('ranks-date'),
+        status: document.getElementById('ranks-status'),
+        place: document.getElementById('ranks-place'),
+        list: document.getElementById('ranks-list'),
+        close: document.getElementById('ranks-close'),
+      };
+
+      /**
+       * localStorage for the leaderboard module, which is handed its storage
+       * rather than reaching for it: strings in and out, and never a throw —
+       * without storage the leaderboard still works, it just forgets the name.
+       */
+      const leaderboardStorage = {
+        get(key) {
+          try { return localStorage.getItem(key); } catch { return null; }
+        },
+        set(key, value) {
+          try { localStorage.setItem(key, value); } catch { /* storage denied: kept for this visit only */ }
+        },
+        remove(key) {
+          try { localStorage.removeItem(key); } catch { /* nothing to remove then */ }
+        },
+      };
+      /** Today's leaderboard. Creating it sends nothing: the page reads only when
+       *  the leaderboard is opened or an entry was just made, and writes only on
+       *  the button. */
+      const leaderboard = createLeaderboard({
+        fetch: (...request) => window.fetch(...request),
+        storage: leaderboardStorage,
+        crypto: window.crypto,
+      });
 
       /**
        * Records live in localStorage and nowhere else. Every access is guarded:
@@ -1137,6 +1315,9 @@
         boardKey = null;
         record = false;
         const now = Date.now();
+        // A new day starts the entry block afresh; returning to the same day
+        // from free play keeps an entry that is still being made.
+        if (boardDay(now) !== today) resetEntry();
         today = boardDay(now);
         const stored = readDaily();
         moves = stored?.day === today ? stored.moves : [];
@@ -1234,9 +1415,200 @@
       function openDailyEnd() {
         over.share.textContent = SHARE_LABEL;
         over.shareLine.hidden = true;
+        renderEntry();
         tick();
         if (ticker === null) ticker = setInterval(tick, 1000);
       }
+
+      // ---- the leaderboard ---------------------------------------------------
+
+      /** The day the leaderboard is about: the daily board on screen, or — in
+       *  free play opened by `?seed=` — today's. The same `boardDay`, never a
+       *  date of its own. */
+      const leaderboardDay = () => today ?? boardDay(Date.now());
+      const dayLabel = (day) => {
+        const [, month, date] = day.split('-');
+        return `${date}.${month}.`;
+      };
+
+      const NAME_HINT = `${LEADERBOARD.nameMin} bis ${LEADERBOARD.nameMax} Zeichen. `
+        + 'Er steht öffentlich in der Rangliste.';
+
+      /** Entering, on the end card of a daily board. Reset with each new day. */
+      let entryFormOpen = false;
+      let entryBusy = false;
+      let entryFailed = false;
+      /** `{rank, total}` for an entry made on this page, once placed. After a
+       *  reload there is none: the page asks nothing on its way up, and the
+       *  place is one tap away in the leaderboard. */
+      let entryPlace = null;
+
+      function resetEntry() {
+        entryFormOpen = false;
+        entryBusy = false;
+        entryFailed = false;
+        entryPlace = null;
+      }
+
+      /** Paints the entry block from what is stored and what is going on.
+       *  Every name goes in as text, never as markup. */
+      function renderEntry() {
+        const entry = leaderboard.loadEntry(today);
+        const name = leaderboard.loadName();
+        const entered = entry !== null;
+        enter.button.hidden = entered || entryFormOpen;
+        enter.button.disabled = entryBusy;
+        enter.button.textContent = entryBusy && !entryFormOpen ? 'Wird eingetragen …'
+          : name ? `Als ${name} eintragen` : 'In die Rangliste';
+        enter.form.hidden = entered || !entryFormOpen;
+        enter.send.disabled = entryBusy;
+        enter.send.textContent = entryBusy ? 'Wird eingetragen …' : 'Eintragen';
+        enter.rename.hidden = entered || entryFormOpen || entryBusy || name === '';
+        let status = '';
+        if (entered) {
+          status = entry.id === ''
+            ? 'Von diesem Gerät heute schon eingetragen.'
+            : `Eingetragen als ${name}${entryPlace ? ` – Platz ${entryPlace.rank} von ${entryPlace.total}` : ''}.`;
+        } else if (entryFailed) {
+          status = 'Eintragen ging gerade nicht. Später noch einmal versuchen.';
+        }
+        enter.status.textContent = status;
+        enter.status.hidden = status === '';
+        enter.status.classList.toggle('is-wrong', !entered && entryFailed);
+      }
+
+      /**
+       * Enters the finished daily result under `name`. Only ever from a click,
+       * only on a daily board, only once it is over. A failure says so under
+       * the buttons and leaves them to try again; the game goes on regardless.
+       */
+      async function submitEntry(name) {
+        const ended = state.status === 'lost' || state.status === 'won';
+        if (mode !== 'taeglich' || !ended || entryBusy) return;
+        const day = today;
+        entryBusy = true;
+        entryFailed = false;
+        renderEntry();
+        try {
+          // Levels cleared — 4 for a day that ended in level 5, 25 for one
+          // played through — and never the level the card shows.
+          const result = await leaderboard.submit(day, name, levelsCleared(state), state.score);
+          entryFormOpen = false;
+          if (result.status === 'created') {
+            const placed = await leaderboard.load(day).catch(() => null);
+            entryPlace = placed?.ownRank != null ? { rank: placed.ownRank, total: placed.total } : null;
+          }
+        } catch {
+          entryFailed = true;
+        }
+        entryBusy = false;
+        if (day === today) renderEntry();
+      }
+
+      enter.button.addEventListener('click', () => {
+        const name = leaderboard.loadName();
+        if (name !== '') {
+          submitEntry(name);
+          return;
+        }
+        entryFormOpen = true;
+        renderEntry();
+        enter.name.value = '';
+        enter.name.focus();
+      });
+      enter.rename.addEventListener('click', () => {
+        entryFormOpen = true;
+        renderEntry();
+        enter.name.value = leaderboard.loadName();
+        enter.name.focus();
+        enter.name.select();
+      });
+      enter.name.addEventListener('input', () => {
+        enter.hint.textContent = NAME_HINT;
+        enter.hint.classList.remove('is-wrong');
+      });
+      enter.form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const name = sanitizeName(enter.name.value);
+        if (!isValidName(name)) {
+          enter.hint.textContent = `Der Name braucht ${LEADERBOARD.nameMin} bis ${LEADERBOARD.nameMax} Zeichen.`;
+          enter.hint.classList.add('is-wrong');
+          return;
+        }
+        submitEntry(name);
+      });
+
+      /** One row of the list, built from text nodes only. */
+      function rankRow(rank, name, level, score, own) {
+        const row = document.createElement('li');
+        row.className = own ? 'ranks-row own' : 'ranks-row';
+        const cells = [['ranks-rank', `${rank}.`], ['ranks-name', name], ['ranks-result', formatResult(level, score)]];
+        for (const [className, text] of cells) {
+          const cell = document.createElement('span');
+          cell.className = className;
+          cell.textContent = text;
+          row.append(cell);
+        }
+        return row;
+      }
+
+      /** Paints the dialog: loading, unavailable, empty, or the list with your
+       *  place, and your own row below a gap when it is not among the ten. */
+      function renderRanks(view) {
+        ranksView.list.replaceChildren();
+        ranksView.place.hidden = true;
+        if (view.status !== 'ready') {
+          ranksView.status.textContent = view.status === 'loading'
+            ? 'Lädt …'
+            : 'Die Rangliste ist gerade nicht erreichbar.';
+          return;
+        }
+        const { scores, total, ownRank, entry } = view;
+        if (total === 0) {
+          ranksView.status.textContent = 'Heute hat sich noch niemand eingetragen.';
+          return;
+        }
+        ranksView.status.textContent = '';
+        if (ownRank !== null) {
+          ranksView.place.textContent = `Platz ${ownRank} von ${total}`;
+          ranksView.place.hidden = false;
+        }
+        const ownId = entry?.id || null;
+        for (const score of scores) {
+          ranksView.list.append(rankRow(score.rank, score.username, score.level, score.points, score.id === ownId));
+        }
+        const listed = scores.some((score) => score.id === ownId);
+        if (ownId !== null && !listed && ownRank !== null && scores.length >= LEADERBOARD.topCount) {
+          const gap = document.createElement('li');
+          gap.className = 'ranks-gap';
+          gap.setAttribute('aria-hidden', 'true');
+          gap.textContent = '…';
+          ranksView.list.append(gap, rankRow(ownRank, leaderboard.loadName(), entry.level, entry.points, true));
+        }
+      }
+
+      /** The request behind the open dialog, cancelled when it closes. */
+      let ranksRequest = null;
+
+      async function openRanks() {
+        const day = leaderboardDay();
+        ranksView.date.textContent = dayLabel(day);
+        renderRanks({ status: 'loading' });
+        if (!ranksView.dialog.open) ranksView.dialog.showModal();
+        ranksRequest?.abort();
+        const request = new AbortController();
+        ranksRequest = request;
+        try {
+          const data = await leaderboard.load(day, request.signal);
+          if (!request.signal.aborted) renderRanks({ status: 'ready', ...data });
+        } catch {
+          if (!request.signal.aborted) renderRanks({ status: 'error' });
+        }
+      }
+
+      ranksView.open.addEventListener('click', openRanks);
+      ranksView.close.addEventListener('click', () => ranksView.dialog.close());
+      ranksView.dialog.addEventListener('close', () => ranksRequest?.abort());
 
       // ---- free play ---------------------------------------------------------
 

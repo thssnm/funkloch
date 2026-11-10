@@ -41,6 +41,7 @@ import {
 } from '../src/run.js';
 import { lookaheadChoice } from './bot64.js';
 import { rolloutChoice } from './plateau.js';
+import { LEADERBOARD } from '../src/leaderboard.js';
 import { GAME_URL } from '../src/share.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
@@ -109,6 +110,79 @@ function planRun(from, config = ENDLESS_RUN, choose = lookaheadChoice) {
     opening: dealt,
     status: run.status,
   };
+}
+
+/** Every request the page may make to the leaderboard's server. */
+const API = `${LEADERBOARD.baseUrl}/**`;
+
+/**
+ * Keeps a page off the real leaderboard: anything it asks of the server is
+ * written down and refused. A page that has not been asked to show the
+ * leaderboard must leave this list empty.
+ * @param {import('playwright').Page|import('playwright').BrowserContext} target
+ * @param {string[]} log
+ */
+const guardApi = (target, log) => target.route(API, (route) => {
+  log.push(`${route.request().method()} ${route.request().url()}`);
+  return route.abort();
+});
+
+/**
+ * A stand-in for the PocketBase collection, answering the requests
+ * src/leaderboard.js makes: a day's list sorted -level,-points,created, the
+ * count of those ahead of a result, and a create with the unique index on
+ * (date, client_id). Written from the request shapes, not by importing the
+ * module's own helpers, so the two cannot agree by accident. `fail(true)`
+ * makes it answer 503 to everything.
+ */
+function fakeLeaderboard() {
+  const records = [];
+  const requests = [];
+  let next = 1;
+  let failing = false;
+  const reply = (route, status, body) => route.fulfill({
+    status,
+    contentType: 'application/json',
+    headers: {
+      'access-control-allow-origin': '*',
+      'access-control-allow-headers': 'content-type',
+      'access-control-allow-methods': 'GET, POST, OPTIONS',
+    },
+    body: body === undefined ? '' : JSON.stringify(body),
+  });
+  const handle = async (route) => {
+    const request = route.request();
+    if (request.method() === 'OPTIONS') return reply(route, 204);
+    requests.push({ method: request.method(), url: request.url(), body: request.postData() });
+    if (failing) return reply(route, 503, { message: 'unavailable' });
+    if (request.method() === 'POST') {
+      const body = JSON.parse(request.postData() ?? '{}');
+      if (records.some((r) => r.date === body.date && r.client_id === body.client_id)) {
+        return reply(route, 400, { data: { client_id: { code: 'validation_not_unique' } } });
+      }
+      const record = { id: `rec${next++}`, ...body };
+      records.push(record);
+      return reply(route, 200, { id: record.id });
+    }
+    const url = new URL(request.url());
+    const filter = url.searchParams.get('filter') ?? '';
+    const day = filter.match(/date>="(\d{4}-\d{2}-\d{2})" && date<"(\d{4}-\d{2}-\d{2})"/);
+    const ahead = filter.match(/level>(\d+) \|\| \(level=(\d+) && points>(\d+)\)/);
+    let rows = records.filter((r) => day !== null && r.date >= day[1] && r.date < day[2]);
+    if (ahead) {
+      const [l, p] = [Number(ahead[2]), Number(ahead[3])];
+      rows = rows.filter((r) => r.level > l || (r.level === l && r.points > p));
+    }
+    rows = [...rows].sort((a, b) => b.level - a.level || b.points - a.points);
+    const fields = (url.searchParams.get('fields') ?? '').split(',');
+    const items = rows.slice(0, Number(url.searchParams.get('perPage')))
+      .map((r) => Object.fromEntries(fields.map((f) => [f, r[f]])));
+    return reply(route, 200, { items, totalItems: rows.length });
+  };
+  const seed = (rows) => {
+    for (const row of rows) records.push({ id: `rec${next++}`, client_id: `fremd-${next}`, ...row });
+  };
+  return { handle, records, requests, seed, fail: (on) => { failing = on; } };
 }
 
 // What the run should do, computed before the browser ever opens.
@@ -180,6 +254,9 @@ try {
   const noise = [];
   page.on('pageerror', (error) => noise.push(String(error)));
   page.on('console', (message) => message.type() === 'error' && noise.push(message.text()));
+  /** What free play asked of the leaderboard's server: it must ask nothing. */
+  const freeApi = [];
+  await guardApi(page, freeApi);
 
   await page.goto(`http://127.0.0.1:${port}/index.html?seed=${seed}`);
   await page.waitForSelector('.board .node');
@@ -208,7 +285,10 @@ try {
       shown: !line.hidden && line.offsetParent !== null,
       text: line.textContent,
       title: document.getElementById('version-commit').title,
-      afterHint: hint.nextElementSibling === line && line.nextElementSibling === null,
+      // Below the hint and the last thing on the page that is drawn: the
+      // privacy link sits between the two, the closed leaderboard dialog after.
+      afterHint: Boolean(hint.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING)
+        && [...line.parentElement.children].filter((el) => el.offsetParent !== null).at(-1) === line,
       inHeader: line.closest('.head') !== null,
       size: Number.parseFloat(getComputedStyle(line).fontSize),
     };
@@ -745,6 +825,10 @@ try {
   }
 
   check(noise.length === 0, `keine Konsolenfehler${noise.length ? `: ${noise.join(' | ')}` : ''}`);
+  // A whole free run, its end card and several reloads, and not one request:
+  // free play neither reads nor writes the leaderboard, and no start does.
+  check(freeApi.length === 0, `das freie Spiel fragt die Rangliste nie an${freeApi.length ? `: ${freeApi[0]}` : ''}`);
+  check(await page.isHidden('#enter'), 'die Endkarte des freien Spiels bietet kein Eintragen an');
 
   // --- der Seed einer freien Partie ----------------------------------------
   // No `?seed=` and a stopped clock: the free run takes its seed from the time,
@@ -752,6 +836,8 @@ try {
   {
     const startedAt = Date.UTC(2026, 9, 12, 17, 4, 31, 250);
     const free = await browser.newContext({ viewport: { width: 560, height: 960 } });
+    const seedApi = [];
+    await guardApi(free, seedApi);
     const tab = await free.newPage();
     // Fixed, not merely installed: an installed clock keeps ticking while the
     // page loads, and the seed would be taken some milliseconds later.
@@ -793,6 +879,7 @@ try {
     const later = await tab.textContent('#over-seed-link');
     check(later === String(freeSeed(startedAt + 5000)) && later !== first.seed,
       `Neue Partie fünf Sekunden später: Seed ${later}`);
+    check(seedApi.length === 0, `Starts mit und ohne Seed fragen die Rangliste nicht an (${seedApi.length})`);
     await free.close();
   }
 
@@ -815,10 +902,28 @@ try {
   const context = await browser.newContext({ viewport: { width: 560, height: 960 } });
   await context.grantPermissions(['clipboard-read', 'clipboard-write'],
     { origin: `http://127.0.0.1:${port}` });
+  // The day's leaderboard, already well filled: twelve results ahead of the
+  // planned run's, two of them tied on level and points, two on level only —
+  // entered in the wrong order, so that only the points put them right — and
+  // one name that would be an image if it were ever read as markup.
+  const board = fakeLeaderboard();
+  const injected = '<img src=x onerror="window.__injected=1">';
+  board.seed([
+    ['Spieler 1', 20, 60], ['Spieler 2', 19, 59], ['Gleich A', 18, 57], ['Gleich B', 18, 57],
+    ['Spieler 5', 17, 70], [injected, 16, 55], ['Wenig Punkte', 15, 10], ['Viele Punkte', 15, 90],
+    ['Spieler 9', 14, 50], ['Spieler 10', 13, 50], ['Spieler 11', 12, 50], ['Spieler 12', 11, 50],
+  ].map(([username, level, points]) => ({ date: dayName, username, level, points })));
+  board.seed([{ date: '2026-09-23', username: 'Gestern', level: 25, points: 999 }]);
+  await context.route(API, board.handle);
   const daily = await context.newPage();
   const dailyNoise = [];
   daily.on('pageerror', (error) => dailyNoise.push(String(error)));
-  daily.on('console', (message) => message.type() === 'error' && dailyNoise.push(message.text()));
+  // The browser logs every 4xx/5xx it receives as an error of its own. The
+  // leaderboard's 400 (a second entry) and 503 (server down) are provoked on
+  // purpose below and handled by the page, so those alone are not noise.
+  const fromLeaderboard = (message) => message.location().url.startsWith(LEADERBOARD.baseUrl);
+  daily.on('console', (message) => message.type() === 'error' && !fromLeaderboard(message)
+    && dailyNoise.push(message.text()));
   // Installed before the first navigation, or the page would read the real
   // clock on the way up and derive a different board from it.
   await daily.clock.install({ time: new Date(day) });
@@ -840,6 +945,18 @@ try {
   const firstVisit = await openedOn(daily);
   check(firstVisit.daily && !firstVisit.free && firstVisit.level === '1' && !firstVisit.over,
     'der erste Besuch öffnet auf dem Tagesbrett');
+  check(board.requests.length === 0, 'beim Start keine Anfrage an die Rangliste');
+  const rankButton = await daily.evaluate(() => {
+    const button = document.getElementById('ranks-open');
+    return {
+      inCardRow: button.closest('#hud-hand') !== null,
+      shown: button.offsetParent !== null,
+      rowHeight: Math.round(document.getElementById('hud-hand').getBoundingClientRect().height),
+      chipHeight: Math.round(document.getElementById('chip-now').getBoundingClientRect().height),
+    };
+  });
+  check(rankButton.shown && rankButton.inCardRow && rankButton.rowHeight === rankButton.chipHeight,
+    `„Rangliste" sitzt in der Kartenreihe, die so hoch bleibt wie eine Karte (${rankButton.rowHeight} px)`);
 
   /** The level reading in the header as a player reads it, goal and all. */
   const levelReading = (target) => target.evaluate(() => {
@@ -917,6 +1034,8 @@ try {
   const other = await browser.newContext({
     viewport: { width: 560, height: 960 }, timezoneId: 'Pacific/Auckland',
   });
+  const strangerApi = [];
+  await guardApi(other, strangerApi);
   const stranger = await other.newPage();
   /** Opens the daily board in the stranger's browser at a fixed instant. */
   const strangerAt = async (instant) => {
@@ -941,6 +1060,7 @@ try {
   check(await strangerAt(berlinMidnight + 1000) === nextDay, 'um 00:00:01 Berliner Zeit schon das vom 25.');
   check(await strangerAt(Date.UTC(2026, 8, 24, 23, 30)) === nextDay,
     'um 23:30 UTC, als UTC noch den 24. zählte, ist es das Brett vom 25.');
+  check(strangerApi.length === 0, `fünf Starts in einem fremden Browser, keine Anfrage an die Rangliste (${strangerApi.length})`);
   await other.close();
 
   // Play the day out.
@@ -1150,6 +1270,90 @@ try {
   check(lostTitle.text === 'Keine Sender mehr.' && !lostTitle.won,
     `ein verlorener Tag endet auf „${lostTitle.text}"`);
 
+  // --- Rangliste -----------------------------------------------------------
+  // A whole day played, its card shown, shared, reloaded several times, the
+  // switch flipped both ways: still not a single request. Reading waits for
+  // the leaderboard to be opened or an entry to be made; writing for the click.
+  check(board.requests.length === 0,
+    `ein ganzer Tag ohne eine Anfrage, solange niemand die Rangliste öffnet (${board.requests.length})`);
+
+  // First entry: no saved name, so the button asks for one.
+  check(await daily.textContent('#enter') === 'In die Rangliste', 'ohne gespeicherten Namen: „In die Rangliste"');
+  await daily.click('#enter');
+  check(await daily.isVisible('#enter-name'), 'ein Klick öffnet das Namensfeld');
+  check(board.requests.length === 0, 'das Öffnen des Felds trägt noch nichts ein');
+  await daily.fill('#enter-name', 'A');
+  await daily.click('#enter-send');
+  check(await daily.evaluate(() => document.getElementById('enter-hint').classList.contains('is-wrong'))
+    && board.requests.length === 0, 'ein Name mit einem Zeichen wird abgewiesen, ohne den Server zu fragen');
+  await daily.fill('#enter-name', '  Ada ');
+  await daily.click('#enter-send');
+  await daily.waitForSelector('#enter-status:not([hidden])', { timeout: 5000 });
+  await until(daily, () => document.getElementById('enter-status').textContent.includes('Platz'), 5000);
+  const posts = board.requests.filter((r) => r.method === 'POST');
+  const sent = JSON.parse(posts[0]?.body ?? '{}');
+  check(posts.length === 1, `genau ein Eintrag geschickt (${posts.length})`);
+  check(sent.date === dayName && sent.username === 'Ada' && sent.points === plan.score,
+    `mit Datum ${sent.date}, Name „${sent.username}" und ${sent.points} Punkten`);
+  check(sent.level === plan.cleared && sent.level !== plan.level,
+    `mit ${sent.level} geschafften Level, nicht dem angezeigten Level ${plan.level}`);
+  check(/^[0-9a-f-]{36}$/.test(sent.client_id ?? ''), 'und der Geräte-ID');
+  const placeText = await daily.textContent('#enter-status');
+  check(placeText === 'Eingetragen als Ada – Platz 13 von 13.', `die Karte meldet: ${placeText}`);
+  check(await daily.isHidden('#enter') && await daily.isHidden('#enter-form'), 'und bietet kein zweites Eintragen an');
+  const deviceShown = await daily.evaluate((id) => document.body.innerText.includes(id), sent.client_id);
+  check(!deviceShown, 'die Geräte-ID steht nirgends auf der Seite');
+
+  // The leaderboard: the top ten, the place, and the own row below a gap.
+  await daily.click('#ranks-open');
+  await until(daily, () => document.querySelectorAll('#ranks-list li').length > 0, 5000);
+  const listed = await daily.evaluate(() => ({
+    open: document.getElementById('ranks').open,
+    date: document.getElementById('ranks-date').textContent,
+    place: document.getElementById('ranks-place').textContent,
+    rows: [...document.querySelectorAll('#ranks-list li')].map((li) => li.innerText.replace(/\s+/g, ' ').trim()),
+    own: [...document.querySelectorAll('#ranks-list li.own')].map((li) => li.innerText.replace(/\s+/g, ' ').trim()),
+    images: document.querySelectorAll('#ranks img').length,
+    injected: window.__injected === 1,
+  }));
+  check(listed.open && listed.date === '24.09.', `die Rangliste öffnet für den ${listed.date}`);
+  check(listed.place === 'Platz 13 von 13', `sie nennt den eigenen Platz: ${listed.place}`);
+  check(listed.rows.length === 12 && listed.rows[10] === '…', `zehn Zeilen, „…", die eigene (${listed.rows.length})`);
+  check(listed.rows[0] === '1. Spieler 1 20 Level, 60 Punkte', `erste Zeile: ${listed.rows[0]}`);
+  check(listed.rows[2].startsWith('3. Gleich A') && listed.rows[3].startsWith('3. Gleich B')
+    && listed.rows[4].startsWith('5. '), 'gleiches Level und gleiche Punkte teilen den Platz, der nächste ist 5.');
+  check(listed.rows[6].startsWith('7. Viele Punkte') && listed.rows[7].startsWith('8. Wenig Punkte'),
+    'bei gleichem Level entscheiden die Punkte');
+  check(listed.own.length === 1 && listed.own[0] === `13. Ada ${plan.cleared} Level, ${plan.score} Punkte`,
+    `die eigene Zeile: ${listed.own[0]}`);
+  check(listed.rows[5].includes(injected) && listed.images === 0 && !listed.injected,
+    'ein Name mit Markup steht als Text da und wird nie ausgeführt');
+  check(!listed.rows.some((row) => row.includes('Gestern')), 'nur Einträge dieses Tages');
+  await daily.click('#ranks-close');
+  check(!(await daily.evaluate(() => document.getElementById('ranks').open)), '„Schließen" schließt sie');
+
+  // A reload: the entry is remembered, and still nothing is asked on the way up.
+  const beforeReload = board.requests.length;
+  await daily.reload();
+  await daily.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  check(board.requests.length === beforeReload, 'ein Neuladen fragt nichts an, auch mit Eintrag');
+  check(await daily.textContent('#enter-status') === 'Eingetragen als Ada.',
+    'die Karte weiß nach dem Neuladen noch, dass eingetragen ist');
+
+  // The server down: the leaderboard says so, and the game goes on.
+  board.fail(true);
+  await daily.click('#ranks-open');
+  await until(daily, () => document.getElementById('ranks-status').textContent.includes('nicht erreichbar'), 7000);
+  check((await daily.textContent('#ranks-status')) === 'Die Rangliste ist gerade nicht erreichbar.',
+    'fällt der Server aus, sagt die Rangliste es dezent');
+  await daily.keyboard.press('Escape');
+  await daily.click('#mode-frei', { timeout: 2000 });
+  await daily.waitForSelector('.board .node');
+  check(await daily.textContent('#hud-level') === '1', 'und das Spiel bleibt bedienbar');
+  await daily.click('#mode-taeglich');
+  await daily.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+  board.fail(false);
+
   // --- durchgespielt ---------------------------------------------------------
   // The planner almost never clears all 25 levels (0.2 %), so the run played
   // through is the rollout bot's, on the first day from 2026-09-25 that it
@@ -1167,14 +1371,21 @@ try {
     const { at, run, name } = winner;
     console.log(`Durchgespielt am ${name}: ${run.cleared} Level, ${run.score} Punkte`);
     const throughContext = await browser.newContext({ viewport: { width: 560, height: 960 } });
+    const throughBoard = fakeLeaderboard();
+    await throughContext.route(API, throughBoard.handle);
     const through = await throughContext.newPage();
     const throughNoise = [];
     through.on('pageerror', (error) => throughNoise.push(String(error)));
-    through.on('console', (message) => message.type() === 'error' && throughNoise.push(message.text()));
+    through.on('console', (message) => message.type() === 'error' && !fromLeaderboard(message)
+      && throughNoise.push(message.text()));
     await through.clock.install({ time: new Date(at) });
     await through.goto(`http://127.0.0.1:${port}/index.html`);
     await through.waitForSelector('.board .node');
-    await through.evaluate((attempt) => localStorage.setItem('funkloch.taeglich', JSON.stringify(attempt)), {
+    await through.evaluate((attempt) => {
+      localStorage.setItem('funkloch.taeglich', JSON.stringify(attempt));
+      // Entered on an earlier day under this name: today is a follow-up entry.
+      localStorage.setItem('funkloch.rangliste.name', 'Ada');
+    }, {
       day: name,
       rules: 3,
       moves: run.script.map((step) => (step.go ? null : step.id)),
@@ -1240,6 +1451,35 @@ try {
       Promise.all(element.getAnimations().map((animation) => animation.finished)));
     await through.screenshot({ path: `${shots}/ui-won.png` });
 
+    // A follow-up entry: the saved name, one click, no field.
+    check(throughBoard.requests.length === 0, 'auch hier keine Anfrage beim Start');
+    check(await through.textContent('#enter') === 'Als Ada eintragen' && await through.isVisible('#enter-rename'),
+      'mit gespeichertem Namen: „Als Ada eintragen" und „Namen ändern"');
+    await through.click('#enter');
+    await until(through, () => document.getElementById('enter-status').textContent.includes('Platz'), 5000);
+    const followUp = JSON.parse(throughBoard.requests.find((r) => r.method === 'POST')?.body ?? '{}');
+    check(followUp.username === 'Ada' && followUp.level === 25 && followUp.points === run.score,
+      `durchgespielt trägt 25 Level ein (${followUp.level}), unter dem gespeicherten Namen`);
+    check(await through.textContent('#enter-status') === 'Eingetragen als Ada – Platz 1 von 1.',
+      `die Karte meldet: ${await through.textContent('#enter-status')}`);
+
+    // The same device on the same day again, with the local note gone: the
+    // server's unique index refuses it, and the card says so.
+    await through.evaluate(() => localStorage.removeItem('funkloch.rangliste.eintrag'));
+    await through.reload();
+    await through.waitForSelector('#over:not([hidden])', { timeout: 10000 });
+    await through.click('#enter');
+    await until(through, () => !document.getElementById('enter-status').hidden, 5000);
+    check(await through.textContent('#enter-status') === 'Von diesem Gerät heute schon eingetragen.',
+      'ein zweiter Eintrag am selben Tag wird abgewiesen und so benannt');
+    check(throughBoard.records.length === 1, 'und landet nicht in der Rangliste');
+    await through.setViewportSize({ width: 360, height: 740 });
+    await through.click('#ranks-open');
+    await until(through, () => document.querySelectorAll('#ranks-list li').length > 0, 5000);
+    await through.screenshot({ path: `${shots}/ui-ranks.png` });
+    await through.keyboard.press('Escape');
+    await through.setViewportSize({ width: 560, height: 960 });
+
     check(await through.isVisible('#mode-frei'), 'der Weg ins freie Spiel ist auch nach dem Durchspielen zu sehen');
     await through.click('#mode-frei', { timeout: 2000 });
     await through.waitForSelector('.board .node');
@@ -1258,6 +1498,7 @@ try {
 }
 
 console.log(failures.length === 0
-  ? `\nAlles gut. Bilder in ${shots}/ui-board.png, ${shots}/ui-over.png, ${shots}/ui-daily.png und ${shots}/ui-won.png`
+  ? `\nAlles gut. Bilder in ${shots}/ui-board.png, ${shots}/ui-over.png, ${shots}/ui-daily.png,`
+    + ` ${shots}/ui-won.png und ${shots}/ui-ranks.png`
   : `\n${failures.length} Prüfungen fehlgeschlagen.`);
 process.exit(failures.length === 0 ? 0 : 1);

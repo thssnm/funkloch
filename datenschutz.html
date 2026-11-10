@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Datenschutz – funkloch</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        --bg: #10131a;
+        --panel: #171b25;
+        --line: #262d3b;
+        --text: #e7ebf3;
+        --muted: #8a94a8;
+        --signal: #5ad1c0;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+      h1 { margin: 0 0 4px; font-size: 24px; }
+      h2 { margin: 28px 0 6px; font-size: 17px; }
+      p, ul { margin: 0 0 10px; }
+      ul { padding-left: 20px; }
+      a { color: var(--signal); }
+      .muted { color: var(--muted); font-size: 14px; }
+      .todo { color: #f08a62; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="muted"><a href="./">← Zurück zum Spiel</a></p>
+      <h1>Datenschutz</h1>
+      <p class="muted">Stand: 10. November 2026</p>
+
+      <h2>Verantwortlich</h2>
+      <p class="todo">[Name und Anschrift ergänzen]</p>
+      <p>E-Mail: <span class="todo">[E-Mail-Adresse ergänzen]</span></p>
+
+      <h2>Kurz gesagt</h2>
+      <p>
+        funkloch läuft im Browser und braucht kein Konto. Daten verlassen dein
+        Gerät nur, wenn du die tägliche Rangliste öffnest oder dich selbst dort
+        einträgst.
+      </p>
+
+      <h2>Was auf deinem Gerät bleibt</h2>
+      <p>
+        Im Speicher deines Browsers (localStorage) liegen dein Bestwert, dein
+        heutiger Versuch am Tagesbrett, der Name, unter dem du dich zuletzt
+        eingetragen hast, und eine zufällige Geräte-ID. Diese Daten bleiben auf
+        deinem Gerät, bis du sie in den Einstellungen deines Browsers löschst.
+        Die Geräte-ID wird nur mitgeschickt, wenn du dich einträgst.
+      </p>
+
+      <h2>Die tägliche Rangliste</h2>
+      <p>
+        Wenn du auf der Endkarte des Tagesbretts auf „Eintragen“ klickst, werden
+        gespeichert:
+      </p>
+      <ul>
+        <li>der Name, den du angibst,</li>
+        <li>wie viele Level du an diesem Tag geschafft hast und deine Punkte,</li>
+        <li>das Datum des Tagesbretts,</li>
+        <li>eine zufällige Geräte-ID.</li>
+      </ul>
+      <p>
+        <strong>Name, Level und Punkte sind öffentlich</strong>: Jeder, der die
+        Rangliste öffnet, sieht sie. Die Geräte-ID ist nicht öffentlich. Sie
+        sorgt nur dafür, dass pro Gerät und Tag ein Eintrag möglich ist, und
+        enthält nichts über dich oder dein Gerät.
+      </p>
+      <p>
+        Eingetragen wird nur durch deinen Klick. Mit dem Klick willigst du in
+        diese Speicherung ein (Art. 6 Abs. 1 lit. a DSGVO). Ohne Klick wird
+        nichts gespeichert, und das Spiel funktioniert ohne Rangliste genauso.
+      </p>
+      <p>
+        Wenn du die Rangliste öffnest oder dich einträgst, ruft dein Browser
+        den Server unter api.thssn.dev auf. Dabei wird, wie bei jedem Abruf
+        im Internet, deine IP-Adresse übertragen, damit der Server antworten
+        kann.
+      </p>
+
+      <h2>Wo die Daten liegen</h2>
+      <p>Die Rangliste läuft auf einem Server der Alwyzon in Österreich.</p>
+
+      <h2>Wie lange</h2>
+      <p>
+        Einträge werden spätestens nach zwei Tagen gelöscht. Früher löschen wir
+        auf Anfrage: Schreib eine E-Mail an
+        <span class="todo">[E-Mail-Adresse ergänzen]</span> mit dem Datum und
+        dem Namen deines Eintrags. Damit kannst du auch deine Einwilligung
+        widerrufen; was bis dahin rechtmäßig gespeichert war, bleibt davon
+        unberührt.
+      </p>
+
+      <h2>Deine Rechte</h2>
+      <p>
+        Du hast das Recht auf Auskunft, Berichtigung, Löschung und
+        Einschränkung der Verarbeitung deiner Daten sowie das Recht, dich bei
+        einer Datenschutzaufsichtsbehörde zu beschweren.
+      </p>
+    </main>
+  </body>
+</html>

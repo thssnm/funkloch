@@ -18,6 +18,40 @@ spielen lässt und die Tests ohne Browser auskommen lässt.
 Neue Spielregeln gehören in die reine Hälfte, auch wenn es sich im Renderer
 gerade kürzer anfühlt.
 
+## Ein Server, zwei Wege, und keiner beim Start
+
+Gespielt wird ohne Server. Zwei Dinge reden mit einem, auf verschiedenen Wegen:
+
+- `api/version.js` ist eine **Vercel Function** neben der Seite und liefert den
+  Stand unter dem Hilfetext.
+- Die tägliche Rangliste geht **direkt aus dem Browser an PocketBase**
+  (`https://api.thssn.dev`, Collection `funkloch_daily`), ohne SDK, nur mit
+  `fetch`. Adresse, Collection, Sortierung und Timeout stehen einmal, in
+  `LEADERBOARD` in `src/leaderboard.js`.
+
+`src/leaderboard.js` gehört nicht zur reinen Hälfte — es wartet auf einen
+Timer und redet mit einem Server —, fasst aber auch das DOM nicht an. Was es
+von draußen braucht (`fetch`, Speicher, `crypto`), bekommt es von
+`createLeaderboard` hereingereicht; so läuft es in Node gegen ein gemocktes
+`fetch`. Die reine Hälfte importiert es nie.
+
+Für die Rangliste gilt:
+
+- **Beim Start keine Anfrage.** Gelesen wird erst beim Öffnen der Rangliste
+  oder nach dem Eintragen, geschrieben nur beim Klick auf Eintragen. Der
+  Smoke-Test zählt jede Anfrage an `api.thssn.dev` und hält in jedem
+  Browser-Kontext einen Nachbau oder eine Sperre davor; an den echten Server
+  geht aus Tests nie etwas.
+- **Eingetragen wird `levelsCleared`**, die geschafften Level, nie das Level,
+  das Kopfzeile und Karte zeigen.
+- **Der Tag ist `boardDay`**, dieselbe Funktion wie für das Tagesbrett, keine
+  zweite Rechnung.
+- **Namen nur als Text** (`textContent`), nie als Markup.
+- **Ein Ausfall blockiert nichts**: eine Zeile in der Rangliste oder auf der
+  Karte, das Spiel läuft weiter.
+- Es gibt keine Content Security Policy. Kommt eine dazu, braucht sie
+  `connect-src https://api.thssn.dev`.
+
 ## `coverage()` ist die einzige Quelle der Wahrheit
 
 Wer versorgt ist, sagt `coverage()` in `src/graph.js` — nirgends sonst. Weder
