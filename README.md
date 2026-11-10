@@ -168,3 +168,13 @@ Statisch, ohne Build-Schritt: `vercel.json` setzt Framework auf „Other", leert
 Build- und Install-Befehl und liefert den Projektordner direkt aus. Alle Pfade
 in `index.html` und den Modulen sind relativ, das Spiel läuft also auch unter
 einem Unterpfad.
+
+Unter dem Hilfetext steht klein der laufende Stand, die ersten sieben Zeichen
+des Commits („Stand 4e9a9b8", der ganze Hash im Tooltip). Er kommt ohne
+Build-Schritt auf die Seite: `api/version.js` ist eine Vercel Function, die
+`VERCEL_GIT_COMMIT_SHA` zur Laufzeit liest; die Seite fragt sie nach dem
+Laden. Voraussetzung ist ein Deployment aus einem Git-Push und der Haken bei
+„Enable access to System Environment Variables" unter Environment
+Variables in den Projekteinstellungen (seit einiger Zeit Vorgabe). Fehlt eins davon, oder läuft die Seite ohne Endpunkt,
+bleibt die Zeile weg. `npm run serve` beantwortet denselben Pfad mit demselben
+Handler; mit `VERCEL_GIT_COMMIT_SHA=… npm run serve` zeigt er einen Stand.

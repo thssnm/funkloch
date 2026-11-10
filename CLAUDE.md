@@ -37,7 +37,7 @@ kommt im Quelltext nicht vor und soll auch nicht dazukommen — auch nicht in
 Seed, liest sie die Uhr und lässt `run.js` daraus einen machen (`freeSeed`,
 `dailySeed`), gehasht und nie der rohe Zeitstempel, weil ein Level aus
 `seed + level · 7919` gezogen wird. `test/no-math-random.test.js` sucht den
-Aufruf in `index.html`, `src/`, `tools/` und `test/`.
+Aufruf in `index.html`, `src/`, `tools/`, `test/` und `api/`.
 
 Im Lauf wird alles aus `(seed, level)` abgeleitet, damit kein RNG-Zustand
 mitgeschleppt werden muss: das Brett hängt dann nicht davon ab, wie gespielt
@@ -171,6 +171,10 @@ stimmte.
   Deutsch. So ist es gewachsen.
 - Kein Build-Schritt, keine Laufzeit-Abhängigkeiten. `playwright` ist
   devDependency und nur für `tools/preview.js` und `tools/ui-smoke.js`.
+- `api/` enthält nur `version.js`, die Vercel Function für den Stand unter dem
+  Hilfetext. Vercel macht aus jeder Datei dort eine eigene Function; Hilfsmodule
+  gehören also nicht nach `api/`. Das Spiel darf von ihr nicht abhängen: ohne
+  Antwort bleibt die Zeile weg, sonst nichts.
 - Nach Änderungen an `index.html`, `render.js` oder `input.js`: `npm run smoke`.
   Element-IDs sind die Nahtstelle zwischen Seite und Test.
 - Fehlt der Browser für den Smoke-Test, genügt

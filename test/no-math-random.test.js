@@ -17,7 +17,7 @@ const CALL = /Math\s*\.\s*random\s*\(/;
 
 const sources = [
   'index.html',
-  ...['src', 'tools', 'test'].flatMap((dir) => readdirSync(join(ROOT, dir))
+  ...['src', 'tools', 'test', 'api'].flatMap((dir) => readdirSync(join(ROOT, dir))
     .filter((name) => name.endsWith('.js'))
     .map((name) => `${dir}/${name}`)),
 ];

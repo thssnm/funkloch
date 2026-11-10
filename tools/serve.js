@@ -13,12 +13,18 @@
  * meet, so the dev server simply refuses to let anything be cached.
  *
  * A real deployment would do the opposite: cache hard and bust by filename.
+ *
+ * `/api/version` is answered by the same handler Vercel runs, so the page finds
+ * the endpoint here too. Without VERCEL_GIT_COMMIT_SHA in the environment it
+ * says `null` and the page shows no version; the smoke test sets one.
  */
 
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import version from '../api/version.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -39,6 +45,12 @@ const host = args.host ?? '127.0.0.1';
 createServer(async (request, response) => {
   const requested = decodeURIComponent(request.url.split('?')[0]);
   const path = requested === '/' ? '/index.html' : requested;
+  if (path === '/api/version') {
+    const answer = version.fetch();
+    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    response.end(await answer.text());
+    return;
+  }
   // Keep the server inside the project directory.
   const file = join(ROOT, normalize(path).replace(/^(\.\.[/\\])+/, ''));
   if (!file.startsWith(ROOT)) {

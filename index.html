@@ -553,6 +553,15 @@
       button:not(:disabled):hover { border-color: var(--muted); }
 
       .hint { margin: 0; color: var(--muted); font-size: 14px; }
+      /* For bug reports, not for play: small, faint and last on the page. */
+      .version {
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+        opacity: 0.7;
+        font-variant-numeric: tabular-nums;
+      }
+      .version[hidden] { display: none; }
       kbd {
         padding: 1px 6px;
         border: 1px solid var(--line);
@@ -659,6 +668,7 @@
         Tippen setzt den Sender aus der Hand — gesetzt ist gesetzt. Achteckige
         Knoten leuchten selbst, geben das Signal aber nicht weiter.
       </p>
+      <p class="version" id="version" hidden>Stand <span id="version-commit"></span></p>
     </main>
 
     <script type="module">
@@ -1262,6 +1272,23 @@
       const asked = Number.parseInt(new URLSearchParams(location.search).get('seed') ?? '', 10);
       if (Number.isInteger(asked)) newRun(asked);
       else startDaily();
+
+      // The commit this deployment runs, from api/version.js. Asked after the
+      // board is up and never waited on: where there is no endpoint — a page
+      // opened off the file system, a server without it — or no commit, the
+      // line simply stays hidden. Seven characters, as git shortens them; the
+      // whole hash is in the tooltip.
+      fetch('api/version')
+        .then((response) => (response.ok ? response.json() : null))
+        .then((answer) => {
+          const commit = answer?.commit;
+          if (typeof commit !== 'string' || !/^[0-9a-f]{40}$/.test(commit)) return;
+          const shown = document.getElementById('version-commit');
+          shown.textContent = commit.slice(0, 7);
+          shown.title = commit;
+          document.getElementById('version').hidden = false;
+        })
+        .catch(() => { /* no endpoint here: no version line */ });
     </script>
   </body>
 </html>

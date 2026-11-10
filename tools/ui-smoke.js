@@ -33,6 +33,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { chromium } from 'playwright';
 
 import {
@@ -113,9 +114,64 @@ console.log(`Seed ${seed}: erwartet Ende in Level ${expected.level}, ${expected.
 check(expected.cleared === expected.level - 1,
   `wer in Level ${expected.level} scheitert, hat ${expected.cleared} geschafft`);
 
-const server = spawn(process.execPath, ['tools/serve.js', `--port=${port}`], { stdio: 'ignore' });
-const browser = await chromium.launch();
+// A commit for the server to report as Vercel would, so the version line has
+// something to show. Made up: the test is about the wiring, not about git.
+const commit = '0123456789abcdef0123456789abcdef01234567';
+
+/**
+ * Why the port cannot be had, or null if it is free. Asked before the server
+ * is started: a server left over from an earlier run — or anything else on
+ * the port — would otherwise answer in place of ours, and the whole run would
+ * test whatever code that server was started with.
+ * @returns {Promise<string|null>}
+ */
+const portBlocked = () => new Promise((resolve) => {
+  const probe = createServer();
+  probe.once('error', (error) => resolve(error.code ?? String(error)));
+  probe.once('listening', () => probe.close(() => resolve(null)));
+  probe.listen(port, '127.0.0.1');
+});
+const blocked = await portBlocked();
+if (blocked !== null) {
+  console.error(`Port ${port} ist nicht frei (${blocked}). Läuft noch ein Server von einem`
+    + ` früheren Lauf? Beenden, oder einen anderen Port wählen: --port=…`);
+  process.exit(2);
+}
+
+const server = spawn(process.execPath, ['tools/serve.js', `--port=${port}`], {
+  stdio: 'ignore',
+  env: { ...process.env, VERCEL_GIT_COMMIT_SHA: commit },
+});
+// Whatever ends this process takes the server with it — a failed check's
+// process.exit, a browser that will not start, any error thrown before the
+// `finally` below is reached. Without this a crash in `chromium.launch()`
+// left the server running, and the next run tested against it.
+process.on('exit', () => server.kill());
+
+/**
+ * Waits until *our* server answers: the version it reports is the made-up
+ * commit it was started with, which no other server on the port would know.
+ */
+async function serverReady(ms = 5000) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null) break;
+    try {
+      const answer = await fetch(`http://127.0.0.1:${port}/api/version`);
+      if ((await answer.json()).commit === commit) return;
+    } catch {
+      /* not listening yet */
+    }
+    await new Promise((resume) => setTimeout(resume, 50));
+  }
+  throw new Error(`der Testserver auf Port ${port} antwortet nicht`
+    + (server.exitCode !== null ? ` (beendet mit ${server.exitCode})` : ''));
+}
+
+let browser = null;
 try {
+  await serverReady();
+  browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 560, height: 960 } });
   const noise = [];
   page.on('pageerror', (error) => noise.push(String(error)));
@@ -137,6 +193,27 @@ try {
   // Not merely gone from storage: a run that has scored nothing yet shows no
   // record at all, so the old 99 was never read either.
   check(await page.textContent('#hud-score-best') === '', 'und nicht übernommen');
+
+  // --- der laufende Stand ---------------------------------------------------
+  // Under the hint and last on the page, never in the header.
+  await until(page, () => !document.getElementById('version').hidden, 3000);
+  const version = await page.evaluate(() => {
+    const line = document.getElementById('version');
+    const hint = document.querySelector('.hint');
+    return {
+      shown: !line.hidden && line.offsetParent !== null,
+      text: line.textContent,
+      title: document.getElementById('version-commit').title,
+      afterHint: hint.nextElementSibling === line && line.nextElementSibling === null,
+      inHeader: line.closest('.head') !== null,
+      size: Number.parseFloat(getComputedStyle(line).fontSize),
+    };
+  });
+  check(version.shown && version.text === `Stand ${commit.slice(0, 7)}`,
+    `die Seite nennt den laufenden Stand: ${version.text}`);
+  check(version.title === commit, 'der ganze Hash steht im Tooltip');
+  check(version.afterHint && !version.inHeader, 'unter dem Hilfetext, am Ende der Seite, nicht in der Kopfzeile');
+  check(version.size < 14, `kleiner als der Hilfetext (${version.size}px)`);
 
   // --- one record, not two -------------------------------------------------
   // The level is a standing, not a best: it has no record of its own any more,
@@ -1036,7 +1113,7 @@ try {
     `keine Konsolenfehler im Tagesmodus${dailyNoise.length ? `: ${dailyNoise.join(' | ')}` : ''}`);
   await context.close();
 } finally {
-  await browser.close();
+  await browser?.close();
   server.kill();
 }
 
