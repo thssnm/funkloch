@@ -230,3 +230,11 @@ Laden. Voraussetzung ist ein Deployment aus einem Git-Push und der Haken bei
 Variables in den Projekteinstellungen (seit einiger Zeit Vorgabe). Fehlt eins davon, oder läuft die Seite ohne Endpunkt,
 bleibt die Zeile weg. `npm run serve` beantwortet denselben Pfad mit demselben
 Handler; mit `VERCEL_GIT_COMMIT_SHA=… npm run serve` zeigt er einen Stand.
+
+Die Rangliste liegt nicht bei Vercel, sondern in PocketBase unter
+`https://api.thssn.dev` (Abschnitt „Rangliste"). `datenschutz.html` sagt zu,
+dass Einträge **spätestens nach zwei Tagen gelöscht** werden. Das Spiel
+selbst löscht nichts — es darf es nicht, Update und Delete sind für die
+Collection gesperrt. Die Zusage setzt einen Cron-Job in PocketBase voraus,
+der Einträge mit `date` älter als zwei Tage entfernt, und der muss
+serverseitig eingerichtet sein. Fehlt er, stimmt der Datenschutztext nicht.

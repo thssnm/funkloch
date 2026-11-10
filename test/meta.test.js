@@ -100,7 +100,7 @@ test('the privacy page', async (t) => {
     const text = readFileSync(file, 'utf8').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
     for (const needed of [
       'Name', 'Level', 'Punkte', 'Datum', 'Geräte-ID', 'öffentlich', 'IP-Adresse',
-      'Klick', 'Einwilligung', 'zwei Tagen', 'E-Mail', 'Alwyzon', 'Österreich',
+      'Klick', 'Einwilligung', 'zwei Tagen', 'E-Mail', 'Alwyzon', 'Österreich', 'Vercel',
     ]) assert.ok(text.includes(needed), needed);
   });
 });
