@@ -65,8 +65,16 @@ test('every icon the page or the manifest names ships', async (t) => {
 
   await t.test('none of them is ignored by git, which is what Vercel deploys from', () => {
     for (const file of named) {
-      const result = spawnSync('git', ['check-ignore', '-q', file], { cwd: ROOT });
-      assert.equal(result.status, 1, `${file} is not ignored`);
+      const result = spawnSync('git', ['check-ignore', '-q', file], { cwd: ROOT, encoding: 'utf8' });
+      // 0 is ignored, 1 is not; anything else is git failing to answer, and
+      // that fails the test too — but saying so, rather than reading as a
+      // .gitignore problem. Git refuses a repository whose directory belongs
+      // to someone else ("dubious ownership"), and in some sandboxes the
+      // directory reads as root's for a second or two after a file is
+      // written into it.
+      assert.notEqual(result.status, 0, `${file} is ignored by git`);
+      assert.equal(result.status, 1,
+        `git check-ignore gave no answer for ${file} (status ${result.status}): ${result.stderr.trim()}`);
     }
   });
 
