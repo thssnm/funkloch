@@ -218,6 +218,19 @@ export const ENDLESS_RUN = {
    * the source nor the node reached is transit. Blocking shortens reach; it
    * never forces a move.
    *
+   * Re-measured 2026-11-10 against the rollout bot, on the daily curve
+   * (MESSUNGEN.md, "Blockadendichte gegen den Rollout-Bot"): the reason below
+   * no longer holds. The ratio between good and weak player does not fall
+   * with density any more — it holds at 4.3x to 4.7x, greedy against rollout.
+   * What density costs the good player is the play-through rate of the
+   * 25-level day: 59 % at 0, 47 % at 0.05, 34 % at 0.10, 19 % at 0.15 (rollout
+   * bot, 500 seeds per board). 0.05 stays because the hand ladder was tuned
+   * with it; a different density would move that tuning along.
+   *
+   * What follows is the measurement the value was originally chosen on, kept
+   * as the record of that choice. It was made against the planner, which
+   * "Das Plateau" found to be no measure of a good player.
+   *
    * Kept as low as board variation allows, because it is not free: blocking
    * hits the planning bot harder than the greedy one, so the reward for
    * thinking ahead shrinks with every node made opaque. Mean level reached,

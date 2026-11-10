@@ -57,6 +57,11 @@ const args = main ? Object.fromEntries(process.argv.slice(2).map((a) => {
   return [key, value ?? true];
 })) : {};
 
+/** Share of impermeable nodes on every board past level 1: the shipped
+ *  density unless `--blocked=` says otherwise, for measuring the density
+ *  itself (MESSUNGEN.md, "Blockadendichte gegen den Rollout-Bot"). */
+const BLOCKED = args.blocked !== undefined && args.blocked !== true ? Number(args.blocked) : ENDLESS_RUN.blockedRatio;
+
 // ---- the curves -------------------------------------------------------------
 
 /** The shipped curve, as levelSpec deals it. */
@@ -154,7 +159,7 @@ function levelState(seed, index, variant) {
     // Weights equal to the counts and summing to the hand size make
     // fillSenders deal exactly those counts.
     composition: composition ?? ENDLESS_RUN.composition,
-    blockedRatio: index === 0 ? 0 : ENDLESS_RUN.blockedRatio,
+    blockedRatio: index === 0 ? 0 : BLOCKED,
   };
   if (index === 0) {
     // The onboarding board: no blocked node and a fixed hand.
@@ -566,7 +571,8 @@ const rates = new Map();
 function rateOf(index, variant, bots, seeds) {
   const s = variant.spec(index);
   const key = index === 0 ? 'onboarding'
-    : `${s.nodeCount}:${s.senders}${s.composition ? `:${s.composition.map(([r, c]) => `${c}×r${r}`).join('+')}` : ''}`;
+    : `${s.nodeCount}:${s.senders}${s.composition ? `:${s.composition.map(([r, c]) => `${c}×r${r}`).join('+')}` : ''}`
+      + `@${BLOCKED}`;
   if (rates.has(key)) return rates.get(key);
   const lost = Object.fromEntries(bots.map((b) => [b, 0]));
   let undecided = 0;
@@ -631,7 +637,7 @@ if (args.compose) {
     const upto = finite ? variant.last : Number(args.upto ?? 60);
     const perLevel = [];
     for (let index = 0; index < upto; index++) perLevel.push(rateOf(index, variant, bots, seeds));
-    console.log(`\n„${variant.label}" (${name}), ${seeds} Seeds je Brettgröße, Level 1–${upto}`
+    console.log(`\n„${variant.label}" (${name}), Blockadendichte ${BLOCKED}, ${seeds} Seeds je Brettgröße, Level 1–${upto}`
       + `${finite ? ', danach Ende' : `, danach Level ${upto} fortgesetzt`}`);
     const specs = perLevel.map((_, index) => variant.spec(index));
     console.log(`  Kurve: ${specs.map((s, i) => `L${i + 1} ${s.nodeCount}/${s.senders}`

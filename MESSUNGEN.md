@@ -2465,3 +2465,155 @@ npm run smoke                      # Kanten, Ränder, kleinste Trefferfläche
   Kopfzeile/Hilfetext/Datenschutz-Link bei 16 px, kleinste Trefferfläche
   ≥ 44 px auf dem dichtesten Brett.
 - `tools/stage-gain.js` — `--width` misst die fünf Varianten.
+
+---
+
+## 2026-11-10 — Blockadendichte gegen den Rollout-Bot, auf der Tageskurve
+
+**Konstante:** `ENDLESS_RUN.blockedRatio` in `src/run.js` (0.05, von `DAILY_RUN`
+geerbt)
+**Werkzeug:** `tools/plateau.js --compose=daily --bots=greedy,rollout --blocked=…`
+**Ergebnis:** Vergleichsmessung, Konstante unverändert. Blockaden treffen den
+guten Spieler **nicht** stärker als den schwachen, wenn man die Partielänge
+ansieht — das Verhältnis zwischen den Bots hält oder wächst mit der Dichte.
+Wo sie den guten Spieler treffen, ist die Durchlaufquote: 59 % → 47 % → 34 %
+→ 19 % von 0 bis 0.15.
+
+### Die Frage
+
+Die 0.05 wurden gegen den Planer kalibriert („blockedRatio" im Kommentar in
+`src/run.js`): Mit der Dichte fiel das Verhältnis Planer zu gierig von 2.47x
+auf 1.78x, Blockaden trafen den planenden Bot härter, und die Dichte blieb so
+niedrig, wie die Brettvariation es zuließ. Seit „Das Plateau" ist der Planer
+kein Maßstab mehr, und das Tagesbrett hat eine andere Kurve: Ende nach 25,
+Schwierigkeit über die Hand. Gilt der Befund noch, oder war er ein Effekt des
+Planers oder der alten Kurve?
+
+### Methode
+
+Wie in „Das Plateau": jedes Level für sich, 500 Seeds je Brett, dieselben
+Seeds für beide Bots, die Partie aus den Levelquoten zusammengesetzt.
+`--blocked=` setzt die Dichte auf jedem Brett ab Level 2 (Level 1 hat keine
+Blockaden). Gieriger Bot als der schwache Spieler, Rollout-Bot als der gute.
+Klein gehalten: vier Dichten, zwei Bots, kein Löser.
+
+### Partien auf der Tageskurve
+
+```
+Dichte   gierig                    Rollout                                   Rollout / gierig
+         Median  Mittel  ≥10       Median  Mittel  Quartile  ≥10    ≥20    durch (≥25)   (Mittel)
+0        5       5.3    10.0 %     durch   22.9    22–25    98.4 %  86.1 %  59.1 %       4.32x
+0.05     4       4.8     6.1 %     24      21.8    20–25    96.8 %  77.6 %  47.0 %       4.54x
+0.10     4       4.3     3.8 %     22      20.6    18–25    93.6 %  70.8 %  34.0 %       4.79x
+0.15     4       3.9     1.8 %     20      18.5    15–23    89.3 %  51.8 %  19.0 %       4.74x
+```
+
+Gegen Dichte 0 verliert der gierige Bot im Mittel 9 / 19 / 26 % seiner
+Partielänge, der Rollout-Bot 5 / 10 / 19 %. Der Rollout-Bot ist dabei nach
+oben gedeckelt — bei 25 ist Schluss, und bei Dichte 0 spielt er 59 % der
+Partien durch —, sein Verlust ist also eher unter- als überschätzt.
+
+### Je Brett: wo die Dichte beißt
+
+Scheiterquote je Level, die Stufen der Handleiter auf 60/9 und Level 7:
+
+```
+Brett        Dichte   gierig   Rollout       Brett        Dichte   gierig   Rollout
+42/8  3/3/2  0        12.4 %    0.0 %        60/9  5/2/2  0        74.4 %    6.2 %
+             0.05     16.0 %    0.0 %                     0.05     79.6 %    8.0 %
+             0.10     20.4 %    0.2 %                     0.10     86.4 %   11.2 %
+             0.15     25.8 %    0.4 %                     0.15     88.6 %   15.4 %
+60/9  3/4/2  0        41.4 %    0.0 %        60/9  4/4/1  0        79.6 %    8.8 %
+             0.05     47.8 %    0.2 %                     0.05     82.0 %   11.8 %
+             0.10     55.4 %    0.8 %                     0.10     86.2 %   17.2 %
+             0.15     62.2 %    2.0 %                     0.15     90.4 %   22.2 %
+60/9  4/3/2  0        61.2 %    1.4 %        60/9  3/5/1  0        66.6 %    3.0 %
+             0.05     67.0 %    2.4 %                     0.05     71.6 %    4.4 %
+             0.10     69.2 %    3.6 %                     0.10     77.6 %    4.4 %
+             0.15     75.6 %    5.6 %                     0.15     81.8 %    9.4 %
+```
+
+Zwei Lesarten, beide richtig:
+
+- **In Prozentpunkten** trifft die Dichte den gierigen Bot härter: auf 60/9
+  3/4/2 +21 Punkte (41 → 62 %), den Rollout-Bot +2 (0 → 2 %).
+- **Relativ, wo der gute Spieler überhaupt scheitert**, wächst seine Quote
+  schneller: auf 4/4/1 verdoppelt sie sich bis 0.10 (8.8 → 17.2 %) und
+  verzweieinhalbfacht sich bis 0.15 (22.2 %), der gierige Bot legt dort noch
+  14 % zu, weil er an der Decke ist. Auf den leichten Stufen bleibt der
+  Rollout-Bot unter 2 %, Blockaden hin oder her: Dort gibt es für ihn nichts
+  zu verlieren.
+
+In der Partielänge wiegt die erste Lesart. Der gierige Bot verliert seine
+Partien auf den leichten Stufen, und dort kostet ihn jede Blockade; der
+Rollout-Bot verliert sie auf den schweren Stufen am Ende, und dort ist der
+Zuwachs zwar relativ groß, aber die Partie fast vorbei.
+
+### Gegenprobe: derselbe Bot auf der alten Kurve
+
+War der alte Befund eine Eigenschaft des Planers oder der Kurve? Rollout-
+und gieriger Bot auf `ENDLESS_RUN`, wie es bis zum Tagesbrett galt — endlos,
+Plateau ab Level 12 bei 60/9 mit 3/4/2 —, Level 1–40 gemessen, danach die
+Plateau-Quote fortgeschrieben. `--compose=shipped --upto=40`, 500 Seeds:
+
+```
+Dichte   gierig Mittel   Rollout                                        Rollout / gierig
+                         Median   Mittel   ≥25      Plateau-Quote
+0        4.7             ∞        ∞        89.2 %   0.0 %               ∞
+0.05     4.4             271      430      81.8 %   0.2 %               98x
+0.15     3.7             28       44.5     53.7 %   2.0 %               12x
+```
+
+(Je Brett 60/9 3/4/2: Rollout 0.0 → 0.2 → 2.0 %, gierig 41 → 48 → 62 % —
+dieselben Bretter wie auf der Tageskurve, die Stufe ist dieselbe.)
+
+Auf der alten Kurve bricht das Verhältnis mit der Dichte ein, mit dem
+Rollout-Bot sogar weit stärker als damals mit dem Planer: 98x bei 0.05, 12x
+bei 0.15. Der Mechanismus ist die endlose Partie: Die Plateau-Quote des guten
+Spielers ist fast null, und jede Blockade verzehnfacht sie (0.2 → 2.0 %); über
+hunderte Level multipliziert sich das zu einem Faktor 10 in der Partielänge.
+Der gierige Bot stirbt lange vorher und merkt von der Dichte nur die ersten
+Level.
+
+**Der alte Befund war ein Effekt der alten Kurve, nicht des Planers.** Auf
+der Tageskurve ist die Partie nach 25 Leveln zu Ende, und die Handleiter
+bringt den guten Spieler auf den letzten Stufen ohnehin auf 6 bis 12 %
+Scheiterquote; was die Dichte dort hinzufügt, ist klein gegen das, was die
+Hand schon kostet. Darum hält das Verhältnis.
+
+### Befund
+
+**Auf der Tageskurve fällt das Verhältnis zwischen gutem und schwachem
+Spieler mit der Dichte nicht mehr.** Es steigt von 4.32x auf 4.74x, mit einer
+Decke, die den guten Spieler drückt. Auf der alten Endloskurve fiele es mit
+jedem Bot, weil sich dort eine kleine Quote endlos aufmultipliziert; das
+freie Spiel hat diese Kurve noch. Was Blockaden beim guten Spieler kosten, ist die
+Durchlaufquote: 59 → 47 → 34 → 19 %. Für die Wahl der Dichte ist also nicht
+mehr der Abstand der Bots die Frage, sondern wie viele gute Spieler den Tag
+durchspielen sollen.
+
+Bei 0.05 liegt die Durchlaufquote des Rollout-Bots bei 47 %; mit dem
+Menschen-Faktor 1.7 bis 1.9 aus „Das Plateau" (ungeprüfte Annahme) war das
+dort etwa jeder vierte gute Spieler — der Wert, auf den die Handleiter
+abgestimmt wurde. Eine andere Dichte verschöbe diese Abstimmung mit.
+
+**Konstante unverändert.** Die alte Begründung im Kommentar zu `blockedRatio`
+(„trifft den planenden Bot härter") gilt für das Tagesbrett nicht mehr; der
+Kommentar verweist hierher und behält die alte Tabelle als Protokoll der
+damaligen Wahl.
+
+### Reproduktion
+
+```sh
+node tools/plateau.js --compose=daily --bots=greedy,rollout --blocked=0.05 --seeds=500
+node tools/plateau.js --compose=shipped --bots=greedy,rollout --blocked=0.05 --seeds=500 --upto=40
+```
+
+Je Dichte und Kurve 2 bis 4 Minuten; `--blocked` nimmt 0, 0.05, 0.1, 0.15.
+
+### Was blieb
+
+- `tools/plateau.js` — `--blocked=` setzt die Dichte ab Level 2; die
+  Levelquoten werden je Dichte getrennt gehalten.
+- `src/run.js` — der Kommentar zu `blockedRatio` nennt diese Messung vor der
+  alten Tabelle. Der Wert bleibt 0.05.
