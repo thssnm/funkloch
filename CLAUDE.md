@@ -37,11 +37,13 @@ von draußen braucht (`fetch`, Speicher, `crypto`), bekommt es von
 
 Für die Rangliste gilt:
 
-- **Beim Start keine Anfrage.** Gelesen wird erst beim Öffnen der Rangliste
-  oder nach dem Eintragen, geschrieben nur beim Klick auf Eintragen. Der
-  Smoke-Test zählt jede Anfrage an `api.thssn.dev` und hält in jedem
-  Browser-Kontext einen Nachbau oder eine Sperre davor; an den echten Server
-  geht aus Tests nie etwas.
+- **Beim Start keine Anfrage.** Gelesen wird erst, wenn eine Partie auf der
+  Seite endet (der Ausschnitt auf der Endkarte, `play` in `index.html`), beim
+  Öffnen der Rangliste oder nach dem Eintragen, geschrieben nur beim Klick auf
+  Eintragen. Eine Karte, die schon beim Laden steht — verbrauchter Tag —, löst
+  nichts aus. Der Smoke-Test zählt jede Anfrage an `api.thssn.dev` und hält
+  in jedem Browser-Kontext einen Nachbau oder eine Sperre davor; an den echten
+  Server geht aus Tests nie etwas.
 - **Eingetragen wird `levelsCleared`**, die geschafften Level, nie das Level,
   das Kopfzeile und Karte zeigen.
 - **Der Tag ist `boardDay`**, dieselbe Funktion wie für das Tagesbrett, keine

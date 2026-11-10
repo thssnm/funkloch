@@ -148,6 +148,86 @@ async function peekAround(target, label, { tap = false } = {}) {
 }
 
 /**
+ * The leaderboard excerpt on the daily end card, as it stands: whether the
+ * block is up, its rows as text, which of them is the own one, and the line
+ * that stands in for it when there is nothing to show.
+ * @param {import('playwright').Page} target
+ */
+const peekRows = (target) => target.evaluate(() => {
+  const block = document.getElementById('ranks-peek');
+  const status = document.getElementById('ranks-peek-status');
+  const text = (li) => li.innerText.replace(/\s+/g, ' ').trim();
+  return {
+    shown: !block.hidden && block.offsetParent !== null,
+    rows: [...block.querySelectorAll('li')].map(text),
+    own: [...block.querySelectorAll('li.own')].map(text),
+    status: status.hidden ? null : status.textContent,
+  };
+});
+
+/**
+ * The daily end card on a small phone, with or without the name field open:
+ * it has to stay inside the stage — scrolling there, never growing it — and
+ * the buttons that matter have to be reachable by that scroll. Measured at
+ * the two sizes the card once failed at, and the viewport is put back.
+ * @param {import('playwright').Page} target with the daily end card showing
+ * @param {string} label for the checks
+ * @param {string[]} buttons selectors that must be reachable
+ */
+async function cardFits(target, label, buttons) {
+  for (const [width, height] of [[360, 640], [320, 568]]) {
+    await target.setViewportSize({ width, height });
+    // Layout settles with the next frame; measured before it, the stage is
+    // still the old viewport's.
+    await target.evaluate(() => new Promise((resume) => requestAnimationFrame(() => resume())));
+    const fit = await target.evaluate((selectors) => {
+      const stage = document.getElementById('stage');
+      const card = document.getElementById('over');
+      const within = (rect, box) => rect.top >= box.top - 0.5 && rect.bottom <= box.bottom + 0.5
+        && rect.left >= box.left - 0.5 && rect.right <= box.right + 0.5;
+      const stageWithCard = stage.getBoundingClientRect();
+      const cardBox = card.getBoundingClientRect();
+      // The stage without the card: set aside, measured, and back.
+      card.hidden = true;
+      const stageAlone = stage.getBoundingClientRect();
+      card.hidden = false;
+      const reach = selectors.map((selector) => {
+        const button = document.querySelector(selector);
+        button.scrollIntoView({ block: 'nearest' });
+        const rect = button.getBoundingClientRect();
+        const box = stage.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        const name = (el) => (el === null ? 'nichts' : `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}`);
+        return {
+          selector,
+          onStage: within(rect, box),
+          onTop: hit !== null && (hit === button || button.contains(hit)),
+          why: `${selector}: ${Math.round(rect.left)}..${Math.round(rect.right)} × ${Math.round(rect.top)}..${Math.round(rect.bottom)} px`
+            + ` in Bühne ${Math.round(box.left)}..${Math.round(box.right)} × ${Math.round(box.top)}..${Math.round(box.bottom)} px,`
+            + ` getroffen: ${name(hit)}`,
+        };
+      });
+      card.scrollTop = 0;
+      return {
+        cardOnStage: within(cardBox, stageWithCard),
+        stageHeight: Math.round(stageWithCard.height),
+        stageGrown: Math.round(stageWithCard.height) !== Math.round(stageAlone.height),
+        scrolls: getComputedStyle(card).overflowY === 'auto' && card.scrollHeight > card.clientHeight,
+        reach,
+      };
+    }, buttons);
+    check(fit.cardOnStage && !fit.stageGrown,
+      `${label} bei ${width}×${height}: die Karte bleibt in der Bühne (${fit.stageHeight} px hoch), ohne sie zu dehnen`);
+    const unreachable = fit.reach.filter((r) => !(r.onStage && r.onTop)).map((r) => r.why);
+    check(unreachable.length === 0,
+      `${label} bei ${width}×${height}: ${buttons.join(' und ')} sind per Scrollen in der Karte erreichbar`
+      + (fit.scrolls ? '' : ' (ohne dass sie scrollen muss)')
+      + (unreachable.length ? ` — nicht: ${unreachable.join('; ')}` : ''));
+  }
+  await target.setViewportSize({ width: 560, height: 960 });
+}
+
+/**
  * Plays a whole run with a bot — the planner unless told otherwise — and
  * writes down what it did, so the browser can be asked to reproduce it click
  * for click and the expected numbers are known before the page is ever opened.
@@ -253,7 +333,8 @@ function fakeLeaderboard() {
   const seed = (rows) => {
     for (const row of rows) records.push({ id: `rec${next++}`, client_id: `fremd-${next}`, ...row });
   };
-  return { handle, records, requests, seed, fail: (on) => { failing = on; } };
+  const reset = () => { records.length = 0; };
+  return { handle, records, requests, seed, reset, fail: (on) => { failing = on; } };
 }
 
 // What the run should do, computed before the browser ever opens.
@@ -1269,6 +1350,19 @@ try {
   }
   await daily.waitForSelector('#over:not([hidden])', { timeout: 5000 });
 
+  // --- der Ausschnitt der Rangliste auf der Karte ---------------------------
+  // The run ended on this page, so the card may ask for the leaderboard —
+  // once, and only now: the first three rows, and no own row as long as
+  // nothing is entered.
+  await until(daily, () => !document.getElementById('ranks-peek').hidden, 5000);
+  const peeked = await peekRows(daily);
+  check(peeked.shown && peeked.rows.length === 3 && peeked.own.length === 0,
+    `die Karte zeigt die ersten drei Plätze, ohne eigene Zeile (${peeked.rows.length} Zeilen)`);
+  check(peeked.rows[0] === '1. Spieler 1 20 Level, 60 Punkte' && peeked.rows[1].startsWith('2. Spieler 2')
+    && peeked.rows[2].startsWith('3. Gleich A'), `nämlich: ${peeked.rows.join(' | ')}`);
+  check(board.requests.length === 1 && board.requests[0].method === 'GET',
+    `dafür eine Anfrage, am Partieende (${board.requests.length})`);
+
   const ended = await daily.evaluate(() => ({
     level: document.getElementById('over-level').textContent,
     score: document.getElementById('over-score').textContent,
@@ -1310,6 +1404,17 @@ try {
   await daily.locator('#over').evaluate((card) =>
     Promise.all(card.getAnimations().map((animation) => animation.finished)));
   await daily.screenshot({ path: `${shots}/ui-daily.png` });
+
+  // --- die Karte auf einem kleinen Telefon -----------------------------------
+  // With the excerpt on it, the card is taller than it was; it has to keep
+  // to the stage at the two sizes it once outgrew, with and without the name
+  // field, and the buttons have to stay within reach. The field stays open
+  // after this — the sharing below does not mind, and the reload after that
+  // closes it.
+  await cardFits(daily, 'ohne Namensfeld', ['#enter', '#share']);
+  await daily.click('#enter');
+  check(await daily.isVisible('#enter-name'), 'das Namensfeld ist offen');
+  await cardFits(daily, 'mit offenem Namensfeld', ['#enter-send', '#share']);
 
   // --- das geteilte Ergebnis -----------------------------------------------
   // The expectation is built here from the planned run, not by importing
@@ -1419,6 +1524,11 @@ try {
   }));
   check(again.level === `${plan.level} von 25` && again.score === String(plan.score),
     'ein Neuladen zeigt dasselbe Ergebnis wieder');
+  // The card is up from the first frame now, which is the start, and the
+  // start asks nothing: the excerpt waits for the next look at the list.
+  const reloadedPeek = await peekRows(daily);
+  check(!reloadedPeek.shown && reloadedPeek.status === null && board.requests.length === 1,
+    'ohne den Ausschnitt der Rangliste: der kommt nicht beim Start');
 
   // Not merely hidden behind the card: the board itself refuses. The card is
   // set aside first — a tap beside it would do that anyway — and the nodes
@@ -1476,20 +1586,24 @@ try {
 
   // --- Rangliste -----------------------------------------------------------
   // A whole day played, its card shown, shared, reloaded several times, the
-  // switch flipped both ways: still not a single request. Reading waits for
-  // the leaderboard to be opened or an entry to be made; writing for the click.
-  check(board.requests.length === 0,
-    `ein ganzer Tag ohne eine Anfrage, solange niemand die Rangliste öffnet (${board.requests.length})`);
+  // switch flipped both ways: one request, the excerpt's at the end of the
+  // run, and not one more. Reading otherwise waits for the leaderboard to be
+  // opened or an entry to be made; writing for the click.
+  check(board.requests.length === 1,
+    `ein ganzer Tag mit einer Anfrage, der des Partieendes, solange niemand die Rangliste öffnet (${board.requests.length})`);
+  // The excerpt is back with the end of the run only; a card shown on load
+  // has none until the list is read for another reason.
+  check(!(await peekRows(daily)).shown, 'der Ausschnitt auf der Karte ist nach dem Neuladen nicht da');
 
   // First entry: no saved name, so the button asks for one.
   check(await daily.textContent('#enter') === 'In die Rangliste', 'ohne gespeicherten Namen: „In die Rangliste"');
   await daily.click('#enter');
   check(await daily.isVisible('#enter-name'), 'ein Klick öffnet das Namensfeld');
-  check(board.requests.length === 0, 'das Öffnen des Felds trägt noch nichts ein');
+  check(board.requests.length === 1, 'das Öffnen des Felds trägt noch nichts ein');
   await daily.fill('#enter-name', 'A');
   await daily.click('#enter-send');
   check(await daily.evaluate(() => document.getElementById('enter-hint').classList.contains('is-wrong'))
-    && board.requests.length === 0, 'ein Name mit einem Zeichen wird abgewiesen, ohne den Server zu fragen');
+    && board.requests.length === 1, 'ein Name mit einem Zeichen wird abgewiesen, ohne den Server zu fragen');
   await daily.fill('#enter-name', '  Ada ');
   await daily.click('#enter-send');
   await daily.waitForSelector('#enter-status:not([hidden])', { timeout: 5000 });
@@ -1507,6 +1621,16 @@ try {
   check(await daily.isHidden('#enter') && await daily.isHidden('#enter-form'), 'und bietet kein zweites Eintragen an');
   const deviceShown = await daily.evaluate((id) => document.body.innerText.includes(id), sent.client_id);
   check(!deviceShown, 'die Geräte-ID steht nirgends auf der Seite');
+  // The excerpt follows the entry: still the first three, and the own row
+  // with its real rank below a gap.
+  const enteredPeek = await peekRows(daily);
+  check(enteredPeek.shown && enteredPeek.rows.length === 5 && enteredPeek.rows[3] === '…',
+    `der Ausschnitt zeigt nun drei Plätze, „…" und die eigene Zeile (${enteredPeek.rows.length} Zeilen)`);
+  check(enteredPeek.own.length === 1 && enteredPeek.own[0] === `13. Ada ${plan.cleared} Level, ${plan.score} Punkte`
+    && enteredPeek.rows[4] === enteredPeek.own[0], `die eigene Zeile: ${enteredPeek.own[0]}`);
+  check(enteredPeek.rows[0] === '1. Spieler 1 20 Level, 60 Punkte', 'die erste bleibt die erste');
+  // With the own row and the gap, the excerpt is at its tallest.
+  await cardFits(daily, 'eingetragen', ['#share']);
 
   // The card set aside and back, with the entry made: nothing on it is lost.
   await peekAround(daily, 'Tagesbrett');
@@ -1699,6 +1823,7 @@ try {
 
     // A follow-up entry: the saved name, one click, no field.
     check(throughBoard.requests.length === 0, 'auch hier keine Anfrage beim Start');
+    check(!(await peekRows(through)).shown, 'und kein Ausschnitt der Rangliste auf einer Karte, die mit der Seite kam');
     check(await through.textContent('#enter') === 'Als Ada eintragen' && await through.isVisible('#enter-rename'),
       'mit gespeichertem Namen: „Als Ada eintragen" und „Namen ändern"');
     await through.click('#enter');
@@ -1708,6 +1833,10 @@ try {
       `durchgespielt trägt 25 Level ein (${followUp.level}), unter dem gespeicherten Namen`);
     check(await through.textContent('#enter-status') === 'Eingetragen als Ada – Platz 1 von 1.',
       `die Karte meldet: ${await through.textContent('#enter-status')}`);
+    // The entry brings the excerpt with it: one row, the own one, no gap.
+    const wonPeek = await peekRows(through);
+    check(wonPeek.shown && wonPeek.rows.length === 1 && wonPeek.own[0] === `1. Ada 25 Level, ${run.score} Punkte`,
+      `und der Ausschnitt kommt mit dem Eintrag: ${wonPeek.rows.join(' | ')}`);
 
     // The same device on the same day again, with the local note gone: the
     // server's unique index refuses it, and the card says so.
@@ -1747,14 +1876,26 @@ try {
   // The tap only means anything if the last node lies beside the card's
   // content, not under it. That is checked, not assumed; for a day played
   // through, the first winning day whose last node does is taken.
+  //
+  // These are also the runs that end on the page by the last tap, for both
+  // outcomes, so the card's leaderboard excerpt is watched here as well: it
+  // comes with the end, once, and stays away when the server does not answer.
   const touchContext = await browser.newContext({
     viewport: { width: 560, height: 960 }, hasTouch: true, isMobile: true,
   });
-  const touchApi = [];
-  await guardApi(touchContext, touchApi);
+  const touchBoard = fakeLeaderboard();
+  await touchContext.route(API, touchBoard.handle);
   /** Opens the daily board of `at` with every move but the last stored, taps
-   *  the last one, and reports what the card did. */
-  const lastTap = async (at, moves) => {
+   *  the last one, and reports what the card did. `rows` others have entered
+   *  on that day — four, so that the excerpt has one more than it shows. */
+  const lastTap = async (at, moves, rows = 4) => {
+    const dayOf = new Date(at).toISOString().slice(0, 10);
+    // Each tap starts from a list of its own: the earlier taps' rows go.
+    touchBoard.reset();
+    touchBoard.seed(Array.from({ length: rows }, (_, i) => ({
+      date: dayOf, username: `Hand ${i + 1}`, level: 20 - i, points: 50,
+    })));
+    const asked = touchBoard.requests.length;
     const tab = await touchContext.newPage();
     const tabNoise = [];
     tab.on('pageerror', (error) => tabNoise.push(String(error)));
@@ -1762,7 +1903,7 @@ try {
     await tab.goto(`http://127.0.0.1:${port}/index.html`);
     await tab.waitForSelector('.board .node');
     await tab.evaluate((attempt) => localStorage.setItem('funkloch.taeglich', JSON.stringify(attempt)), {
-      day: new Date(at).toISOString().slice(0, 10),
+      day: dayOf,
       rules: 3,
       moves: moves.slice(0, -1),
       levelsCleared: 0,
@@ -1775,6 +1916,10 @@ try {
     await tab.tap(`.node[data-id="${last}"] .hit`);
     // The click the browser makes for the tap follows on its own time.
     await tab.waitForTimeout(250);
+    // The excerpt, or the line in its place, follows the answer.
+    await until(tab, () => !document.getElementById('ranks-peek').hidden
+      || !document.getElementById('ranks-peek-status').hidden, 7000);
+    const peek = await peekRows(tab);
     const seen = await tab.evaluate((id) => {
       const over = document.getElementById('over');
       const hit = document.querySelector(`.node[data-id="${id}"] .hit`).getBoundingClientRect();
@@ -1793,14 +1938,43 @@ try {
       };
     }, last);
     await tab.close();
-    return { ...seen, noise: tabNoise };
+    return { ...seen, noise: tabNoise, peek, asked: touchBoard.requests.length - asked };
+  };
+  /** The excerpt as it should stand after a run that ended here, nothing
+   *  entered: the first three of the four, no own row, one request. */
+  const peekAtEnd = (tapped, label) => {
+    const { peek } = tapped;
+    check(peek.shown && peek.rows.length === 3 && peek.own.length === 0 && peek.status === null,
+      `${label}: die Karte zeigt die ersten drei Plätze (${peek.rows.join(' | ')})`);
+    check(peek.rows[0] === '1. Hand 1 20 Level, 50 Punkte' && peek.rows[2].startsWith('3. Hand 3'),
+      `${label}: der Reihe nach`);
+    check(tapped.asked === 1 && touchBoard.requests.at(-1).method === 'GET',
+      `${label}: mit genau einer Anfrage, am Partieende (${tapped.asked})`);
   };
 
-  const lostByTouch = await lastTap(day, plan.script.map((step) => (step.go ? null : step.id)));
+  const lostMoves = plan.script.map((step) => (step.go ? null : step.id));
+  const lostByTouch = await lastTap(day, lostMoves);
   check(lostByTouch.onBackdrop,
     `der letzte Tipp des Planers am ${dayName} liegt neben dem Karteninhalt (sonst sagt die nächste Prüfung nichts)`);
   check(lostByTouch.cardShown && lostByTouch.pillHidden && lostByTouch.title === 'Keine Sender mehr.',
     `per Touch gescheitert in Level ${lostByTouch.level}: die Endkarte steht und bleibt`);
+  peekAtEnd(lostByTouch, 'gescheitert');
+
+  // The same end with the server down: no excerpt, the one quiet line in
+  // its place, and the card otherwise whole.
+  touchBoard.fail(true);
+  const lostUnreached = await lastTap(day, lostMoves);
+  touchBoard.fail(false);
+  check(!lostUnreached.peek.shown && lostUnreached.peek.rows.length === 0
+    && lostUnreached.peek.status === 'Die Rangliste ist gerade nicht erreichbar.',
+    `fällt der Server aus, bleibt der Ausschnitt weg: „${lostUnreached.peek.status}"`);
+  check(lostUnreached.cardShown && lostUnreached.title === 'Keine Sender mehr.' && lostUnreached.noise.length === 0,
+    'und die Karte steht trotzdem, ohne Konsolenfehler');
+
+  // And a day nobody has entered yet: a line for that, no rows.
+  const lostAlone = await lastTap(day, lostMoves, 0);
+  check(!lostAlone.peek.shown && lostAlone.peek.status === 'Heute hat sich noch niemand eingetragen.',
+    `ist noch niemand eingetragen, sagt die Karte das: „${lostAlone.peek.status}"`);
 
   let wonByTouch = null;
   for (let offset = 0; offset < 20 && wonByTouch === null; offset++) {
@@ -1814,11 +1988,12 @@ try {
   if (wonByTouch !== null) {
     check(wonByTouch.cardShown && wonByTouch.pillHidden && wonByTouch.title === 'Alle 25 Level geschafft.',
       `per Touch durchgespielt am ${wonByTouch.name}: die Endkarte steht und bleibt`);
+    peekAtEnd(wonByTouch, 'durchgespielt');
     // Whatever the card reads of the leaderboard on its own, a tap that ends
     // a run must never write to it.
     check(wonByTouch.noise.length === 0 && lostByTouch.noise.length === 0
-      && touchApi.every((request) => request.startsWith('GET ')),
-      `ohne Konsolenfehler, und nichts an die Rangliste geschrieben (${touchApi.length} Anfragen, alle GET)`);
+      && touchBoard.requests.every((request) => request.method === 'GET'),
+      `ohne Konsolenfehler, und nichts an die Rangliste geschrieben (${touchBoard.requests.length} Anfragen, alle GET)`);
   }
   await touchContext.close();
 

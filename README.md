@@ -131,13 +131,23 @@ Index auf (date, client_id) auf dem Server. Eingetragen wird die Zahl der
 **geschafften** Level — 4, wer in Level 5 scheitert, 25, wer durchspielt —,
 nicht das Level, das Karte und Kopfzeile zeigen.
 
+Die Endkarte des Tagesbretts zeigt einen Ausschnitt: die ersten drei Zeilen
+und, wer eingetragen ist und nicht darunter steht, nach „…" die eigene Zeile
+mit dem echten Platz. Er kommt, wenn die Partie auf dieser Seite endet, mit
+beiden Ausgängen, und aktualisiert sich nach dem Eintragen und mit jedem
+Öffnen der vollen Liste. Eine Karte, die schon mit der Seite kommt — der Tag
+war beim Laden verbraucht —, hat ihn nicht, bis die Liste aus einem anderen
+Grund gelesen wird: beim Start geht keine Anfrage hinaus. Ist der Server nicht
+erreichbar, steht an seiner Stelle dieselbe Zeile wie in der Rangliste.
+
 Der Code liegt in `src/leaderboard.js`: nur `fetch`, kein SDK, 5 s Timeout,
 Adresse, Collection und Sortierung als Konstanten in `LEADERBOARD`. Beim Start
-geht keine Anfrage hinaus; gelesen wird beim Öffnen der Rangliste und nach dem
-Eintragen, geschrieben nur beim Klick. Ist der Server nicht erreichbar, sagt
-die Rangliste es in einer Zeile, und das Spiel läuft weiter. Namen kommen nur
-als Text auf die Seite. Was gespeichert wird und wie lange, steht in
-`datenschutz.html`, verlinkt unter dem Hilfetext und beim Eintragen.
+geht keine Anfrage hinaus; gelesen wird am Ende einer auf der Seite gespielten
+Partie, beim Öffnen der Rangliste und nach dem Eintragen, geschrieben nur beim
+Klick. Ist der Server nicht erreichbar, sagt die Rangliste es in einer Zeile,
+und das Spiel läuft weiter. Namen kommen nur als Text auf die Seite. Was
+gespeichert wird und wie lange, steht in `datenschutz.html`, verlinkt unter
+dem Hilfetext und beim Eintragen.
 
 Der Server: PocketBase unter `https://api.thssn.dev`, Collection
 `funkloch_daily` mit `date`, `username`, `level`, `points` und dem versteckten

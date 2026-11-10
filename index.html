@@ -550,6 +550,17 @@
       .over .enter-status.is-wrong { color: var(--muted); }
       .over .enter-note { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
       .over .enter-note a, .legal a, .ranks-note a { color: inherit; }
+      /* The leaderboard's first three rows on the card, and the own row with
+         its real rank below a gap when it is not among them. Narrower than the
+         dialog's list and left-aligned inside the centred card. It takes its
+         height from the card's scroll (see `.over` above), never from the
+         stage: the stage is laid out by the page, the card is absolute in it. */
+      .over .ranks-peek { width: min(100%, 300px); margin: 12px auto 0; }
+      .over .ranks-peek[hidden] { display: none; }
+      .over .ranks-peek-head { margin: 0; color: var(--muted); font-size: 12px; }
+      .over .ranks-peek .ranks-list { margin-top: 4px; text-align: left; }
+      .over .ranks-peek-status { margin: 12px 0 0; color: var(--muted); font-size: 14px; }
+      .over .ranks-peek-status[hidden] { display: none; }
 
       /* ---- the leaderboard ------------------------------------------------- */
       /* Its button sits at the far end of the card row, which is as tall as the
@@ -822,6 +833,14 @@
             <p class="enter-status" id="enter-status" role="status" hidden></p>
             <p class="enter-note" id="enter-note">Eintragen zeigt Name, Level und Punkte öffentlich.
               <a href="datenschutz.html">Datenschutz</a></p>
+            <!-- The first three of today's leaderboard, and the own row. Asked
+                 for when the run ends on this page, not on the way up; see
+                 loadRanksPeek. The "Rangliste" button has the whole list. -->
+            <div class="ranks-peek" id="ranks-peek" hidden>
+              <p class="ranks-peek-head" id="ranks-peek-head">Rangliste</p>
+              <ol class="ranks-list" id="ranks-peek-list"></ol>
+            </div>
+            <p class="ranks-peek-status" id="ranks-peek-status" hidden></p>
             <pre class="share-line" id="share-line" hidden></pre>
             <p class="countdown">Nächstes Brett in <b id="countdown">–</b></p>
           </div>
@@ -931,6 +950,12 @@
         place: document.getElementById('ranks-place'),
         list: document.getElementById('ranks-list'),
         close: document.getElementById('ranks-close'),
+      };
+      /** The leaderboard's excerpt on the daily end card. */
+      const ranksPeek = {
+        block: document.getElementById('ranks-peek'),
+        list: document.getElementById('ranks-peek-list'),
+        status: document.getElementById('ranks-peek-status'),
       };
 
       /**
@@ -1235,7 +1260,7 @@
             const next = place(state, id);
             if (next === state) return;
             logDaily(id);
-            apply(next);
+            play(next);
           },
           // No onToggleMark on purpose: a placement is final here, so the board
           // has exactly one action and input.js leaves the hold ladder off. A
@@ -1363,6 +1388,19 @@
         state = next;
         saveDaily();
         draw();
+      }
+
+      /**
+       * A move of the player's, as opposed to a board replayed on the way up:
+       * when it ends a daily run, the card's leaderboard excerpt is asked for.
+       * The one place that asks for it. A spent day shown on load has its card
+       * from the first frame and asks nothing — the start stays free of
+       * requests, as the smoke test counts — and the excerpt comes with the
+       * next look at the leaderboard or with the entry.
+       */
+      function play(next) {
+        apply(next);
+        if (mode === 'taeglich' && (next.status === 'lost' || next.status === 'won')) loadRanksPeek();
       }
 
       // ---- the card, set aside ------------------------------------------------
@@ -1554,6 +1592,7 @@
         over.share.textContent = SHARE_LABEL;
         over.shareLine.hidden = true;
         renderEntry();
+        renderRanksPeek();
         tick();
         if (ticker === null) ticker = setInterval(tick, 1000);
       }
@@ -1571,6 +1610,8 @@
 
       const NAME_HINT = `${LEADERBOARD.nameMin} bis ${LEADERBOARD.nameMax} Zeichen. `
         + 'Er steht öffentlich in der Rangliste.';
+      /** Rows of the leaderboard on the end card; the dialog has the ten. */
+      const RANKS_PEEK_ROWS = 3;
 
       /** Entering, on the end card of a daily board. Reset with each new day. */
       let entryFormOpen = false;
@@ -1580,12 +1621,99 @@
        *  reload there is none: the page asks nothing on its way up, and the
        *  place is one tap away in the leaderboard. */
       let entryPlace = null;
+      /**
+       * What the card's leaderboard excerpt shows, or null for nothing asked
+       * yet. `{day, status: 'ready', scores, total, ownRank, entry}` as
+       * `leaderboard.load` gives it, or `{day, status: 'error'}`. Kept with
+       * its day: a load that comes back after midnight is for yesterday's
+       * card and is dropped. Not a loading state: while the request is out
+       * the card looks as it did without the excerpt, which it is complete
+       * without.
+       */
+      let ranksPeekView = null;
+      /** The request behind the excerpt, cancelled when it no longer matters. */
+      let ranksPeekRequest = null;
 
       function resetEntry() {
         entryFormOpen = false;
         entryBusy = false;
         entryFailed = false;
         entryPlace = null;
+        ranksPeekRequest?.abort();
+        ranksPeekRequest = null;
+        ranksPeekView = null;
+      }
+
+      /**
+       * Takes a day's leaderboard, read for whatever reason — the run just
+       * ended, an entry was made, the dialog was opened — into the card's
+       * excerpt, if it is today's. Every read feeds it, so the excerpt is as
+       * fresh as the last look at the list, and never asked for twice.
+       */
+      function takeRanksPeek(day, view) {
+        if (day !== today) return;
+        ranksPeekView = { day, ...view };
+        renderRanksPeek();
+      }
+
+      /**
+       * Asks for the excerpt. Only from `play`, when a daily run has just
+       * ended on this page: never on the way up, not for a spent day shown on
+       * load. A failure leaves the card as it was, with one line saying so.
+       */
+      async function loadRanksPeek() {
+        const day = today;
+        ranksPeekRequest?.abort();
+        const request = new AbortController();
+        ranksPeekRequest = request;
+        try {
+          const data = await leaderboard.load(day, request.signal);
+          if (!request.signal.aborted) takeRanksPeek(day, { status: 'ready', ...data });
+        } catch {
+          if (!request.signal.aborted) takeRanksPeek(day, { status: 'error' });
+        }
+      }
+
+      /**
+       * Paints the excerpt from `ranksPeekView`: the first three rows and, when
+       * the own entry is not among them, its row with its real rank below a
+       * gap. Nothing asked yet means no block at all; the server unreachable
+       * means the dialog's own line in its place. Names as text, never markup.
+       */
+      function renderRanksPeek() {
+        const view = ranksPeekView;
+        ranksPeek.list.replaceChildren();
+        ranksPeek.block.hidden = true;
+        ranksPeek.status.hidden = true;
+        if (view === null || view.day !== today) return;
+        if (view.status !== 'ready') {
+          ranksPeek.status.textContent = 'Die Rangliste ist gerade nicht erreichbar.';
+          ranksPeek.status.hidden = false;
+          return;
+        }
+        const { scores, total, ownRank, entry } = view;
+        if (total === 0) {
+          ranksPeek.status.textContent = 'Heute hat sich noch niemand eingetragen.';
+          ranksPeek.status.hidden = false;
+          return;
+        }
+        const ownId = entry?.id || null;
+        const shown = scores.slice(0, RANKS_PEEK_ROWS);
+        for (const score of shown) {
+          ranksPeek.list.append(rankRow(score.rank, score.username, score.level, score.points, score.id === ownId));
+        }
+        if (ownId !== null && ownRank !== null && !shown.some((score) => score.id === ownId)) {
+          // Among the ten the list has the row; beyond them only the stored
+          // entry and the rank asked for it, as the dialog does.
+          const listed = scores.find((score) => score.id === ownId);
+          const gap = document.createElement('li');
+          gap.className = 'ranks-gap';
+          gap.setAttribute('aria-hidden', 'true');
+          gap.textContent = '…';
+          ranksPeek.list.append(gap, rankRow(ownRank, listed?.username ?? leaderboard.loadName(),
+            entry.level, entry.points, true));
+        }
+        ranksPeek.block.hidden = false;
       }
 
       /** Paints the entry block from what is stored and what is going on.
@@ -1633,8 +1761,11 @@
           const result = await leaderboard.submit(day, name, levelsCleared(state), state.score);
           entryFormOpen = false;
           if (result.status === 'created') {
+            // One read for both: the place under the buttons and the card's
+            // excerpt, which from now on has the own row.
             const placed = await leaderboard.load(day).catch(() => null);
             entryPlace = placed?.ownRank != null ? { rank: placed.ownRank, total: placed.total } : null;
+            if (placed !== null) takeRanksPeek(day, { status: 'ready', ...placed });
           }
         } catch {
           entryFailed = true;
@@ -1738,7 +1869,11 @@
         ranksRequest = request;
         try {
           const data = await leaderboard.load(day, request.signal);
-          if (!request.signal.aborted) renderRanks({ status: 'ready', ...data });
+          if (!request.signal.aborted) {
+            renderRanks({ status: 'ready', ...data });
+            // The same read refreshes the card's excerpt, where there is one.
+            takeRanksPeek(day, { status: 'ready', ...data });
+          }
         } catch {
           if (!request.signal.aborted) renderRanks({ status: 'error' });
         }
@@ -1782,7 +1917,7 @@
         else newRun();
       }
 
-      goButton.addEventListener('click', () => { logDaily(null); apply(advance(state)); });
+      goButton.addEventListener('click', () => { logDaily(null); play(advance(state)); });
       over.restart.addEventListener('click', () => newRun());
       modeButtons.frei.addEventListener('click', () => setMode('frei'));
       modeButtons.taeglich.addEventListener('click', () => setMode('taeglich'));
