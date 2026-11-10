@@ -101,7 +101,8 @@ test('the privacy page', async (t) => {
     for (const needed of [
       'Name', 'Level', 'Punkte', 'Datum', 'Geräte-ID', 'öffentlich', 'IP-Adresse',
       'Klick', 'Einwilligung', 'zwei Tagen', 'theissen_matthias+funkloch@posteo.de', 'Alwyzon',
-      'Österreich', 'Vercel',
+      'Österreich', 'Vercel', 'Matthias Theissen', '53520 Harscheid',
     ]) assert.ok(text.includes(needed), needed);
+    assert.ok(!/\[[^\]]*ergänzen\]/.test(text), 'no placeholder left to fill in');
   });
 });
