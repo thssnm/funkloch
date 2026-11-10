@@ -114,20 +114,39 @@ Blockadedichte, Levelwachstum, Schwierigkeitsfenster — dafür gibt es die
 Werkzeuge in `tools/`, und sie laufen *vor* der Entscheidung:
 
 ```sh
-node tools/endless.js --runs=1000        # Streak-Verteilung, beide Bots
-node tools/endless.js --curves           # Sweep über Senderkurven
-node tools/blocked.js --bots --runs=400  # Blockadedichte gegen beide Bots
+node tools/plateau.js --levels --seeds=1000   # Scheitern je Level, alle vier Spieler
+node tools/plateau.js --grid=60:9:3/4/2       # ein Brett aus Knoten:Sendern(:Hand)
+node tools/plateau.js --compose=daily --human=1.7,1.9   # Laufverteilung aus den Levelquoten
+node tools/endless.js --runs=1000             # Streak-Verteilung, gierig und Planer
+node tools/blocked.js --bots --runs=400       # Blockadedichte gegen gierig und Planer
 ```
 
-Gemessen wird gegen den **planenden** Bot (`lookaheadChoice`), nicht nur gegen
-den gierigen: ein Mensch sieht die nächsten zwei Sender und benutzt sie. Wer
-gegen einen Bot kalibriert, der die Vorschau ignoriert, stellt die
-Schwierigkeit für einen Spieler ein, den es nicht gibt.
+Gemessen wird gegen den **Rollout-Bot** (`rolloutChoice` in
+`tools/plateau.js`), mit dem exakten Löser (`solvable`) als Boden darunter.
+Der Rollout-Bot weiß, was ein Mensch weiß: die Karte in der Hand, die zwei
+gezeigten und welche Karten noch übrig sind, aber nicht in welcher
+Reihenfolge. Der Löser sagt, ob ein Brett mit seiner Hand überhaupt zu räumen
+ist; was er nicht schafft, schafft niemand.
+
+Bis 2026-11-10 war der **Planer** (`lookaheadChoice`) der Maßstab. Er verliert
+auf dem Plateau rund zwölfmal so oft wie ein guter Mensch und stirbt vor
+allem, was dahinter liegt (`MESSUNGEN.md`, „Das Plateau"). Jede Kalibrierung
+aus der Zeit davor — `senderCurve`, `blockedRatio`, `firstLevel`, Verstärker,
+Kantenlöschanteil — ist gegen ihn gemacht und sagt über gute Spieler nichts
+Sicheres. Wer eine davon anfasst, misst sie gegen den Rollout-Bot neu.
+
+Der Faktor, um den ein guter Mensch öfter verliert als der Rollout-Bot (1,7
+bis 1,9, `--human`), ist eine **ungeprüfte Annahme aus einer einzigen
+Beobachtung**. Er darf eine Größenordnung geben, aber keine Entscheidung
+allein tragen.
 
 Zwei Dinge sind dabei interessanter als der Mittelwert: die **Streuung** — ein
 Modus, in dem jeder Lauf im selben Level stirbt, hat eine Wand, keine
-Schwierigkeit — und der **Abstand zwischen den Bots**, denn der ist es, was
-Vorausdenken belohnt.
+Schwierigkeit — und ob die Quote **je Level steigt**. Eine konstante Quote
+heißt: ab dort ist die Partie ein Zufallsprozess ohne Steigerung, und jedes
+Level fühlt sich gleich an. Der Abstand zwischen gierig und Planer, früher hier
+als Maß für das Belohnen von Vorausdenken genannt, misst zwei Spieler, die beide
+weit unter einem Menschen liegen.
 
 ## Dateien schreiben: Edit und Write, keine Heredocs
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { bfsWithin, bfsWithinAmplified, bfsWithinBlocked } from '../src/graph.js';
 import * as run from '../src/run.js';
 import {
-  advance, createRun, DEFAULT_RUN, ENDLESS_RUN, place, snapshot, levelSpec,
+  advance, createRun, DAILY_RUN, DEFAULT_RUN, ENDLESS_RUN, place, snapshot, levelSpec,
 } from '../src/run.js';
 import { greedyChoice, playGreedy } from '../tools/bot.js';
 
@@ -341,6 +341,71 @@ test('the onboarding level', async (t) => {
       while (state.status === 'playing') state = place(state, greedyChoice(state));
       assert.equal(state.status, 'levelCleared', `seed ${seed}`);
     }
+  });
+});
+
+test('the daily board', async (t) => {
+  await t.test('deals the endless curve up to level 11, but level 7 with eight senders', () => {
+    for (let index = 0; index < 11; index++) {
+      const daily = levelSpec(DAILY_RUN, index);
+      const endlessSpec = levelSpec(ENDLESS_RUN, index);
+      assert.equal(daily.nodeCount, endlessSpec.nodeCount, `level ${index + 1}`);
+      assert.equal(daily.senders, index === 6 ? 8 : endlessSpec.senders, `level ${index + 1}`);
+    }
+    assert.deepEqual([levelSpec(ENDLESS_RUN, 6).nodeCount, levelSpec(ENDLESS_RUN, 6).senders], [42, 7],
+      'free play keeps the old level 7');
+  });
+
+  await t.test('stays at 60 nodes and 9 senders from level 12, and steps the hand down every 3 levels', () => {
+    const hands = [];
+    for (let index = 11; index < DAILY_RUN.lastLevel; index++) {
+      const spec = levelSpec(DAILY_RUN, index);
+      assert.deepEqual([spec.nodeCount, spec.senders], [60, 9], `level ${index + 1}`);
+      const hand = spec.composition.map(([, count]) => count);
+      assert.equal(hand.reduce((a, b) => a + b, 0), 9, 'every rung is a hand of nine');
+      hands.push(hand.join('/'));
+    }
+    assert.deepEqual(hands, [
+      '3/4/2', '3/4/2', '3/4/2', '4/3/2', '4/3/2', '4/3/2', '3/5/1', '3/5/1', '3/5/1',
+      '5/2/2', '5/2/2', '5/2/2', '4/4/1', '4/4/1',
+    ]);
+  });
+
+  await t.test('deals exactly the hand a rung names', () => {
+    const laddered = {
+      ...endless,
+      handLadder: { from: 2, step: 1, nodes: 14, senders: 6, rungs: [[1, 2, 3]] },
+    };
+    let state = createRun({ seed: 4, config: laddered });
+    while (state.status === 'playing') state = place(state, greedyChoice(state));
+    state = advance(state);
+    assert.equal(state.level, 2);
+    assert.equal(state.graph.nodes.length, 14);
+    assert.deepEqual([1, 2, 3].map((r) => state.senders.filter((s) => s === r).length), [1, 2, 3]);
+  });
+
+  await t.test('ends in a win once the last level is cleared', () => {
+    const short = { ...endless, lastLevel: 3 };
+    let state = createRun({ seed: 4, config: short });
+    while (state.status === 'playing' || state.status === 'levelCleared') {
+      state = state.status === 'levelCleared' ? advance(state) : place(state, greedyChoice(state));
+    }
+    assert.equal(state.status, 'won');
+    assert.equal(state.level, 3);
+    assert.equal(state.cleared.length, 3, 'all three counted as cleared');
+    assert.equal(
+      state.score,
+      state.cleared.reduce((sum, { level, left }) => sum + left * level, 0),
+      'the last level scores its leftovers like any other',
+    );
+    assert.equal(advance(state), state, 'there is no level after the last');
+    assert.equal(place(state, state.graph.nodes[0].id), state, 'and nothing more to place');
+  });
+
+  await t.test('leaves free play endless', () => {
+    assert.equal(ENDLESS_RUN.lastLevel, undefined);
+    assert.equal(ENDLESS_RUN.handLadder, undefined);
+    assert.equal(DAILY_RUN.lastLevel, 25);
   });
 });
 

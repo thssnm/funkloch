@@ -54,10 +54,18 @@ geschafft, und so steht es auf der Endkarte und in der Ergebniszeile.
 
 ## Tagesbrett
 
-Derselbe Endlosmodus, nur steht der Startseed fest: er wird aus dem Datum
-abgeleitet, alle spielen am selben Tag dasselbe Brett, und es gibt einen Versuch
-pro Tag. Danach zeigt das Spiel das Ergebnis und die Zeit bis zum nächsten
-Brett, statt eine neue Partie anzubieten. Umgeschaltet wird in der Kopfzeile.
+Der Startseed steht fest: er wird aus dem Datum abgeleitet, alle spielen am
+selben Tag dasselbe Brett, und es gibt einen Versuch pro Tag. Danach zeigt das
+Spiel das Ergebnis und die Zeit bis zum nächsten Brett, statt eine neue Partie
+anzubieten. Umgeschaltet wird in der Kopfzeile.
+
+Anders als das freie Spiel hat das Tagesbrett ein Ende (`DAILY_RUN` in
+`src/run.js`): nach Level 25 ist es durchgespielt. Bis Level 11 folgt es der
+Endloskurve, nur Level 7 hat einen Sender mehr; ab Level 12 bleibt das Brett
+bei 60 Knoten und 9 Sendern, und alle drei Level wird die Hand eine Stufe
+kleiner (3/4/2 → 4/3/2 → 3/5/1 → 5/2/2 → 4/4/1 Sender mit Reichweite 1/2/3).
+Wer durchspielt, sieht „Alle 25 Level geschafft." und teilt „durchgespielt".
+Warum so, steht in `MESSUNGEN.md` unter 2026-11-10.
 
 Die Seite öffnet immer auf dem Tagesbrett, egal was zuletzt gespielt wurde: ist
 der Versuch offen, zum Spielen, ist er verbraucht, mit Ergebnis und Countdown.
@@ -74,6 +82,9 @@ in `src/share.js`:
 funkl○ch 06.10. — 15 Level geschafft, 77 Punkte
 https://funkloch.thssn.dev
 ```
+
+Ein durchgespielter Tag sagt es in Worten: `funkl○ch 06.10. — durchgespielt,
+alle 25 Level, 143 Punkte`.
 
 Die zweite Zeile ist die Adresse des Spiels als Link (`GAME_URL` in `src/share.js`).
 Nichts davon verrät das Brett. Eine Grafik des Verlaufs gibt es nicht mehr;

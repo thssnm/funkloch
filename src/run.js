@@ -277,6 +277,83 @@ export const ENDLESS_RUN = {
 };
 
 /**
+ * The daily board: the endless curve up to level 11, then a fixed board whose
+ * hand gets smaller, and an end after level 25. Free play keeps ENDLESS_RUN
+ * for now.
+ *
+ * Measured against the rollout bot, not the planner — the planner loses about
+ * twelve times as often as a good player on the plateau and dies before any of
+ * this takes hold (MESSUNGEN.md, 2026-11-10, "Das Plateau"). On ENDLESS_RUN
+ * every level from 12 on is the same 60 nodes, 9 senders, hand 3/4/2, at a
+ * constant failure rate on boards that are all solvable: a good player
+ * reached 50 to 60 and every level felt the same.
+ *
+ * Three changes, each measured on 1000 seeds per board:
+ *
+ * `levelSenders` — level 7 gets 8 senders instead of the 7 the curve rounds
+ * to (42 · 0.1704 = 7.16). With 7 it was a wall made of rounding: the
+ * tightest reach per node before the plateau, and 2.4 to 3.1 % of its boards
+ * could not be cleared at all.
+ *
+ *   42 nodes   greedy   planner   rollout   unsolvable
+ *   7 senders  67.3 %   32.3 %    13.4 %    3.1 %
+ *   8 senders  19.0 %    2.6 %     0.1 %    0.0 %   <- this one
+ *
+ * `handLadder` — from level 12 the board stays at 60 nodes and 9 senders and
+ * only the hand changes, one rung down every `step` levels. Neither of the
+ * two obvious levers works. Fewer senders on 60 nodes go 9 → 8 → 7 and 7 is a
+ * wall (three boards in four unsolvable); larger boards do not get harder at
+ * the same ratio and are not playable on a phone past about 80 nodes. The
+ * hand steps finely and keeps every board solvable — the difficulty comes
+ * from playing, not from luck. 60 nodes, 9 senders, `tools/plateau.js
+ * --grid=60:9:a/b/c`:
+ *
+ *   hand r1/r2/r3  reach/node  planner  rollout  unsolvable
+ *   3/4/2             1.18     13.9 %    0.1 %    0.0 %
+ *   4/3/2             1.11     23.5 %    1.9 %    0.0 %
+ *   3/5/1             1.10     36.6 %    3.0 %    0.0 %
+ *   5/2/2             1.04     42.3 %    7.4 %    0.0 %
+ *   4/4/1             1.03     53.5 %    9.2 %    0.0 %
+ *   5/3/1             0.96     74.3 %   33.1 %    2.6 %   (not dealt)
+ *
+ * `step` 3 against 4, the whole daily run composed from the per-level rates
+ * (`--compose=daily-3,daily-4 --human=1.7,1.8,1.9`). "Mensch k" is the rollout
+ * bot's rate on every level times k — an untested assumption from a single
+ * observation, a player who regularly reached 50 to 60 on ENDLESS_RUN:
+ *
+ *               step 3 <- this one          step 4
+ *               median   all 25 cleared     median   all 25 cleared
+ *   rollout       24        49.4 %          25         62.2 %
+ *   Mensch 1.7    21        29.1 %          24         44.0 %
+ *   Mensch 1.9    21        24.9 %          23         39.7 %
+ *   planner       11         0.2 %          11          0.5 %
+ *
+ * Both land a good player within 20 to 25. Step 3 puts the median in the
+ * middle of it, uses the ladder down to 4/4/1, and keeps playing it through
+ * something about one good player in four does rather than nearly one in
+ * two. The solver clears every daily run under either: no run is lost to a
+ * board that cannot be won.
+ *
+ * Up to level 11 nothing changes but level 7, so the entry does not get
+ * harder: 10 levels cleared went from 84.4 % to 97.3 % for the rollout bot.
+ *
+ * `lastLevel` — clearing level 25 wins the run (status 'won'). A day has an
+ * end now, and the shared result says whether it was reached.
+ */
+export const DAILY_RUN = {
+  ...ENDLESS_RUN,
+  levelSenders: { 7: 8 },
+  handLadder: {
+    from: 12,
+    step: 3,
+    nodes: 60,
+    senders: 9,
+    rungs: [[3, 4, 2], [4, 3, 2], [3, 5, 1], [5, 2, 2], [4, 4, 1]],
+  },
+  lastLevel: 25,
+};
+
+/**
  * Milliseconds in a calendar day as `Date.UTC` counts them. Used only to turn a
  * date into a day number; how long a day of the daily board actually lasts is
  * up to the time zone, and is 23 or 25 hours twice a year.
@@ -452,10 +529,12 @@ export function msUntilNextDay(at) {
  * Node count, sender ratio and sender count for level `index` (0-based), for
  * either shape of run. The fixed shape reads them off its arrays; the endless
  * one computes them from its two curves, except for a `firstLevel` it is given
- * outright.
+ * outright, a sender count `levelSenders` sets for one level, and the levels a
+ * `handLadder` deals — those also say which hand, as `composition`.
  * @param {object} config
  * @param {number} index
- * @returns {{nodeCount: number, ratio: number, senders: number}}
+ * @returns {{nodeCount: number, ratio: number, senders: number,
+ *            composition?: Array<[number, number]>}}
  */
 export function levelSpec(config, index) {
   let nodeCount;
@@ -464,11 +543,26 @@ export function levelSpec(config, index) {
     const { nodes, senders } = config.firstLevel;
     return { nodeCount: nodes, ratio: senders / nodes, senders };
   }
+  const ladder = config.handLadder;
+  if (config.endless && ladder && index + 1 >= ladder.from) {
+    const { nodes, senders, step, rungs } = ladder;
+    const rung = rungs[Math.min(rungs.length - 1, Math.floor((index + 1 - ladder.from) / step))];
+    // Weights equal to the counts and summing to the hand make fillSenders
+    // deal exactly these counts.
+    return {
+      nodeCount: nodes,
+      ratio: senders / nodes,
+      senders,
+      composition: rung.map((count, k) => [k + 1, count]),
+    };
+  }
   if (config.endless) {
     const { start, growth, max } = config.levelNodes;
     const curve = config.senderCurve;
     nodeCount = Math.min(max, start + growth * index);
     ratio = curve.floor + (curve.start - curve.floor) * Math.exp(-index / curve.tau);
+    const fixed = config.levelSenders?.[index + 1];
+    if (fixed !== undefined) return { nodeCount, ratio: fixed / nodeCount, senders: fixed };
   } else {
     ratio = Array.isArray(config.senderRatio) ? config.senderRatio[index] : config.senderRatio;
     nodeCount = config.levelSizes[index];
@@ -597,7 +691,7 @@ function fillSenders(rng, size, composition) {
  */
 function buildLevel(seed, index, config) {
   const rng = mulberry32(seed + index * 7919);
-  const { nodeCount, ratio, senders } = levelSpec(config, index);
+  const { nodeCount, ratio, senders, composition } = levelSpec(config, index);
   const lattice = config.lattices[Math.floor(rng() * config.lattices.length)];
   const blockedRatio = drawDensity(rng, config.blockedRatio);
   const amplifierRatio = drawDensity(rng, config.amplifierRatio);
@@ -605,7 +699,7 @@ function buildLevel(seed, index, config) {
     nodeCount, lattice, blockedRatio, amplifierRatio, edgeDeleteRatio: config.edgeDeleteRatio,
   });
   if (!Number.isFinite(ratio)) throw new RangeError(`no senderRatio for level ${index + 1}`);
-  return { graph, lattice, senders: fillSenders(rng, senders, config.composition) };
+  return { graph, lattice, senders: fillSenders(rng, senders, composition ?? config.composition) };
 }
 
 /**
@@ -630,8 +724,11 @@ function build(base, placed, senders) {
   const uncovered = base.graph.nodes.filter((node) => !covered.has(node.id)).map((node) => node.id);
 
   const cleared = uncovered.length === 0;
-  // An endless run has no last level: clearing one always leads to the next.
-  const lastLevel = !base.config.endless && base.level === base.config.levelSizes.length;
+  // An endless run has no last level — clearing one always leads to the next —
+  // unless it is given one, as the daily board is.
+  const lastLevel = base.config.endless
+    ? base.level === base.config.lastLevel
+    : base.level === base.config.levelSizes.length;
   const status = cleared
     ? (lastLevel ? 'won' : 'levelCleared')
     : (senders.length === 0 ? 'lost' : 'playing');

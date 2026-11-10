@@ -393,6 +393,10 @@
       .wordmark .mark-hole { fill: none; stroke: var(--muted); stroke-width: 5; }
 
       .over h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; color: var(--muted); }
+      /* A daily run played through: the one end that is not running out. In
+         the signal colour, the colour of a lit node, so it reads as the
+         opposite of the grey "Keine Sender mehr." before the words do. */
+      .over h2.is-won { color: var(--signal); }
       .over dl {
         margin: 0;
         display: grid;
@@ -641,7 +645,7 @@
             <circle class="mark-hole" cx="114" cy="27" r="14" />
             <text x="134" y="40">ch</text>
           </svg>
-          <h2>Keine Sender mehr.</h2>
+          <h2 id="over-title">Keine Sender mehr.</h2>
           <dl>
             <dt>Level geschafft</dt><dd id="over-level">–</dd>
             <dt>Punkte</dt><dd id="over-score">–</dd>
@@ -673,7 +677,7 @@
 
     <script type="module">
       import {
-        advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelScores, levelsCleared,
+        advance, createRun, DAILY_RUN, dailySeed, ENDLESS_RUN, freeSeed, levelScores, levelsCleared,
         msUntilNextDay, place, boardDay,
       } from './src/run.js';
       import { createScene, fitHitAreas, render } from './src/render.js';
@@ -698,6 +702,7 @@
       };
       const over = {
         card: document.getElementById('over'),
+        title: document.getElementById('over-title'),
         level: document.getElementById('over-level'),
         score: document.getElementById('over-score'),
         bestLabel: document.getElementById('over-best-label'),
@@ -741,13 +746,15 @@
        *
        *   (field absent)  level 1 was the curve's 18-node board
        *   2               level 1 is the 9-node onboarding board
+       *   3               DAILY_RUN: level 7 has 8 senders, the hand steps
+       *                   down from level 12, the run ends after level 25
        *
        * A mismatch drops the attempt rather than replaying it. On the day a
        * change ships, whoever already played gets a second go — on a board
        * that differs in level 1 — which is the lesser harm next to a stored
        * result that silently turns into a different one.
        */
-      const DAILY_RULES = 2;
+      const DAILY_RULES = 3;
 
       /** The share button at rest, and what it says once it has tried. Every
        *  outcome gets its own words, so a tap is never answered by silence —
@@ -1035,9 +1042,15 @@
               ? `Level ${state.level} geschafft. ${state.senders.length} Sender übrig.`
               : `Level ${state.level} geschafft. Ab jetzt bringt jeder übrige Sender Punkte.`;
 
-        over.card.hidden = state.status !== 'lost';
-        if (state.status === 'lost') {
+        // Two ends: out of senders, or — on the daily board, which has a last
+        // level — every level cleared. Same card, different headline.
+        const ended = state.status === 'lost' || state.status === 'won';
+        over.card.hidden = !ended;
+        if (ended) {
           const daily = mode === 'taeglich';
+          const won = state.status === 'won';
+          over.title.textContent = won ? `Alle ${levelsCleared(state)} Level geschafft.` : 'Keine Sender mehr.';
+          over.title.classList.toggle('is-won', won);
           // Levels cleared, not the level the run died in: whoever fails in
           // level 10 has cleared 9.
           over.level.textContent = String(levelsCleared(state));
@@ -1081,7 +1094,7 @@
           moves,
           levelsCleared: levelsCleared(state),
           score: state.score,
-          done: state.status === 'lost',
+          done: state.status === 'lost' || state.status === 'won',
         });
       }
 
@@ -1107,7 +1120,9 @@
         today = boardDay(now);
         const stored = readDaily();
         moves = stored?.day === today ? stored.moves : [];
-        let next = createRun({ seed: dailySeed(now), config: ENDLESS_RUN });
+        // Its own config: 25 levels and a hand that gets smaller, where free
+        // play keeps the endless curve (run.js, DAILY_RUN).
+        let next = createRun({ seed: dailySeed(now), config: DAILY_RUN });
         for (const move of moves) next = move === null ? advance(next) : place(next, move);
         apply(next);
       }

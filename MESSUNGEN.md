@@ -1722,3 +1722,436 @@ die Frage wieder offen.
   Ziffernform da) sind entfernt.
 - `tools/ui-smoke.js` — der geteilte Text hat genau zwei Zeilen.
 - `README.md` — das Beispiel zeigt die Kopfzeile allein.
+
+---
+
+## 2026-11-10 — Das Plateau: warum ab Level 12 jedes Level gleich ist
+
+**Konstanten:** `ENDLESS_RUN.levelNodes`, `ENDLESS_RUN.senderCurve`,
+`ENDLESS_RUN.composition` in `src/run.js`; neu `DAILY_RUN`
+**Werkzeug:** `tools/plateau.js` (neu)
+**Ergebnis:** Ab Level 12 ist jedes Level gleich gebaut, und die
+Scheiterquote ist dort konstant. **Der Planer taugt als Maßstab nicht mehr**
+(siehe Befund). Von den zwei vorgeschlagenen Varianten taugt keine so, wie
+vorgeschlagen; die Stellschraube, die funktioniert, ist die Zusammensetzung der
+Hand. **Eingebaut fürs Tagesbrett** (`DAILY_RUN`): Level 7 mit 8 Sendern, ab
+Level 12 alle 3 Level eine kleinere Hand, Ende nach Level 25. Das freie Spiel
+bleibt vorerst, wie es war.
+
+### Die Frage
+
+Ein guter menschlicher Spieler erreicht regelmäßig Level 50 bis 60, und ab
+etwa Level 20 fühlt sich jedes Level gleich an. Der Planer liegt im Median bei
+8 und taugt damit nicht als Maßstab für gute Spieler. Verdacht: Der Vorrat
+läuft asymptotisch auf 0,15 aus und die Brettgröße ist bei 60 gedeckelt, also
+ändert sich ab einem Punkt nichts mehr. Ist die Scheiterquote dort konstant,
+ist die Partie ab dort ein reiner Zufallsprozess ohne Steigerung.
+
+Ziel: Ein guter Spieler landet bei 20 bis 25 Leveln statt bei 60, ohne dass
+der Einstieg härter wird.
+
+### Methode
+
+**Level sind unabhängig.** Level i eines Laufs wird allein aus
+`seed + i · 7919` gezogen und teilt eine frische Hand aus. Ob ein Spieler es
+übersteht, hängt also von nichts ab, was vorher geschah. Die Scheiterquote von
+Level L lässt sich darum messen, indem man Level L allein spielt, über viele
+Seeds, auf genau den Brettern, die ein Lauf dort austeilen würde. Die
+Laufverteilung ergibt sich als Produkt der Überlebensraten. So kann auch ein
+Bot, der nie über Level 8 hinauskommt, sagen, wie Level 50 ist.
+
+`--check` bestätigt beides: 478 von 478 einzeln gebauten Leveln sind Bit für
+Bit die eines echten Laufs, und die Bitset-Fassungen von gierig und Planer
+weichen auf 2018 Zügen in keinem von `tools/bot64.js` ab. Die Bitset-Fassung
+gibt es, weil `bot64.js` bei 64 Knoten endet und Variante 2 darüber hinaus
+will.
+
+Vier Spieler, von schwach bis perfekt:
+
+| Spieler  | was er weiß und tut |
+|----------|---------------------|
+| gierig   | die meisten neuen Knoten jetzt |
+| Planer   | `lookaheadChoice`: drei Züge über die Karte in der Hand und die zwei gezeigten — der Bot, gegen den bisher jede Kalibrierung gemacht wurde |
+| Rollout  | was ein Mensch weiß: die Karte in der Hand, die zwei gezeigten und welche Karten noch übrig sind, aber nicht in welcher Reihenfolge. Die Zusammensetzung der Hand folgt allein aus ihrer Größe (9 Sender sind immer 3×r1, 4×r2, 2×r3), und die Zahl steht auf dem Bildschirm. Jeder Kandidat wird danach beurteilt, wie oft gieriges Weiterspielen das Brett über 24 Mischungen des verdeckten Rests räumt. |
+| lösbar   | ob das Brett mit dieser Hand überhaupt zu räumen ist, Reihenfolge egal: exakte Mengenüberdeckung. Kein Spieler schafft mehr; seine Quote ist ein Boden unter allen. Gibt nach 2 Mio. Suchknoten auf und meldet „offen", statt zu raten. |
+
+### 1. Was sich zwischen Level 20 und 60 ändert: nichts
+
+Ballgrößen über 200 Bretter je Level; „Reichweite/Knoten" ist die Summe der
+mittleren Ballgrößen der Hand, geteilt durch die Knotenzahl — eine nominelle
+Deckung, Überlappung nicht abgezogen. `node tools/plateau.js --spec --seeds=200`:
+
+```
+Level  Knoten  Verhältnis  Sender  Hand r1/r2/r3  Ball r1/r2/r3          Reichweite/Knoten
+    1       9      0.6667       6  2/3/1          3.32 / 5.58 /  7.41    3.42
+    2      22      0.2201       5  2/2/1          3.69 / 6.84 /  9.98    1.41
+    3      26      0.2046       5  2/2/1          3.73 / 7.01 / 10.41    1.23
+    4      30      0.1925       6  2/3/1          3.72 / 6.94 / 10.24    1.28
+    5      34      0.1831       6  2/3/1          3.78 / 7.20 / 10.82    1.18
+    6      38      0.1758       7  3/3/1          3.68 / 6.91 / 10.25    1.11
+    8      46      0.1656       8  3/3/2          3.90 / 7.73 / 12.04    1.28
+   10      54      0.1595       9  3/4/2          3.81 / 7.39 / 11.33    1.18
+   12      60      0.1558       9  3/4/2          4.02 / 8.15 / 12.89    1.17
+   20      60      0.1508       9  3/4/2          4.03 / 8.22 / 13.07    1.19
+   30      60      0.1501       9  3/4/2          4.02 / 8.15 / 12.86    1.17
+   60      60      0.1500       9  3/4/2          4.03 / 8.16 / 12.89    1.18
+```
+
+Ab Level 12 hat jedes Level 60 Knoten, 9 Sender und die Hand 3/4/2. Das
+Verhältnis bewegt sich nur noch in der vierten Nachkommastelle und ändert die
+Senderzahl nicht mehr; auch die Ballgrößen stehen still. Nicht ab Level 20,
+sondern ab Level 12.
+
+### 2. Scheitern je Level
+
+Jedes Level für sich, 1000 Seeds, dieselben Seeds für alle Spieler.
+`node tools/plateau.js --levels --level=2-12,15,20,25,30,40,50,60 --seeds=1000`:
+
+```
+Level  Knoten  Sender   gierig   Planer   Rollout   lösbar
+    2      22       5     4.2 %    0.0 %     0.0 %    0.0 %
+    3      26       5    18.5 %    0.6 %     0.0 %    0.0 %
+    4      30       6    13.1 %    0.5 %     0.0 %    0.0 %
+    5      34       6    33.6 %    4.7 %     0.3 %    0.0 %
+    6      38       7    41.6 %    9.3 %     1.2 %    0.0 %
+    7      42       7    69.1 %   33.2 %    13.3 %    2.4 %
+    8      46       8    19.6 %    1.4 %     0.0 %    0.0 %
+    9      50       8    48.1 %   12.7 %     1.2 %    0.0 %
+   10      54       9    39.2 %   12.6 %     0.0 %    0.0 %
+   11      58       9    47.2 %   12.2 %     0.5 %    0.0 %
+   12      60       9    48.3 %   14.5 %     0.6 %    0.0 %
+   15      60       9    50.2 %   11.8 %     0.6 %    0.0 %
+   20      60       9    48.9 %   13.5 %     0.2 %    0.0 %
+   25      60       9    48.8 %   13.2 %     0.1 %    0.0 %
+   30      60       9    48.0 %   10.3 %     0.2 %    0.0 %
+   40      60       9    47.9 %   11.6 %     1.1 %    0.0 %
+   50      60       9    49.1 %   13.6 %     0.2 %    0.0 %
+   60      60       9    46.1 %   11.0 %     0.4 %    0.0 %
+```
+
+Gezählt wird das *geschaffte* Level, wie seit 2026-10-12.
+
+Gepoolt über die acht Plateau-Zeilen (8000 Bretter): gierig **48.4 %**,
+Planer **12.4 %**, Rollout **0.43 %**, lösbar **0 von 8000 unlösbar**. Die
+Quote ist ab Level 12 im Rahmen der Streuung konstant — der Verdacht stimmt:
+ab dort ist die Partie ein gedächtnisloser Prozess mit fester Abbruchrate.
+Und weil jedes dieser Bretter lösbar ist, scheitert dort niemand am Spiel,
+sondern nur an eigenen Fehlern.
+
+### 3. Gegenprobe: Modell gegen ganze Läufe
+
+Das Produkt der Einzelquoten (`--compose`) gegen ganze Läufe
+(`--runs=500`, Planer) und die Tabelle im Kommentar zu `firstLevel`:
+
+| | Modell | ganze Läufe |
+|---|---|---|
+| Planer | Median 8, Mittel 10.4 | Median 8, Mittel 10.73 (500 Läufe) |
+| gierig | Mittel 4.4 | 4.40 (Onboarding-Tabelle, 1000 Läufe) |
+
+Die Lücke im Planer-Mittel kommt daher, dass das Modell das Plateau aus einer
+einzelnen Stichprobe mit 14.5 % nimmt; gepoolt sind es 12.4 %.
+
+### 4. Der Maßstab
+
+| | Plateau-Quote | Median geschafft (Modell) |
+|---|---|---|
+| Planer | 12.4 % | 8 |
+| guter Mensch (beobachtet) | ≈ 1 % (gerechnet) | 50–60 |
+| Rollout | 0.43 % | 97–131 (je nach Stichprobe des Plateaus) |
+| lösbar | 0 % | — (scheitert nur auf 2.4 % der Level 7) |
+
+Die Plateau-Quote des Menschen ist zurückgerechnet: Wer bis Level 11 zu etwa
+84 % überlebt (wie der Rollout-Bot) und im Median 54 schafft, verliert auf den
+43 Plateau-Leveln dazwischen je etwa 1.2 %; bei 70 % Überleben bis Level 11
+sind es 0.8 %. **Der Planer verliert auf dem Plateau rund zwölfmal so oft wie
+ein guter Mensch.** Er stirbt vor jeder Änderung, die in diesem Eintrag
+getestet wird: Sein Median bleibt in allen Varianten bei 8, weil die Varianten
+erst dahinter greifen.
+
+**Menschen-Faktor.** Für die Abschätzung des Menschen werden die
+Rollout-Quoten jedes Levels mit einem Faktor k multipliziert. k = 1.7 bis 1.9
+ist der Bereich, in dem die ausgelieferte Kurve auf 52 bis 63 kommt:
+
+```
+k     ausgeliefert   8 ab L18   8 ab L20   Hand 12/3   Hand 12/4   Hand 14/3
+1.0            131         21         23          23          26          25
+1.5             76         19         21          21          23          23
+1.7             63         18         20          20          22          22
+1.8             57         18         20          20          21          22
+1.9             52         18         20          20          21          21
+2.0             47         18         20          19          20          21
+3.0             17         17         17          14          15          16
+```
+
+**Das ist eine ungeprüfte Annahme aus einer einzigen Beobachtung**: einem
+Spieler, der regelmäßig 50 bis 60 erreicht. Sie unterstellt, dass ein Mensch
+auf jedem Brett um denselben Faktor schlechter ist als der Rollout-Bot, auf
+Level 7 genauso wie auf dem Plateau und auf einer kleineren Hand genauso wie
+auf der großen. Nichts davon ist gemessen. Die Spalten oben sind eine
+Größenordnung, keine Vorhersage.
+
+### 5. Variante 1: die Kurve fällt weiter
+
+Das Verhältnis wirkt nur über `round(n · Verhältnis)`. Auf 60 Knoten gibt es
+darum nur drei Zustände. `--grid`, 1000 Seeds:
+
+```
+Knoten  Sender  Verh.   Planer   Rollout   lösbar
+    60       9  0.150   13.9 %     0.1 %    0.0 %
+    60       8  0.133   43.3 %    10.1 %    0.1 %
+    60       7  0.117   96.4 %    91.9 %   75.9 %
+    60       6  0.100   99.5 %    99.3 %   97.2 %
+```
+
+Bei 7 Sendern sind drei von vier Brettern unlösbar. Eine weiter fallende Kurve
+läuft deshalb immer in diese Wand. `--compose`, Level 1–40, 1000 Seeds je
+Brettgröße:
+
+```
+Variante                              Planer        Rollout              lösbar
+                                      Median        Median (Quartile)    Median (Quartile)
+ausgeliefert                            8           97 (29–212)          —
+fällt ab L9 um 0.002/Level              8           18 (14–21)           21 (21–21)
+fällt ab L9 um 0.003/Level              8           16 (11–17)           17 (17–17)
+fällt ab L9 um 0.004/Level              8           15 (11–15)           15 (15–15)
+fällt ab L9 um 0.005/Level              8           14 (11–14)           14 (14–14)
+fällt ab L11 um 0.004/Level             8           17 (13–17)           17 (17–17)
+fällt ab L13 um 0.004/Level             8           19 (15–19)           19 (19–19)
+8 Sender ab L12                         8           15 (11–21)           679
+8 Sender ab L14                         8           17 (13–23)           681
+8 Sender ab L16                         8           19 (15–25)           683
+8 Sender ab L18                         8           21 (17–27)           685
+8 Sender ab L20                         8           23 (19–29)           687
+```
+
+Die fallenden Kurven haben eine Wand: Beim Löser fallen die Quartile auf ein
+einziges Level zusammen, jeder Lauf endet dort, wo 60/7 beginnt. Die steileren
+ziehen außerdem Level 10 auf 54/8 herunter und machen damit den Einstieg härter
+(≥10 geschafft beim Planer 43.0 % → 31.1 %).
+
+Die einzige brauchbare Form ist der eine Schritt auf 8 Sender. Mit dem Schritt
+ab Level 18 bis 20 landet der Rollout-Bot bei 21 bis 23, mit einer echten
+Verteilung. Danach ist die Quote aber wieder konstant, nur höher (10.9 %): Die
+Partie wird kürzer, steigert sich aber nicht.
+
+### 6. Variante 2: Bretter wachsen über 60 hinaus
+
+Gleiches Wachstum von 4 Knoten je Level, ausgelieferte Verhältniskurve.
+`--compose`, Level 1–30, 400 Seeds je Brettgröße:
+
+```
+Variante            Planer Median   Rollout Median (Quartile)   Rollout Plateau
+wächst bis 80              8           52 (20–107)               1.3 %
+wächst bis 100             8          134 (16–411)               0.3 %
+wächst ohne Deckel         —           nicht gemessen (s. u.)
+```
+
+Je Brettgröße, Rollout:
+
+```
+62/10 0.5 %   66/10 2.3 %   70/11 0.3 %   74/11 1.0 %   78/12 1.5 %
+80/12 1.3 %   82/12 14.5 %  86/13 0.3 %   90/14 0.0 %   94/14 0.8 %
+98/15 0.8 %  100/15 0.3 %  102/15 1.0 %  106/16 0.0 %  110/17 0.3 %
+114/17 0.3 % 118/18 0.0 %  122/18 0.0 %  126/19 0.0 %  130/20 0.0 %
+```
+
+Wachsen allein steigert nichts. Bei gleichem Verhältnis wird es für den
+Rollout-Bot sogar eher leichter, und die Quote springt mit der Rundung: 80/12
+1.3 %, 82/12 14.5 %, 86/13 0.3 %. Bei 82 Knoten rundet 82 · 0.1516 = 12.4 auf
+12 ab, effektiv 0.146, und die Reichweite pro Knoten fällt auf 1.06.
+
+Mit weniger Sendern auf 80 Knoten (`--grid`, 500 Seeds) gibt es eine feinere
+Treppe als auf 60, aber auch hier ist ein Schritt schon groß:
+
+```
+Knoten  Sender  Verh.   Planer   Rollout   lösbar
+    80      12  0.150   42.8 %     2.1 %    0.0 %   (26 offen, 1000 Seeds)
+    80      11  0.138   67.2 %     7.6 %    0.0 %   (30 offen)
+    80      10  0.125   89.0 %    51.4 %    0.0 %   (118 offen)
+    80       9  0.113   96.4 %    82.6 %   24.3 %   (125 offen)
+```
+
+Der Löser kommt auf großen Brettern an sein Budget; „offen" sind die Bretter,
+für die er nach 2 Mio. Suchknoten keine Antwort hatte.
+
+**Das 134er-Brett und „wächst ohne Deckel" sind bewusst nicht zu Ende
+gemessen.** Über 80 Knoten ist das Brett auf dem Telefon nicht bedienbar: Schon
+auf dem 60er bei 360 px lag vor der Korrektur jeder zweite Tipp zwischen zwei
+Knoten (Commit „Tipp geht an den nächsten Knoten"). Variante 2 war damit vorher
+entschieden, die Messung über 80 hinaus hätte daran nichts geändert. Auch die
+Rasterzeilen mit 100 Knoten und weniger Sendern sind aus diesem Grund
+abgebrochen worden.
+
+### 7. Die Stellschraube, die funktioniert: die Hand
+
+Die Rundungssprünge in Variante 2 erklärt nicht das Verhältnis, sondern die
+Reichweite pro Knoten — und in die geht die Zusammensetzung der Hand ein.
+Daraus folgt eine feinere Stellschraube als die Senderzahl. Gleiches Brett,
+gleiche Senderzahl, nur die Hand ändert sich. `--grid=60:9:a/b/c`, 1000 Seeds:
+
+```
+Hand r1/r2/r3   Reichweite/Knoten   Planer   Rollout   lösbar
+3/4/2 (heute)               1.18     13.9 %     0.1 %    0.0 %
+4/3/2                       1.11     23.5 %     1.9 %    0.0 %
+3/5/1                       1.10     36.6 %     3.0 %    0.0 %
+5/2/2                       1.04     42.3 %     7.4 %    0.0 %
+4/4/1                       1.03     53.5 %     9.2 %    0.0 %
+5/3/1                       0.96     74.3 %    33.1 %    2.6 %   (3 offen)
+60/8 mit 3/3/2              1.04     43.3 %    10.1 %    0.1 %
+```
+
+Die Quote steigt gleichmäßig, und bis zur letzten Stufe ist jedes Brett
+lösbar: Die Schwierigkeit kommt aus dem Spielen, nicht aus Pech. 4/4/1 bei 9
+Sendern und 3/3/2 bei 8 Sendern haben dieselbe Reichweite pro Knoten und
+dieselbe Quote; die Reichweite pro Knoten ist also die Größe, die die
+Schwierigkeit trägt, nicht das Senderverhältnis.
+
+Als Lauf: ab Level `from` alle `step` Level eine Stufe die Leiter hinab, Brett
+konstant 60/9. `--compose`, Level 1–40, 1000 Seeds je Hand:
+
+```
+Variante                        Planer   Rollout Median (Quartile)   lösbar Median (Quartile)
+Hand ab L12, alle 2 Level         8        20 (16–22)                  39 (28–58)
+Hand ab L12, alle 3 Level         8        23 (17–27)                  44 (33–62)
+Hand ab L12, alle 4 Level         8        26 (19–31)                  49 (37–67)
+Hand ab L14, alle 3 Level         8        25 (19–29)                  46 (35–64)
+```
+
+Die Quote je Level steigt dabei wirklich: 0.6 → 2.1 → 3.1 → 7.6 → 11.7 →
+32.0 % (die Rollout-Werte dieser Stichprobe). Bis Level 11 bleibt alles wie
+ausgeliefert, auch „≥10 geschafft" (Rollout 84.4 %, Planer 43.0 %): Der
+Einstieg wird nicht härter.
+
+### Befund
+
+**Der Planer hat als Maßstab ausgedient.** Er verliert auf dem Plateau rund
+zwölfmal so oft wie ein guter Mensch (12.4 % gegen etwa 1 %) und stirbt vor
+jeder hier getesteten Änderung: In allen Varianten bleibt sein Median bei 8.
+Das ist keine Randnotiz. Alle bisherigen Kalibrierungen dieses Projekts
+beruhen auf ihm — `senderCurve`, `blockedRatio`, `firstLevel`, die
+Verstärker- und Kantenlöschmessungen. Ihre Tabellen bleiben richtig als das,
+was sie sind, nämlich Messungen gegen den Planer; ob sie für einen guten
+Spieler dasselbe aussagen, ist offen. Wo ein früherer Eintrag auf Level 8 und
+später schaut, sah er einen Spieler, den es so nicht gibt. **Ab jetzt ist der
+Rollout-Bot der Maßstab**, mit dem Löser als Boden darunter.
+
+**Ab Level 12 ändert sich nichts mehr.** 60 Knoten, 9 Sender, Hand 3/4/2, eine
+konstante Abbruchquote, auf Brettern, die alle lösbar sind. Das erklärt das
+Gefühl, dass jedes Level gleich ist.
+
+**Variante 1 (Kurve fällt weiter) läuft in eine Wand**, außer in ihrer
+einzigen brauchbaren Form, dem Schritt auf 8 Sender. Der verkürzt die Partie,
+steigert aber nichts.
+
+**Variante 2 (Bretter wachsen) steigert nichts** und ist über 80 Knoten auf
+dem Telefon nicht bedienbar.
+
+**Die Zusammensetzung der Hand ist die Stellschraube.** Sie stuft fein ab,
+hält jedes Brett lösbar und lässt den Einstieg unberührt. Mit dem
+Menschen-Faktor 1.7 bis 1.9 landet ein guter Spieler mit „ab L12 alle 4 Level"
+oder „ab L14 alle 3 Level" bei 21 bis 22 — mit dem Vorbehalt aus Abschnitt 4.
+
+### Nebenbefund: Level 7 ist eine Wand aus Rundung
+
+Level 7 hat 42 Knoten und 7 Sender: 42 · 0.1704 = 7.16, abgerundet. Effektiv
+sind das 0.167, die niedrigste Reichweite pro Knoten der ganzen Kurve vor dem
+Plateau. Der Planer verliert dort 33 % der Läufe, die ankommen, der
+Rollout-Bot 13 %, und selbst der Löser findet 2.4 % der Bretter unlösbar. Auf
+Level 8 (46/8) verliert der Planer 1.4 %. Der Planer-Median von 8 hängt zu
+einem guten Teil an dieser einen Stufe.
+
+### Reproduktion
+
+```sh
+node tools/plateau.js --check                    # Konstruktion und Bots gegen bot64.js
+node tools/plateau.js --spec --seeds=200         # Abschnitt 1
+node tools/plateau.js --levels --level=2-12,15,20,25,30,40,50,60 --seeds=1000
+node tools/plateau.js --runs=500                 # ganze Läufe, Planer
+node tools/plateau.js --compose=shipped --bots=greedy,planner --upto=30
+node tools/plateau.js --grid=60:9,60:8,60:7,60:6,70:11,80:12,90:14,100:15,120:18
+node tools/plateau.js --grid=80:11,80:10,80:9 --seeds=500
+node tools/plateau.js --grid=60:9:3/4/2,60:9:4/3/2,60:9:3/5/1,60:9:5/2/2,60:9:4/4/1,60:9:5/3/1,60:8:3/3/2
+node tools/plateau.js --compose=eight-12,eight-14,eight-16,eight-18,eight-20,fall-8-0.002,fall-8-0.003,fall-8-0.004,fall-8-0.005,fall-10-0.004,fall-12-0.004 --upto=40
+node tools/plateau.js --compose=grow-80,grow-100 --bots=planner,rollout --seeds=400 --upto=30
+node tools/plateau.js --compose=hand-12-2,hand-12-3,hand-12-4,hand-14-3 --upto=40
+```
+
+Mit zwei Kernen dauert das zusammen gut eine Stunde; die Bretter über 80
+Knoten und der Löser auf knappen Händen sind der größte Teil davon.
+
+### 8. Nachgemessen vor dem Einbau: Level 7 mit acht Sendern
+
+Die neue Kurve hängt an der Annahme, dass Level 7 mit einem Sender mehr
+praktisch nicht mehr verloren wird. `--grid=42:8:3/3/2,42:7:3/3/1
+--bots=greedy,planner,rollout,solvable`, 1000 Seeds:
+
+```
+Knoten  Sender  Hand    gierig   Planer   Rollout   lösbar
+    42       8  3/3/2   19.0 %    2.6 %     0.1 %    0.0 %
+    42       7  3/3/1   67.3 %   32.3 %    13.4 %    3.1 %
+```
+
+Hält: 0.1 % beim Rollout-Bot, kein unlösbares Brett. (42/7 hier auf den Seeds
+von Index 20, darum 13.4 % / 3.1 % statt 13.3 % / 2.4 % in Abschnitt 2.)
+
+### 9. Kontrollrechnung: das Tagesbrett mit Ende nach 25
+
+Level 7 auf 42/8, ab Level 12 Brett 60/9 und die Hand alle 3 oder alle 4
+Level eine Stufe kleiner, Ende nach Level 25. `--compose=daily-3,daily-4
+--human=1.7,1.8,1.9`, 1000 Seeds je Brett; „Mensch k" ist der Rollout-Bot mal
+k, mit dem Vorbehalt aus Abschnitt 4:
+
+```
+                    alle 3 Level                       alle 4 Level
+                    Median  Quartile  ≥20     ≥25      Median  Quartile  ≥20     ≥25
+Planer                11     8–15      3.7 %   0.2 %     11     8–15      6.0 %   0.5 %
+Rollout               24    20–25     78.0 %  49.4 %   durch   22–25     83.5 %  62.2 %
+Mensch 1.7            21    18–25     65.2 %  29.1 %     24    19–25     73.4 %  44.0 %
+Mensch 1.8            21    18–25     63.5 %  27.0 %     23    19–25     72.1 %  41.8 %
+Mensch 1.9            21    17–24     61.8 %  24.9 %     23    19–25     70.8 %  39.7 %
+lösbar             durch    25–25    100 %   100 %    durch    25–25    100 %   100 %
+```
+
+„≥25" ist durchgespielt. Beide Fassungen landen einen guten Spieler bei 20 bis
+25. **Gewählt: alle 3 Level.** Der Median liegt mitten im Ziel, die Leiter wird
+bis 4/4/1 ausgenutzt, und durchspielen schafft etwa jeder vierte gute Spieler
+statt fast jeder zweite. Der Löser spielt jeden Tag durch: Kein Tagesbrett
+wird an einem unlösbaren Level verloren.
+
+Der Einstieg wird nicht härter, sondern leichter, weil Level 7 seine Wand
+verliert: ≥10 geschafft steigt beim Rollout-Bot von 84.4 % auf 97.3 %, beim
+Planer von 43.0 % auf 63.0 %.
+
+`--check` bestätigt, dass `DAILY_RUN` in `src/run.js` Level für Level
+`daily-3` austeilt und dass einzeln gebaute Tageslevel denen echter Läufe
+gleichen (278 von 278, bis Level 25).
+
+### Was blieb
+
+- `src/run.js` — `DAILY_RUN`: die Endloskurve mit `levelSenders: { 7: 8 }`,
+  `handLadder` ab Level 12 (60 Knoten, 9 Sender, Hand 3/4/2 → 4/3/2 → 3/5/1 →
+  5/2/2 → 4/4/1, alle 3 Level) und `lastLevel: 25`. `levelSpec` liefert für
+  Leiterlevel die Hand als `composition` mit; `buildLevel` teilt sie aus.
+  Ein Lauf mit `lastLevel` endet nach dessen Räumung in `'won'`. Das Brett
+  eines Levels ändert sich dadurch nicht, nur die Hand: Sie wird nach dem
+  Brett aus demselben Zufallsstrom gezogen.
+- `ENDLESS_RUN` bleibt, wie es war. Das freie Spiel ist vorerst nicht umgebaut
+  und hat weiter das Plateau und die Wand auf Level 7.
+- `index.html` — das Tagesbrett spielt `DAILY_RUN`; `DAILY_RULES` 3, ein
+  gespeicherter Versuch nach Regeln 2 wird nicht nachgespielt. Die Endkarte
+  kommt auch bei `'won'`, mit „Alle 25 Level geschafft." in der Signalfarbe
+  statt „Keine Sender mehr.".
+- `src/share.js` — ein durchgespielter Tag teilt „durchgespielt, alle 25
+  Level"; ein verlorener weiter „N Level geschafft".
+- `tools/plateau.js` — das Werkzeug dieses Eintrags. Exportiert
+  `rolloutChoice` für den Smoke-Test.
+- `tools/ui-smoke.js` — spielt den verlorenen Tag wie bisher durch, prüft die
+  Regeln-2-Verwerfung, und lässt einen vom Rollout-Bot durchgespielten Tag
+  (2026-09-25, 130 Punkte) aus dem Speicher nachspielen: Karte, Kopfzeile bei
+  25, geteilte Zeile, Countdown, „Frei" in einem Tipp.
+- `test/run.test.js`, `test/share.test.js` — Kurve, Leiter, genaue Hand,
+  Sieg nach dem letzten Level, freies Spiel unberührt; Ergebniszeile für
+  durchgespielt gegen 24 geschafft.
+- `CLAUDE.md` — der Rollout-Bot ist der Maßstab, der Menschen-Faktor als
+  ungeprüfte Annahme vermerkt, frühere Kalibrierungen als gegen den Planer
+  gemacht markiert.

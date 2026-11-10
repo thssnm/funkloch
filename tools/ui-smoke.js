@@ -37,9 +37,10 @@ import { createServer } from 'node:net';
 import { chromium } from 'playwright';
 
 import {
-  advance, createRun, dailySeed, ENDLESS_RUN, freeSeed, levelsCleared, place,
+  advance, createRun, DAILY_RUN, dailySeed, ENDLESS_RUN, freeSeed, levelsCleared, place,
 } from '../src/run.js';
 import { lookaheadChoice } from './bot64.js';
+import { rolloutChoice } from './plateau.js';
 import { GAME_URL } from '../src/share.js';
 
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
@@ -75,18 +76,20 @@ const check = (ok, what) => {
 };
 
 /**
- * Plays a whole run with the planning bot and writes down what it did, so the
- * browser can be asked to reproduce it click for click and the expected numbers
- * are known before the page is ever opened.
+ * Plays a whole run with a bot — the planner unless told otherwise — and
+ * writes down what it did, so the browser can be asked to reproduce it click
+ * for click and the expected numbers are known before the page is ever opened.
  * @param {number} from the seed the run starts from
+ * @param {object} [config] ENDLESS_RUN for free play, DAILY_RUN for the daily board
+ * @param {(state: object) => *} [choose]
  * `level` is the level the run ended in, as the HUD shows it; `cleared` is the
  * number of levels behind it, as the end card and the shared line count it.
  * @returns {{script: Array<object>, level: number, cleared: number, score: number,
- *            opening: number[]}}
+ *            opening: number[], status: string}}
  */
-function planRun(from) {
+function planRun(from, config = ENDLESS_RUN, choose = lookaheadChoice) {
   const moves = [];
-  let run = createRun({ seed: from, config: ENDLESS_RUN });
+  let run = createRun({ seed: from, config });
   const dealt = [run.current, ...run.preview];
   while (run.status === 'playing' || run.status === 'levelCleared') {
     if (run.status === 'levelCleared') {
@@ -94,7 +97,7 @@ function planRun(from) {
       run = advance(run);
       continue;
     }
-    const id = lookaheadChoice(run);
+    const id = choose(run);
     moves.push({ id: String(id) });
     run = place(run, id);
   }
@@ -104,6 +107,7 @@ function planRun(from) {
     cleared: levelsCleared(run),
     score: run.score,
     opening: dealt,
+    status: run.status,
   };
 }
 
@@ -799,9 +803,12 @@ try {
   const day = Date.UTC(2026, 8, 24, 12, 0, 0);
   const dayName = '2026-09-24';
   const berlinMidnight = Date.UTC(2026, 8, 24, 22); // 2026-09-25 00:00 CEST
-  const plan = planRun(dailySeed(day));
+  const plan = planRun(dailySeed(day), DAILY_RUN);
   console.log(`Tagesbrett ${dayName}: erwartet ${plan.cleared} Level geschafft,`
     + ` ${plan.score} Punkte, ${plan.script.length} Eingaben`);
+  // This pass is about the card for a run that ran out; the one played
+  // through has its own pass below.
+  check(plan.status === 'lost', `der Planer verliert das Tagesbrett vom ${dayName} (${plan.status})`);
 
   const context = await browser.newContext({ viewport: { width: 560, height: 960 } });
   await context.grantPermissions(['clipboard-read', 'clipboard-write'],
@@ -864,8 +871,19 @@ try {
   }));
   check(fresh.over === true && fresh.level === '1' && fresh.left === '6',
     'ein Versuch aus der Zeit vor dem Einstiegsbrett wird nicht nachgespielt');
-  check(fresh.stored?.rules === 2 && fresh.stored?.moves.length === 0,
+  check(fresh.stored?.rules === 3 && fresh.stored?.moves.length === 0,
     `der neue Versuch trägt sein Regelkennzeichen (${fresh.stored?.rules})`);
+
+  // One from the build before DAILY_RUN (rules 2): its level 7 had a sender
+  // fewer and there was no level 25 to end on, so it is set aside as well.
+  await daily.evaluate((today) => localStorage.setItem('funkloch.taeglich', JSON.stringify({
+    day: today, rules: 2, moves: ['r0c0', null], levelsCleared: 1, score: 0, done: false,
+  })), dayName);
+  await daily.reload();
+  await daily.waitForSelector('.board .node');
+  const older = await daily.evaluate(() => JSON.parse(localStorage.getItem('funkloch.taeglich')));
+  check(older?.rules === 3 && older?.moves.length === 0,
+    'ein Versuch nach den Regeln vor dem 25-Level-Tagesbrett wird nicht nachgespielt');
   check(await daily.textContent('#hud-score-best') === '',
     'auf dem Tagesbrett gibt es keinen Bestwert zu jagen');
 
@@ -1108,6 +1126,91 @@ try {
     'nach einem Neuladen aus dem freien Spiel steht das Tagesergebnis (Versuch verbraucht)');
   check(await daily.evaluate(() => /^\d{1,2}:\d{2}:\d{2}$/.test(document.getElementById('countdown').textContent)),
     'mit Countdown bis zum nächsten Brett');
+  const lostTitle = await daily.evaluate(() => ({
+    text: document.getElementById('over-title').textContent,
+    won: document.getElementById('over-title').classList.contains('is-won'),
+  }));
+  check(lostTitle.text === 'Keine Sender mehr.' && !lostTitle.won,
+    `ein verlorener Tag endet auf „${lostTitle.text}"`);
+
+  // --- durchgespielt ---------------------------------------------------------
+  // The planner almost never clears all 25 levels (0.2 %), so the run played
+  // through is the rollout bot's, on the first day from 2026-09-25 that it
+  // wins. It is handed to the page as a stored attempt, which is the path a
+  // reload takes anyway: 25 levels clicked one by one would test the clicks
+  // a second time and nothing else.
+  let winner = null;
+  for (let offset = 0; offset < 10 && winner === null; offset++) {
+    const at = Date.UTC(2026, 8, 25 + offset, 12);
+    const run = planRun(dailySeed(at), DAILY_RUN, rolloutChoice);
+    if (run.status === 'won') winner = { at, run, name: new Date(at).toISOString().slice(0, 10) };
+  }
+  check(winner !== null, 'der Rollout-Bot spielt eins von zehn Tagesbrettern durch');
+  if (winner !== null) {
+    const { at, run, name } = winner;
+    console.log(`Durchgespielt am ${name}: ${run.cleared} Level, ${run.score} Punkte`);
+    const throughContext = await browser.newContext({ viewport: { width: 560, height: 960 } });
+    const through = await throughContext.newPage();
+    const throughNoise = [];
+    through.on('pageerror', (error) => throughNoise.push(String(error)));
+    through.on('console', (message) => message.type() === 'error' && throughNoise.push(message.text()));
+    await through.clock.install({ time: new Date(at) });
+    await through.goto(`http://127.0.0.1:${port}/index.html`);
+    await through.waitForSelector('.board .node');
+    await through.evaluate((attempt) => localStorage.setItem('funkloch.taeglich', JSON.stringify(attempt)), {
+      day: name,
+      rules: 3,
+      moves: run.script.map((step) => (step.go ? null : step.id)),
+      levelsCleared: run.cleared,
+      score: run.score,
+      done: true,
+    });
+    await through.reload();
+    await through.waitForSelector('#over:not([hidden])', { timeout: 10000 });
+    const card = await through.evaluate(() => ({
+      title: document.getElementById('over-title').textContent,
+      won: document.getElementById('over-title').classList.contains('is-won'),
+      level: document.getElementById('over-level').textContent,
+      score: document.getElementById('over-score').textContent,
+      hud: document.getElementById('hud-level').textContent,
+      restartShown: !document.getElementById('restart').hidden,
+      dailyShown: !document.getElementById('over-daily').hidden,
+      countdown: document.getElementById('countdown').textContent,
+    }));
+    check(card.title === 'Alle 25 Level geschafft.' && card.won,
+      `ein durchgespielter Tag endet auf „${card.title}", in der Signalfarbe`);
+    check(card.level === '25' && card.score === String(run.score),
+      `die Karte zeigt ${card.level} Level und ${card.score} Punkte`);
+    check(card.hud === '25', 'die Kopfzeile bleibt auf Level 25 stehen, ein 26. gibt es nicht');
+    check(!card.restartShown && card.dailyShown && /^\d{1,2}:\d{2}:\d{2}$/.test(card.countdown),
+      'auch hier Ergebnis und Countdown statt einer neuen Partie');
+
+    await through.evaluate(() => {
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: async (data) => { window.__shared = data.text; },
+      });
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+    });
+    await through.click('#share');
+    await until(through, () => typeof window.__shared === 'string', 2000);
+    const sent = await through.evaluate(() => window.__shared ?? '');
+    const [, month, date] = name.split('-');
+    const words = run.score === 1 ? 'Punkt' : 'Punkte';
+    check(sent.split('\n')[0] === `funkl○ch ${date}.${month}. — durchgespielt, alle 25 Level, ${run.score} ${words}`,
+      `geteilt: ${sent.split('\n')[0]}`);
+    await through.locator('#over').evaluate((element) =>
+      Promise.all(element.getAnimations().map((animation) => animation.finished)));
+    await through.screenshot({ path: `${shots}/ui-won.png` });
+
+    check(await through.isVisible('#mode-frei'), 'der Weg ins freie Spiel ist auch nach dem Durchspielen zu sehen');
+    await through.click('#mode-frei', { timeout: 2000 });
+    await through.waitForSelector('.board .node');
+    check(await through.textContent('#hud-level') === '1', 'ein Tipp, und das freie Spiel fängt an');
+    check(throughNoise.length === 0,
+      `keine Konsolenfehler beim Durchspielen${throughNoise.length ? `: ${throughNoise.join(' | ')}` : ''}`);
+    await throughContext.close();
+  }
 
   check(dailyNoise.length === 0,
     `keine Konsolenfehler im Tagesmodus${dailyNoise.length ? `: ${dailyNoise.join(' | ')}` : ''}`);
@@ -1118,6 +1221,6 @@ try {
 }
 
 console.log(failures.length === 0
-  ? `\nAlles gut. Bilder in ${shots}/ui-board.png, ${shots}/ui-over.png und ${shots}/ui-daily.png`
+  ? `\nAlles gut. Bilder in ${shots}/ui-board.png, ${shots}/ui-over.png, ${shots}/ui-daily.png und ${shots}/ui-won.png`
   : `\n${failures.length} Prüfungen fehlgeschlagen.`);
 process.exit(failures.length === 0 ? 0 : 1);

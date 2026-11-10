@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { advance, createRun, dailySeed, ENDLESS_RUN, place } from '../src/run.js';
+import {
+  advance, createRun, DAILY_RUN, dailySeed, ENDLESS_RUN, place,
+} from '../src/run.js';
 import { GAME_NAME, GAME_URL, points, shareText } from '../src/share.js';
 import { greedyChoice } from '../tools/bot.js';
 
@@ -14,8 +16,8 @@ const finished = (lefts, score = 0) => ({
   score,
 });
 
-const playOut = (seed) => {
-  let run = createRun({ seed, config: ENDLESS_RUN });
+const playOut = (seed, config = ENDLESS_RUN) => {
+  let run = createRun({ seed, config });
   while (run.status === 'playing' || run.status === 'levelCleared') {
     run = run.status === 'levelCleared' ? advance(run) : place(run, greedyChoice(run));
   }
@@ -57,9 +59,21 @@ test('shareText', async (t) => {
   });
 
   await t.test('counts every level a played run cleared', () => {
-    const run = playOut(dailySeed(Date.UTC(2026, 8, 24, 12)));
+    const run = playOut(dailySeed(Date.UTC(2026, 8, 24, 12)), DAILY_RUN);
     const [header] = shareText(run, '2026-09-24').split('\n');
     assert.ok(header.includes(` ${run.level - 1} Level geschafft, `), header);
+  });
+
+  await t.test('says a run played through in words, not only in its count', () => {
+    const through = { ...finished(Array.from({ length: 25 }, () => 1), 325), level: 25, status: 'won' };
+    const stopped = finished(Array.from({ length: 24 }, () => 1), 300);
+    assert.equal(
+      shareText(through, '2026-11-10'),
+      'funkl○ch 10.11. — durchgespielt, alle 25 Level, 325 Punkte\nhttps://funkloch.thssn.dev',
+    );
+    assert.equal(shareText(stopped, '2026-11-10').split('\n')[0],
+      'funkl○ch 10.11. — 24 Level geschafft, 300 Punkte');
+    assert.ok(!shareText(stopped, '2026-11-10').includes('durchgespielt'));
   });
 
   await t.test('gives nothing of the board away', () => {

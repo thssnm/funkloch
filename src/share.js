@@ -56,13 +56,24 @@ export function points(count) {
 
 /**
  * The shared result.
+ *
+ * A run that cleared its last level says so in words, not only in its count:
+ *
+ *   funkl○ch 06.10. — durchgespielt, alle 25 Level, 143 Punkte
+ *   funkl○ch 06.10. — 24 Level geschafft, 98 Punkte
+ *
+ * "25 Level geschafft" next to "24 Level geschafft" would leave it to the
+ * reader to know that 25 is the end; the daily board has had one since
+ * 2026-11-10, and whoever reached it should not have to explain that.
  * @param {object} state a finished run state from run.js
  * @param {string} day the day of the board it was played on, `YYYY-MM-DD` (`boardDay`)
  * @returns {string}
  */
 export function shareText(state, day) {
   const [, month, date] = day.split('-');
-  const header = `${GAME_NAME} ${date}.${month}. — ${state.cleared.length} Level geschafft, `
-    + points(state.score);
+  const result = state.status === 'won'
+    ? `durchgespielt, alle ${state.cleared.length} Level`
+    : `${state.cleared.length} Level geschafft`;
+  const header = `${GAME_NAME} ${date}.${month}. — ${result}, ${points(state.score)}`;
   return [header, GAME_URL].join('\n');
 }
