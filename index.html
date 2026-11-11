@@ -717,7 +717,7 @@
       button:not(:disabled):hover { border-color: var(--muted); }
 
       .hint { margin: 0; color: var(--muted); font-size: 14px; }
-      /* Gone for good once the player has played past level 5 (see HINT_KEY);
+      /* Gone for good once the player has played past level 5 (see KNOWS_GAME_KEY);
          the height goes to the stage. Same trap as `.over[hidden]`. */
       .hint[hidden] { display: none; }
       /* For bug reports, not for play: small, faint and last on the page. */
@@ -1000,18 +1000,26 @@
        */
       const STALE_MODE_KEY = 'funkloch.modus';
       /**
-       * Whether the hint under the board has done its job. It explains tapping
-       * and the octagons; whoever has played past level 5 — in either mode —
-       * knows both, and from then on the hint only takes height from the
-       * stage. Set once and kept for good: no new run, no new day and no
-       * switch of mode brings the hint back.
+       * Whether the player knows the game: whoever has played past level 5 —
+       * in either mode — has seen tapping, the octagons and a few boards, and
+       * two things are then taken away for good. The hint under the board,
+       * which explains the first two and otherwise only takes height from the
+       * stage; and the onboarding level, which teaches the rule by being won
+       * (run.js, `firstLevel`): every run from then on opens on level 2, with
+       * level 1 credited as cleared (`createRun`, `onboarding: false`). One
+       * mark for both, set once and kept: no new run, no new day and no switch
+       * of mode brings either back.
        *
        * Read back from storage rather than remembered here. Where nothing can
        * be stored — storage off, a page opened off the file system — the hint
-       * stays, which is the harmless side to err on.
+       * and the first board stay, which is the harmless side to err on.
+       *
+       * The key and the value are the hint's, from when it was all the mark
+       * did; they stay, because they are already in players' browsers.
        */
-      const HINT_KEY = 'funkloch.hilfe';
-      /** The last level the hint is shown on; level 6 on screen takes it away. */
+      const KNOWS_GAME_KEY = 'funkloch.hilfe';
+      /** The last level the hint and the onboarding level are for; level 6 on
+       *  screen sets the mark. */
       const HINT_LAST_LEVEL = 5;
 
       /**
@@ -1024,6 +1032,15 @@
        *   2               level 1 is the 9-node onboarding board
        *   3               DAILY_RUN: level 7 has 8 senders, the hand steps
        *                   down from level 12, the run ends after level 25
+       *
+       * Under rules 3 an attempt also says where it began, as `onboarding`:
+       * `false` for one that opened on level 2 with the onboarding level
+       * waived, `true` or absent for one that played level 1. The replay
+       * follows that and not the mark in KNOWS_GAME_KEY, which can flip while
+       * an attempt is open — a free run past level 5 in between — and must
+       * not change the board the stored moves are replayed onto. No new rules
+       * number: an attempt without the field began on level 1, as every
+       * attempt did before.
        *
        * A mismatch drops the attempt rather than replaying it. On the day a
        * change ships, whoever already played gets a second go — on a board
@@ -1154,22 +1171,23 @@
         }
       };
 
-      const readHintDone = () => {
-        try { return localStorage.getItem(HINT_KEY) === 'gelesen'; } catch { return false; }
+      const readKnowsGame = () => {
+        try { return localStorage.getItem(KNOWS_GAME_KEY) === 'gelesen'; } catch { return false; }
       };
-      const writeHintDone = () => {
+      const writeKnowsGame = () => {
         try {
-          localStorage.setItem(HINT_KEY, 'gelesen');
+          localStorage.setItem(KNOWS_GAME_KEY, 'gelesen');
         } catch {
-          /* storage denied: the hint stays, as readHintDone will say */
+          /* storage denied: the hint stays, as readKnowsGame will say */
         }
       };
 
       let best = readBest();
       /** Whether *this* run has already pushed the record. */
       let record = false;
-      /** Whether the hint under the board is gone for good; see HINT_KEY. */
-      let hintDone = readHintDone();
+      /** Whether the hint and the onboarding level are gone for good; see
+       *  KNOWS_GAME_KEY. */
+      let knowsGame = readKnowsGame();
 
       /** 'frei' or 'taeglich'. */
       let mode = 'frei';
@@ -1323,12 +1341,14 @@
         // The hint, until the player has played past level 5 — in this run or
         // any earlier one, in either mode — and then never again. The mark is
         // read back after it is written: where it could not be stored the
-        // hint stays (HINT_KEY).
-        if (!hintDone && state.level > HINT_LAST_LEVEL) {
-          writeHintDone();
-          hintDone = readHintDone();
+        // hint stays (KNOWS_GAME_KEY). The same mark waives the onboarding
+        // level, but only for runs started after it was set: the run on
+        // screen keeps the level it began on.
+        if (!knowsGame && state.level > HINT_LAST_LEVEL) {
+          writeKnowsGame();
+          knowsGame = readKnowsGame();
         }
-        hint.hidden = hintDone;
+        hint.hidden = knowsGame;
 
         statusLine.classList.toggle('is-won', state.status === 'levelCleared');
         goButton.hidden = state.status !== 'levelCleared';
@@ -1465,6 +1485,9 @@
         writeDaily({
           day: today,
           rules: DAILY_RULES,
+          // Where the attempt began, so that a replay starts there whatever
+          // the mark says by then (see DAILY_RULES).
+          onboarding: state.onboarding,
           moves,
           levelsCleared: levelsCleared(state),
           score: state.score,
@@ -1496,10 +1519,19 @@
         if (boardDay(now) !== today) resetEntry();
         today = boardDay(now);
         const stored = readDaily();
-        moves = stored?.day === today ? stored.moves : [];
+        const resumed = stored?.day === today;
+        moves = resumed ? stored.moves : [];
+        // An attempt picks up where it began — the stored moves only replay
+        // onto that — and a new one begins where the mark says: on level 2
+        // for whoever knows the game, on the onboarding level otherwise. An
+        // attempt without a move has not begun: the page stores one on every
+        // visit, and a visit that only looked at the board before a free run
+        // set the mark must not pin the day to level 1.
+        const begun = resumed && stored.moves.length > 0;
+        const onboarding = begun ? stored.onboarding !== false : !knowsGame;
         // Its own config: 25 levels and a hand that gets smaller, where free
         // play keeps the endless curve (run.js, DAILY_RUN).
-        let next = createRun({ seed: dailySeed(now), config: DAILY_RUN });
+        let next = createRun({ seed: dailySeed(now), config: DAILY_RUN, onboarding });
         for (const move of moves) next = move === null ? advance(next) : place(next, move);
         apply(next);
       }
@@ -1899,7 +1931,9 @@
       function newRun(seed = freeSeed(Date.now())) {
         record = false;
         parked = null;
-        showFree(createRun({ seed, config: ENDLESS_RUN }));
+        // Whoever knows the game starts on level 2; the boards from there on
+        // are the same either way, so a `?seed=` link still deals what it says.
+        showFree(createRun({ seed, config: ENDLESS_RUN, onboarding: !knowsGame }));
       }
 
       /** Paints the switch to match the mode actually on screen. */

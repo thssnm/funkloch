@@ -2655,3 +2655,77 @@ Je Dichte und Kurve 2 bis 4 Minuten; `--blocked` nimmt 0, 0.05, 0.1, 0.15.
   Levelquoten werden je Dichte getrennt gehalten.
 - `src/run.js` — der Kommentar zu `blockedRatio` nennt diese Messung vor der
   alten Tabelle. Der Wert bleibt 0.05.
+
+---
+
+## 2026-11-11 — Einstiegsbrett erlassen, Wortmarke gefüllt
+
+**Konstanten:** `GAME_NAME_WON` in `src/share.js` (neu, `funkl●ch`);
+`createRun({ onboarding: false })` in `src/run.js` (neu)
+**Werkzeug:** `tools/share-forms.js --render` (Kopfzeile in beiden Formen)
+**Ergebnis:** Wer über Level 5 hinaus gespielt hat, beginnt jede Partie auf
+Level 2; Level 1 wird als geschafft gutgeschrieben. Die geteilte Zeile eines
+durchgespielten Tags schreibt den Namen mit gefülltem Kreis.
+
+### Die Zählung beim Erlassen
+
+Zwei Wege standen zur Wahl: bei Level 2 beginnen und bei 25 enden (24
+gespielte Bretter), oder alles um eins verschieben (25 gespielte, aber andere
+als Anfänger). **Gewählt ist der erste, mit Gutschrift für Level 1.** Die
+Levelnummer ist hier keine Zählung, sondern eine Adresse — Level i ist das
+Brett aus `seed + i · 7919` — und zugleich das Punktegewicht seiner Reste.
+Verschieben ließe „in Level 12 von 25" und „12 Punkte" bei zwei Spielern
+desselben Tages zwei verschiedene Bretter meinen und gäbe Erfahrenen ein 26.
+Brett; Rangliste und Zeile stünden auf zwei Maßstäben, und jede Kalibrierung
+(8 Sender auf Level 7, Handleiter ab 12) wanderte mit.
+
+Ohne Gutschrift hätte ein Erfahrener nach dem Durchspielen 24 geschaffte
+Level, ein Anfänger 25 — dieselben zwei Maßstäbe, nur in `levelsCleared`. Die
+Gutschrift kostet nichts, weil das Einstiegsbrett schon vorher keine Punkte
+brachte und niemand es verliert: gierig scheitert in 5000 Seeds nie,
+Zufallstippen in 0,3 % (Eintrag „Level 1 als Einstiegsbrett"). Ab Level 2 sind
+die Bretter bitgleich, ob Level 1 gespielt wurde oder nicht; `test/run.test.js`
+spielt beide Fassungen mit dem gierigen Bot und verlangt dasselbe Ende, dieselbe
+Zählung, dieselben Punkte.
+
+Neu gemessen wurde nichts: die Schwierigkeit der Partie ändert sich nicht,
+nur die Zahl der Tipps bis zum ersten Brett, das etwas verlangt.
+
+### Rendertest der gefüllten Wortmarke
+
+Wie 2026-10-12, drei Schriften bei `letter-spacing: -1px`, dazu
+`CSS.getPlatformFontsForNode` je Zeichen und die Breite der Wortmarke als
+`Range.getBoundingClientRect()` über ihre acht Zeichen:
+
+| Schrift | `○` und `●` gezeichnet aus | `funkl○ch` | `funkl●ch` |
+| --- | --- | --- | --- |
+| system-ui | Liberation Serif | 57,19 px | 57,19 px |
+| Georgia, serif | Liberation Serif | 50,55 px | 50,55 px |
+| monospace | DejaVu Sans Mono | 69,06 px | 69,06 px |
+
+Beide Zeichen kommen in jeder Schrift aus derselben Schriftfamilie, beide
+Wortmarken sind auf den Hundertstelpixel gleich breit, und der Kreis sitzt wie
+der Ring auf Höhe der Kleinbuchstaben. **`●` hält.**
+
+### Reproduktion
+
+```sh
+node tools/share-forms.js --render=formen.png --days=1   # Kopfzeile in beiden Formen
+npm run smoke                                            # Start auf Level 2, Kippfall, Durchspielen ab 2
+```
+
+### Was blieb
+
+- `src/run.js` — `createRun({ onboarding: false })` öffnet auf Level 2 mit
+  `cleared: [{ level: 1, left: 0 }]`; der Zustand und `snapshot()` tragen
+  `onboarding`.
+- `index.html` — dieselbe Markierung wie der Hilfetext (`funkloch.hilfe`,
+  jetzt `KNOWS_GAME_KEY`) erlässt das Einstiegsbrett. Der gespeicherte
+  Tagesversuch hält in `onboarding` fest, wo er begann; der Nachbau folgt ihm
+  und nicht der Markierung, die mitten im Tag kippen kann. Ein Versuch ohne
+  Zug hat nicht begonnen.
+- `src/share.js` — `GAME_NAME_WON`, genommen bei Status `won`.
+- `test/run.test.js`, `test/share.test.js`, `tools/ui-smoke.js` — Gutschrift
+  und Gleichstand der Zählung; Ring und Kreis; Start auf Level 2 mit
+  Markierung, Durchspielen ab Level 2 mit Karte, Zeile und Rangliste auf 25,
+  und der Kippfall mit Neuladen und Tageswechsel.

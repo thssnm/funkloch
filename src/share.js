@@ -46,6 +46,16 @@ export const GAME_URL = 'https://funkloch.thssn.dev';
 export const GAME_NAME = 'funkl○ch';
 
 /**
+ * The same name on a day played through. The ring is the mark of a node left
+ * without signal, and whoever cleared all 25 levels has none left: the o fills
+ * in, `●` (U+25CF), and the one glyph tells the result before the words do.
+ * Same width to the hundredth of a pixel in all three fonts of the render
+ * test, drawn from the same font as the ring in each (Liberation Serif under
+ * system-ui and Georgia, DejaVu Sans Mono under monospace; 2026-11-11).
+ */
+export const GAME_NAME_WON = 'funkl●ch';
+
+/**
  * A point count with its noun: "1 Punkt", otherwise "Punkte".
  * @param {number} count
  * @returns {string}
@@ -59,8 +69,11 @@ export function points(count) {
  * says how a day went against it — played through, or the level it ended in,
  * out of how many:
  *
- *   funkl○ch 06.10. — durchgespielt, alle 25 Level, 143 Punkte
+ *   funkl●ch 06.10. — durchgespielt, alle 25 Level, 143 Punkte
  *   funkl○ch 06.10. — in Level 12 von 25 gescheitert, 41 Punkte
+ *
+ * The name itself carries the result: the ring of the wordmark on a lost day,
+ * the filled circle on one played through (`GAME_NAME_WON`).
  *
  * The lost line used to give the levels cleared ("11 Level geschafft"). Next
  * to a goal that number reads as distance travelled with no destination;
@@ -75,9 +88,10 @@ export function points(count) {
 export function shareText(state, day) {
   const [, month, date] = day.split('-');
   const last = state.config?.lastLevel;
-  const result = state.status === 'won'
+  const won = state.status === 'won';
+  const result = won
     ? `durchgespielt, alle ${state.cleared.length} Level`
     : `in Level ${state.level}${last === undefined ? '' : ` von ${last}`} gescheitert`;
-  const header = `${GAME_NAME} ${date}.${month}. — ${result}, ${points(state.score)}`;
+  const header = `${won ? GAME_NAME_WON : GAME_NAME} ${date}.${month}. — ${result}, ${points(state.score)}`;
   return [header, GAME_URL].join('\n');
 }

@@ -19,7 +19,8 @@
  * attempt at it is refused however the page is reloaded or clicked, and that
  * the text the share button hands on carries the date, the levels cleared, the
  * points and the address, and nothing that would spoil the board for whoever
- * reads it — and that the button gets it out
+ * reads it — with the ring of the wordmark on a lost day and the filled
+ * circle on one played through — and that the button gets it out
  * by every route it has: the share sheet, the clipboard, or by hand.
  *
  * The daily board's end card gets one more pass on touch input, both
@@ -31,7 +32,11 @@
  *
  * The hint under the board is checked along the way: shown to a fresh player,
  * gone from level 6 on and for good — after a reload, on a new run, on the
- * daily board — and still there where nothing can be stored.
+ * daily board — and still there where nothing can be stored. The same mark
+ * waives the onboarding level: with it set, the daily board and free play
+ * open on level 2, a day played through from there still counts 25 levels on
+ * the card, in the shared line and in the leaderboard, and a day begun on
+ * level 1 stays on its own moves when the mark is set in between.
  *
  * The moves are not improvised — the same run is played here first with the
  * planning bot, and the browser is then asked to reproduce it click for click,
@@ -234,14 +239,16 @@ async function cardFits(target, label, buttons) {
  * @param {number} from the seed the run starts from
  * @param {object} [config] ENDLESS_RUN for free play, DAILY_RUN for the daily board
  * @param {(state: object) => *} [choose]
+ * @param {boolean} [onboarding] false to open on level 2, as the page does for
+ * whoever knows the game
  * `level` is the level the run ended in, as the HUD shows it; `cleared` is the
  * number of levels behind it, as the end card and the shared line count it.
  * @returns {{script: Array<object>, level: number, cleared: number, score: number,
  *            opening: number[], status: string}}
  */
-function planRun(from, config = ENDLESS_RUN, choose = lookaheadChoice) {
+function planRun(from, config = ENDLESS_RUN, choose = lookaheadChoice, onboarding = true) {
   const moves = [];
-  let run = createRun({ seed: from, config });
+  let run = createRun({ seed: from, config, onboarding });
   const dealt = [run.current, ...run.preview];
   while (run.status === 'playing' || run.status === 'levelCleared') {
     if (run.status === 'levelCleared') {
@@ -1044,7 +1051,9 @@ try {
     hintGone: document.getElementById('hint').hidden && document.getElementById('hint').offsetParent === null,
   }));
   check(after.scoreBest === `best ${expected.score}`, `Punkterekord überlebt: ${after.scoreBest}`);
-  check(after.level === '1', 'die neue Partie steht auf Level 1');
+  // This browser has played past level 5: the onboarding level is waived
+  // along with the hint, and a new run opens on level 2.
+  check(after.level === '2', `wer das Spiel kennt, fängt die neue Partie auf Level 2 an (Level ${after.level})`);
   check(after.over === true, 'die Karte ist wieder weg');
   check(after.hintGone, 'und der Hilfetext bleibt auch nach dem Neuladen weg');
 
@@ -1472,6 +1481,10 @@ try {
   check(!(viaSheet.sent ?? '').includes('vercel.app'), 'und nicht mehr die alte Vercel-Adresse');
   check(lines[0].includes('24.09.'), 'sie nennt das Datum');
   check(lines[0].includes(`in Level ${plan.level} von 25 gescheitert`), 'sie nennt das Level, in dem der Tag endete, und das Ziel');
+  // The o of the wordmark is the ring of a node without signal; a lost day has
+  // one left, so the ring stays. The filled circle is for a day played through.
+  check(lines[0].startsWith('funkl○ch') && !lines[0].includes('●'),
+    'ein verlorener Tag trägt den Ring der Wortmarke (funkl○ch), nicht den gefüllten Kreis');
   check(lines[0].includes(`${plan.score} ${pointsWord}`), `sie nennt die Punkte (${pointsWord}; „1 Punkt" prüft test/share.test.js)`);
   // Nothing that would hand the reader the board, let alone the moves.
   check(!/r\d+c\d+/.test(viaSheet.sent ?? ''), 'es verrät keinen Knoten');
@@ -1806,8 +1819,12 @@ try {
     const sent = await through.evaluate(() => window.__shared ?? '');
     const [, month, date] = name.split('-');
     const words = run.score === 1 ? 'Punkt' : 'Punkte';
-    check(sent.split('\n')[0] === `funkl○ch ${date}.${month}. — durchgespielt, alle 25 Level, ${run.score} ${words}`,
+    check(sent.split('\n')[0] === `funkl●ch ${date}.${month}. — durchgespielt, alle 25 Level, ${run.score} ${words}`,
       `geteilt: ${sent.split('\n')[0]}`);
+    // Played through, no node is left without signal: the ring of the wordmark
+    // fills in. Same width, same name, and the one glyph tells the result.
+    check(sent.startsWith('funkl●ch') && !sent.includes('○'),
+      'ein durchgespielter Tag trägt den gefüllten Kreis (funkl●ch), nicht den Ring');
     await through.locator('#over').evaluate((element) =>
       Promise.all(element.getAnimations().map((animation) => animation.finished)));
     await through.screenshot({ path: `${shots}/ui-won.png` });
@@ -1858,10 +1875,226 @@ try {
     check(await through.isVisible('#mode-frei'), 'der Weg ins freie Spiel ist auch nach dem Durchspielen zu sehen');
     await through.click('#mode-frei', { timeout: 2000 });
     await through.waitForSelector('.board .node');
-    check(await through.textContent('#hud-level') === '1', 'ein Tipp, und das freie Spiel fängt an');
+    check(await through.textContent('#hud-level') === '2',
+      'ein Tipp, und das freie Spiel fängt an — auf Level 2, denn dieser Browser kennt das Spiel');
     check(throughNoise.length === 0,
       `keine Konsolenfehler beim Durchspielen${throughNoise.length ? `: ${throughNoise.join(' | ')}` : ''}`);
     await throughContext.close();
+  }
+
+  // --- wer das Spiel kennt, fängt auf Level 2 an -----------------------------
+  // The mark the hint leaves behind (funkloch.hilfe) also waives the
+  // onboarding level: a run opens on level 2, level 1 is credited as cleared
+  // with nothing left over, and the count stays the count — a day played
+  // through is "alle 25 Level" on the card, in the shared line and in the
+  // leaderboard, exactly as for whoever played level 1. Clicked through here
+  // rather than handed in as a stored attempt: the attempt the page stores on
+  // the way is the thing under test, and a reload halfway has to pick it up
+  // on level 2 again.
+  {
+    let seasonedWin = null;
+    for (let offset = 0; offset < 10 && seasonedWin === null; offset++) {
+      const at = Date.UTC(2026, 8, 25 + offset, 12);
+      const run = planRun(dailySeed(at), DAILY_RUN, rolloutChoice, false);
+      if (run.status === 'won') seasonedWin = { at, run, name: new Date(at).toISOString().slice(0, 10) };
+    }
+    check(seasonedWin !== null, 'der Rollout-Bot spielt eins von zehn Tagesbrettern ab Level 2 durch');
+    if (seasonedWin !== null) {
+      const { at, run, name } = seasonedWin;
+      console.log(`Ab Level 2 durchgespielt am ${name}: ${run.cleared} Level, ${run.score} Punkte, ${run.script.length} Eingaben`);
+      check(run.cleared === 25, `der Plan zählt ${run.cleared} geschaffte Level, das erlassene mitgerechnet`);
+      const seasonedContext = await browser.newContext({ viewport: { width: 560, height: 960 } });
+      const seasonedBoard = fakeLeaderboard();
+      await seasonedContext.route(API, seasonedBoard.handle);
+      const seasoned = await seasonedContext.newPage();
+      const seasonedNoise = [];
+      seasoned.on('pageerror', (error) => seasonedNoise.push(String(error)));
+      seasoned.on('console', (message) => message.type() === 'error' && !fromLeaderboard(message)
+        && seasonedNoise.push(message.text()));
+      await seasoned.clock.install({ time: new Date(at) });
+      await seasoned.goto(`http://127.0.0.1:${port}/index.html`);
+      await seasoned.waitForSelector('.board .node');
+      // The first visit stored today's attempt on level 1, without a move.
+      // The mark set now, as a returning player's browser has it: an attempt
+      // nobody has played is not an attempt begun, so the reload opens on 2.
+      await seasoned.evaluate(() => localStorage.setItem('funkloch.hilfe', 'gelesen'));
+      await seasoned.reload();
+      await seasoned.waitForSelector('.board .node');
+      const opened = await seasoned.evaluate(() => ({
+        level: document.getElementById('hud-level').textContent,
+        score: document.getElementById('hud-score').textContent,
+        nodes: document.querySelectorAll('.board .node').length,
+        hintGone: document.getElementById('hint').hidden,
+        over: document.getElementById('over').hidden,
+        stored: JSON.parse(localStorage.getItem('funkloch.taeglich')),
+      }));
+      check(opened.level === '2' && opened.over, `mit gesetzter Markierung öffnet das Tagesbrett auf Level ${opened.level}`);
+      const seasonedReading = await levelReading(seasoned);
+      check(seasonedReading.goalShown && seasonedReading.text === 'Level 2 von 25',
+        `die Kopfzeile liest „${seasonedReading.text}"`);
+      // Level 2 of the curve: levelNodes 18 + 4, not the 9 of the onboarding board.
+      check(opened.nodes === 22, `und das Brett ist das von Level 2, 22 Knoten (${opened.nodes})`);
+      check(opened.hintGone, 'ohne Hilfetext');
+      check(opened.stored?.onboarding === false && opened.stored?.levelsCleared === 1
+        && opened.stored?.moves.length === 0,
+        'der gespeicherte Versuch beginnt auf Level 2, mit Level 1 als geschafft und ohne Zug');
+      check(opened.score === '0', 'und ohne Punkte für das erlassene Level');
+      check(seasonedBoard.requests.length === 0, 'keine Anfrage beim Start');
+
+      const standing = () => seasoned.evaluate(() => ({
+        level: document.getElementById('hud-level').textContent,
+        score: document.getElementById('hud-score').textContent,
+        left: document.getElementById('hud-left').textContent,
+        placed: [...document.querySelectorAll('.node.is-transmitter')].map((node) => node.dataset.id).join(' '),
+      }));
+      const halfway = Math.floor(run.script.length / 2);
+      for (const [index, step] of run.script.entries()) {
+        if (index === halfway) {
+          const before = await standing();
+          await seasoned.reload();
+          await seasoned.waitForSelector('.board .node');
+          const again = await standing();
+          check(JSON.stringify(again) === JSON.stringify(before),
+            `ein Neuladen mitten im Tag stellt den Versuch wieder her: Level ${again.level}, ${again.score} Punkte, Sender auf ${again.placed || '–'}`);
+        }
+        if (step.go) await seasoned.click('#go');
+        else await seasoned.click(`.node[data-id="${step.id}"] .hit`);
+      }
+      await seasoned.waitForSelector('#over:not([hidden])', { timeout: 5000 });
+      const seasonedCard = await seasoned.evaluate(() => ({
+        title: document.getElementById('over-title').textContent,
+        won: document.getElementById('over-title').classList.contains('is-won'),
+        level: document.getElementById('over-level').textContent,
+        score: document.getElementById('over-score').textContent,
+        stored: JSON.parse(localStorage.getItem('funkloch.taeglich')),
+      }));
+      check(seasonedCard.title === 'Alle 25 Level geschafft.' && seasonedCard.won,
+        `ab Level 2 durchgespielt: die Karte sagt „${seasonedCard.title}"`);
+      check(seasonedCard.level === '25 von 25' && seasonedCard.score === String(run.score),
+        `Level ${seasonedCard.level}, ${seasonedCard.score} Punkte`);
+      check(seasonedCard.stored?.levelsCleared === 25 && seasonedCard.stored?.done === true
+        && seasonedCard.stored?.onboarding === false,
+        'der gespeicherte Versuch zählt 25 geschaffte Level und weiß, dass er auf Level 2 begann');
+
+      await seasoned.evaluate(() => {
+        Object.defineProperty(navigator, 'share', {
+          configurable: true,
+          value: async (data) => { window.__shared = data.text; },
+        });
+        Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => true });
+      });
+      await seasoned.click('#share');
+      await until(seasoned, () => typeof window.__shared === 'string', 2000);
+      const seasonedSent = await seasoned.evaluate(() => window.__shared ?? '');
+      const [, month, date] = name.split('-');
+      const words = run.score === 1 ? 'Punkt' : 'Punkte';
+      check(seasonedSent.split('\n')[0] === `funkl●ch ${date}.${month}. — durchgespielt, alle 25 Level, ${run.score} ${words}`,
+        `geteilt: ${seasonedSent.split('\n')[0]}`);
+
+      // The entry carries 25: the same count a day played from level 1 has.
+      await seasoned.click('#enter');
+      await seasoned.fill('#enter-name', 'Bea');
+      await seasoned.click('#enter-send');
+      await until(seasoned, () => document.getElementById('enter-status').textContent.includes('Platz'), 5000);
+      const seasonedPosts = seasonedBoard.requests.filter((r) => r.method === 'POST');
+      const seasonedEntry = JSON.parse(seasonedPosts[0]?.body ?? '{}');
+      check(seasonedPosts.length === 1 && seasonedEntry.level === 25 && seasonedEntry.points === run.score
+        && seasonedEntry.date === name,
+        `die Rangliste trägt ${seasonedEntry.level} Level und ${seasonedEntry.points} Punkte für den ${seasonedEntry.date}`);
+      check(seasonedNoise.length === 0,
+        `keine Konsolenfehler ab Level 2${seasonedNoise.length ? `: ${seasonedNoise.join(' | ')}` : ''}`);
+      await seasonedContext.close();
+    }
+  }
+
+  // --- die Markierung kippt mitten im Tagesversuch um ------------------------
+  // A day begun on level 1, a free run past level 5 in between, and the day
+  // taken up again: it stays the day it was — same level, same sender, level 1
+  // played and not waived — on the switch back and after a reload alike. The
+  // stored attempt says where it began; the mark has no say in it. The next
+  // day then opens on level 2.
+  {
+    const flipContext = await browser.newContext({ viewport: { width: 560, height: 960 } });
+    const flipApi = [];
+    await guardApi(flipContext, flipApi);
+    const flip = await flipContext.newPage();
+    const flipNoise = [];
+    flip.on('pageerror', (error) => flipNoise.push(String(error)));
+    await flip.clock.install({ time: new Date(day) });
+    await flip.goto(`http://127.0.0.1:${port}/index.html`);
+    await flip.waitForSelector('.board .node');
+    const flipOpened = await openedOn(flip);
+    check(flipOpened.daily && flipOpened.level === '1'
+      && await flip.evaluate(() => localStorage.getItem('funkloch.hilfe')) === null,
+      'ohne Markierung: das Tagesbrett auf Level 1');
+    const flipStanding = () => flip.evaluate(() => ({
+      daily: document.getElementById('mode-taeglich').getAttribute('aria-pressed') === 'true',
+      level: document.getElementById('hud-level').textContent,
+      score: document.getElementById('hud-score').textContent,
+      placed: [...document.querySelectorAll('.node.is-transmitter')].map((node) => node.dataset.id).join(' '),
+      hintGone: document.getElementById('hint').hidden,
+      mark: localStorage.getItem('funkloch.hilfe'),
+      stored: JSON.parse(localStorage.getItem('funkloch.taeglich')),
+    }));
+    // Level 1 played and the first sender of level 2 placed, from the planned run.
+    let clicked = 0;
+    let onLevel2 = false;
+    for (const step of plan.script) {
+      if (step.go) await flip.click('#go');
+      else await flip.click(`.node[data-id="${step.id}"] .hit`);
+      clicked++;
+      if (step.go) onLevel2 = true;
+      else if (onLevel2) break;
+    }
+    const begun = await flipStanding();
+    check(begun.level === '2' && begun.placed.split(' ').length === 1 && begun.mark === null,
+      `Level 1 gespielt, ein Sender auf Level 2 (${begun.placed}), die Markierung noch nicht gesetzt`);
+    check(begun.stored?.onboarding === true && begun.stored?.moves.length === clicked,
+      `der gespeicherte Versuch begann auf Level 1 und hat ${begun.stored?.moves.length} Züge`);
+
+    // Into free play on a known seed and past level 5: that sets the mark.
+    await flip.goto(`http://127.0.0.1:${port}/index.html?seed=${seed}`);
+    await flip.waitForSelector('.board .node');
+    check((await flipStanding()).level === '1', 'das freie Spiel fängt für diesen Browser noch auf Level 1 an');
+    for (const step of script) {
+      if (step.go) await flip.click('#go');
+      else await flip.click(`.node[data-id="${step.id}"] .hit`);
+      if (step.go && Number(await flip.textContent('#hud-level')) > 5) break;
+    }
+    const marked = await flipStanding();
+    check(!marked.daily && marked.level === '6' && marked.mark === 'gelesen' && marked.hintGone,
+      `im freien Spiel bis Level ${marked.level}: die Markierung ist gesetzt, der Hilfetext weg`);
+
+    // Back to the day: where it was left, not where a new one would begin.
+    await flip.click('#mode-taeglich');
+    await flip.waitForSelector('.board .node');
+    const resumed = await flipStanding();
+    check(resumed.daily && resumed.level === '2' && resumed.placed === begun.placed && resumed.score === begun.score,
+      `zurück auf dem Tagesbrett steht der Versuch, wo er war: Level ${resumed.level}, Sender auf ${resumed.placed}`);
+    check(resumed.stored?.onboarding === true && resumed.stored?.moves.length === clicked,
+      'der gespeicherte Versuch sagt weiter: begonnen auf Level 1, dieselben Züge');
+    check(resumed.hintGone, 'nur der Hilfetext ist jetzt weg');
+    // Opened afresh without the seed — a reload would keep `?seed=` and pin
+    // the free run — the page is on the daily board and replays the attempt.
+    await flip.goto(`http://127.0.0.1:${port}/index.html`);
+    await flip.waitForSelector('.board .node');
+    const reloaded = await flipStanding();
+    check(reloaded.daily && reloaded.level === '2' && reloaded.placed === begun.placed
+      && reloaded.stored?.onboarding === true && reloaded.stored?.moves.length === clicked,
+      'nach dem Neuladen ebenso: von Level 1 aus nachgespielt, der Markierung zum Trotz');
+
+    // The next day is a new attempt, and that one begins on level 2.
+    await flip.clock.setFixedTime(new Date(berlinMidnight + 60000));
+    await flip.goto(`http://127.0.0.1:${port}/index.html`);
+    await flip.waitForSelector('.board .node');
+    const flipNextDay = await flipStanding();
+    check(flipNextDay.daily && flipNextDay.level === '2' && flipNextDay.placed === ''
+      && flipNextDay.stored?.day === '2026-09-25' && flipNextDay.stored?.onboarding === false,
+      `am nächsten Tag beginnt der neue Versuch auf Level ${flipNextDay.level}`);
+    check(flipApi.length === 0, `und nichts davon fragt die Rangliste an (${flipApi.length})`);
+    check(flipNoise.length === 0,
+      `keine Konsolenfehler beim Umkippen${flipNoise.length ? `: ${flipNoise.join(' | ')}` : ''}`);
+    await flipContext.close();
   }
 
   // --- per Touch: die Endkarte nach dem letzten Tipp -------------------------

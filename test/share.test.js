@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {
   advance, createRun, DAILY_RUN, dailySeed, ENDLESS_RUN, place,
 } from '../src/run.js';
-import { GAME_NAME, GAME_URL, points, shareText } from '../src/share.js';
+import {
+  GAME_NAME, GAME_NAME_WON, GAME_URL, points, shareText,
+} from '../src/share.js';
 import { greedyChoice } from '../tools/bot.js';
 
 /** A finished daily state without playing one: only the fields share.js reads. */
@@ -76,11 +78,28 @@ test('shareText', async (t) => {
     const stopped = finished(Array.from({ length: 24 }, () => 1), 300);
     assert.equal(
       shareText(through, '2026-11-10'),
-      'funkl○ch 10.11. — durchgespielt, alle 25 Level, 325 Punkte\nhttps://funkloch.thssn.dev',
+      'funkl●ch 10.11. — durchgespielt, alle 25 Level, 325 Punkte\nhttps://funkloch.thssn.dev',
     );
     assert.equal(shareText(stopped, '2026-11-10').split('\n')[0],
       'funkl○ch 10.11. — in Level 25 von 25 gescheitert, 300 Punkte');
     assert.ok(!shareText(stopped, '2026-11-10').includes('durchgespielt'));
+  });
+
+  await t.test('fills the ring of the wordmark on a day played through, and only then', () => {
+    const through = { ...finished(Array.from({ length: 25 }, () => 1), 325), level: 25, status: 'won' };
+    const stopped = finished(Array.from({ length: 24 }, () => 1), 300);
+    const [wonHeader] = shareText(through, '2026-11-10').split('\n');
+    const [lostHeader] = shareText(stopped, '2026-11-10').split('\n');
+    assert.ok(wonHeader.startsWith(GAME_NAME_WON));
+    assert.ok(lostHeader.startsWith(GAME_NAME));
+    // The two names are the same word with one glyph swapped: the ring of a
+    // node without signal (U+25CB) against the filled circle (U+25CF).
+    assert.equal(GAME_NAME, 'funkl○ch');
+    assert.equal(GAME_NAME_WON, 'funkl●ch');
+    assert.equal(GAME_NAME.length, GAME_NAME_WON.length);
+    assert.ok(!wonHeader.includes('○') && !lostHeader.includes('●'));
+    // A lost run of an endless mode, which can never be won, keeps the ring.
+    assert.ok(shareText({ ...stopped, config: ENDLESS_RUN }, '2026-11-10').startsWith(GAME_NAME));
   });
 
   await t.test('gives nothing of the board away', () => {

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { bfsWithin, bfsWithinAmplified, bfsWithinBlocked } from '../src/graph.js';
 import * as run from '../src/run.js';
 import {
-  advance, createRun, DAILY_RUN, DEFAULT_RUN, ENDLESS_RUN, place, snapshot, levelSpec,
+  advance, createRun, DAILY_RUN, DEFAULT_RUN, ENDLESS_RUN, levelsCleared, place, snapshot, levelSpec,
 } from '../src/run.js';
 import { greedyChoice, playGreedy } from '../tools/bot.js';
 
@@ -341,6 +341,90 @@ test('the onboarding level', async (t) => {
       while (state.status === 'playing') state = place(state, greedyChoice(state));
       assert.equal(state.status, 'levelCleared', `seed ${seed}`);
     }
+  });
+});
+
+test('waiving the onboarding level', async (t) => {
+  const playOut = (state, choose = greedyChoice) => {
+    while (state.status === 'playing' || state.status === 'levelCleared') {
+      state = state.status === 'levelCleared' ? advance(state) : place(state, choose(state));
+    }
+    return state;
+  };
+
+  await t.test('opens on level 2, with level 1 credited as cleared and nothing left over', () => {
+    const run = createRun({ seed: 12, config: ENDLESS_RUN, onboarding: false });
+    assert.equal(run.level, 2);
+    assert.equal(run.onboarding, false);
+    assert.deepEqual(run.cleared, [{ level: 1, left: 0 }]);
+    assert.equal(levelsCleared(run), 1);
+    assert.equal(run.score, 0);
+    assert.equal(run.status, 'playing');
+    assert.equal(run.toJSON().onboarding, false);
+    assert.equal(run.toJSON().levelsCleared, 1);
+  });
+
+  await t.test('deals the same level 2 as a run that played level 1', () => {
+    let played = createRun({ seed: 12, config: ENDLESS_RUN });
+    assert.equal(played.onboarding, true);
+    assert.equal(played.toJSON().onboarding, true);
+    while (played.status === 'playing') played = place(played, greedyChoice(played));
+    played = advance(played);
+    const waived = createRun({ seed: 12, config: ENDLESS_RUN, onboarding: false });
+    assert.deepEqual(waived.graph, played.graph);
+    assert.deepEqual(waived.senders, played.senders);
+    assert.equal(waived.level, played.level);
+  });
+
+  await t.test('is the default, and a config without an onboarding level has nothing to waive', () => {
+    const byDefault = createRun({ seed: 12, config: ENDLESS_RUN });
+    assert.equal(byDefault.level, 1);
+    assert.equal(byDefault.graph.nodes.length, 9);
+    assert.deepEqual(byDefault.cleared, []);
+    const curve = createRun({ seed: 12, config: CURVE_ONLY, onboarding: false });
+    const curveByDefault = createRun({ seed: 12, config: CURVE_ONLY });
+    assert.equal(curve.level, 1);
+    assert.equal(curve.onboarding, false);
+    assert.equal(curveByDefault.onboarding, false);
+    assert.deepEqual(curve.cleared, []);
+    assert.deepEqual(curve.graph, curveByDefault.graph);
+    const fixed = createRun({ seed: 12, config: DEFAULT_RUN, onboarding: false });
+    assert.equal(fixed.level, 1);
+    assert.deepEqual(fixed.cleared, []);
+  });
+
+  await t.test('keeps the count and the score on the same scale as a run that played it', () => {
+    // Two runs of the same seed, one from level 1 and one from level 2: from
+    // level 2 on they see the same boards and the same hands, so the greedy
+    // bot makes the same moves, and the two have to end alike — same level,
+    // same levels cleared, same points, level for level.
+    for (const seed of [12, 13, 14]) {
+      const played = playOut(createRun({ seed, config: DAILY_RUN }));
+      const waived = playOut(createRun({ seed, config: DAILY_RUN, onboarding: false }));
+      assert.equal(waived.level, played.level, `seed ${seed}`);
+      assert.equal(levelsCleared(waived), levelsCleared(played), `seed ${seed}`);
+      assert.equal(waived.score, played.score, `seed ${seed}`);
+      assert.deepEqual(waived.cleared.slice(1), played.cleared.slice(1), `seed ${seed}`);
+      assert.ok(played.cleared[0].left > 0, 'level 1 played leaves senders over');
+      assert.equal(waived.cleared[0].left, 0, 'level 1 waived leaves none');
+    }
+  });
+
+  await t.test('counts a day played through as all its levels, the waived one included', () => {
+    // A day short enough for the greedy bot to play through: two levels, the
+    // second of which is the last.
+    const short = { ...DAILY_RUN, lastLevel: 2 };
+    let won = null;
+    for (let seed = 1; seed <= 50 && won === null; seed++) {
+      const waived = playOut(createRun({ seed, config: short, onboarding: false }));
+      if (waived.status === 'won') won = { seed, waived };
+    }
+    assert.ok(won !== null, 'greedy wins one of fifty two-level days from level 2');
+    const played = playOut(createRun({ seed: won.seed, config: short }));
+    assert.equal(played.status, 'won');
+    assert.equal(levelsCleared(won.waived), 2);
+    assert.equal(levelsCleared(played), 2);
+    assert.equal(won.waived.score, played.score);
   });
 });
 

@@ -76,7 +76,9 @@ async function render(path) {
     ...['◉', '◎', '⊙', '⦿'].map((two) => [`Rampe ·○${two}●`,
       lines([...rests.map((r) => ['·', '○', two, '●'][Math.min(r, 3)]), '×'])]),
     ['Rampe ·○●', lines([...rests.map((r) => ['·', '○', '●'][Math.min(r, 2)]), '×'])],
-    ['Kopfzeile', 'funkl○ch 06.10. — 15 Level\nfunkloch 06.10. — 15 Level'],
+    // The wordmark both ways: the ring on a lost day, the filled circle on a
+    // day played through, and the plain word under them for the width.
+    ['Kopfzeile', 'funkl○ch 06.10. — 15 Level\nfunkl●ch 06.10. — 25 Level\nfunkloch 06.10. — 15 Level'],
   ];
   const fonts = ['system-ui', 'Georgia, serif', 'monospace'];
   const html = `<body style="background:#fff;margin:16px;font:16px system-ui">${fonts.map((font) => `

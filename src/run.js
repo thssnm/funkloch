@@ -790,10 +790,28 @@ function build(base, placed, senders) {
 
 /**
  * Starts a run.
- * @param {{seed?: number, config?: object}} [options]
+ *
+ * `onboarding: false` leaves out the onboarding level of a config that has one
+ * (`firstLevel`): the run opens on level 2, and level 1 is credited as cleared
+ * with nothing left over. For whoever has already played past level 5 the
+ * board is a formality — nobody loses it (greedy never, random taps in 0.3 %
+ * of 5000 seeds, see `ENDLESS_RUN.firstLevel`) and it scores nothing — so
+ * waiving it changes neither the count nor the points.
+ *
+ * Credited, not dropped, so that the level numbers stay what they are: an
+ * address (level i is drawn from `seed + i * 7919`) and the weight of its
+ * leftovers in the score. Shifting the run down by one instead would have
+ * "Level 12" and "12 Punkte" mean different boards for two players of the same
+ * day, and a day played through would count 24 levels for one and 25 for the
+ * other. The leaderboard and the shared line compare `levelsCleared`, and with
+ * the credit both read the same for the same run.
+ *
+ * On a config without an onboarding level the option does nothing: there is
+ * no board to waive, and level 1 is one that has to be played.
+ * @param {{seed?: number, config?: object, onboarding?: boolean}} [options]
  * @returns {object} frozen state
  */
-export function createRun({ seed = 1, config = DEFAULT_RUN } = {}) {
+export function createRun({ seed = 1, config = DEFAULT_RUN, onboarding = true } = {}) {
   if (!Number.isInteger(seed)) throw new RangeError(`seed must be an integer, got ${seed}`);
   if (!config.endless && (!Array.isArray(config.levelSizes) || config.levelSizes.length === 0)) {
     throw new RangeError('config.levelSizes must be a non-empty array of node counts');
@@ -801,9 +819,23 @@ export function createRun({ seed = 1, config = DEFAULT_RUN } = {}) {
   if (config.endless && !(config.levelNodes?.start >= 2 && config.senderCurve?.start > 0)) {
     throw new RangeError('an endless config needs levelNodes and senderCurve');
   }
-  const { graph, lattice, senders } = buildLevel(seed, 0, config);
+  const hasOnboarding = Boolean(config.endless && config.firstLevel);
+  const skipped = hasOnboarding && !onboarding;
+  const index = skipped ? 1 : 0;
+  const { graph, lattice, senders } = buildLevel(seed, index, config);
   return build(
-    { seed, config, level: 1, graph, lattice, score: 0, cleared: [] },
+    {
+      seed,
+      config,
+      /** Whether the run began on its onboarding level; false where the
+       *  config has none, so a stored run can be rebuilt from this alone. */
+      onboarding: hasOnboarding && !skipped,
+      level: index + 1,
+      graph,
+      lattice,
+      score: 0,
+      cleared: skipped ? [{ level: 1, left: 0 }] : [],
+    },
     [],
     senders,
   );
@@ -866,6 +898,8 @@ export function levelsCleared(state) {
 export function snapshot(state) {
   return {
     seed: state.seed,
+    /** Whether the run began on its onboarding level (`createRun`). */
+    onboarding: state.onboarding,
     /** The level currently being played. */
     level: state.level,
     levels: state.config.endless ? null : state.config.levelSizes.length,

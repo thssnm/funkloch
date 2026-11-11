@@ -54,6 +54,16 @@ Markierung liegt lokal (`funkloch.hilfe`); wo nichts gespeichert werden kann,
 bleibt der Text stehen, das ist der harmlosere Fall. Datenschutz-Link und
 Standanzeige bleiben, der frei werdende Platz geht an die Bühne.
 
+Dieselbe Markierung nimmt das Einstiegsbrett weg: wer das Spiel kennt, beginnt
+jede Partie auf Level 2, und Level 1 wird als geschafft gutgeschrieben, ohne
+übrige Sender (`createRun`, `onboarding: false`). Die Levelnummern bleiben,
+was sie sind — Level i ist das Brett aus `seed + i · 7919` und zugleich das
+Punktegewicht seiner Reste —, und ein durchgespielter Tag zählt für alle 25
+Level; Rangliste und geteilte Zeile vergleichen also dasselbe. Das Brett zu
+erlassen kostet nichts: es bringt keine Punkte, und es verliert niemand. Ein
+begonnener Tagesversuch bleibt, wo er begann, auch wenn die Markierung
+nebenbei im freien Spiel gesetzt wird; der gespeicherte Versuch hält das fest.
+
 Bestwert sind die **Punkte**, und nur sie. Das Level ist Standanzeige ohne
 eigenen Rekord: zwei Bestwerte ließen offen, welcher zählt, und von den beiden
 misst der Punktestand mehr. Er steigt mit dem Level ohnehin, und zwischen zwei
@@ -106,8 +116,13 @@ https://funkloch.thssn.dev
 ```
 
 Ein verlorener Tag nennt das Level, in dem er endete, und das Ziel; ein
-durchgespielter sagt es in Worten: `funkl○ch 06.10. — durchgespielt, alle 25
+durchgespielter sagt es in Worten: `funkl●ch 06.10. — durchgespielt, alle 25
 Level, 143 Punkte`. Die Endkarte nennt dasselbe Level wie Kopfzeile und Zeile.
+
+Das o der Wortmarke ist der Ring eines unversorgten Knotens. Wer durchgespielt
+hat, hat keinen übrig: dann wird daraus der gefüllte Kreis, `funkl●ch` statt
+`funkl○ch`, gleich breit und in denselben Schriften gezeichnet
+(`tools/share-forms.js --render`).
 
 Die zweite Zeile ist die Adresse des Spiels als Link (`GAME_URL` in `src/share.js`).
 Nichts davon verrät das Brett. Eine Grafik des Verlaufs gibt es nicht mehr;
